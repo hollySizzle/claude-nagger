@@ -1,6 +1,8 @@
 # Claude Code (Research Preview)
 
-![](https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square)
+![](https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square) [![npm]](https://www.npmjs.com/package/@anthropic-ai/claude-code)
+
+[npm]: https://img.shields.io/npm/v/@anthropic-ai/claude-code.svg?style=flat-square
 
 Claude Code is an agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster by executing routine tasks, explaining complex code, and handling git workflows - all through natural language commands.
 
@@ -15,18 +17,21 @@ Some of its key capabilities include:
 
 ## Get started
 
-<ol>
-  <li>
-    Run the following command in your terminal: <br />
-    <code>npm install -g @anthropic-ai/claude-code</code>
-  </li>
-  <li>
-    Navigate to your project directory and run <code>claude</code>
-  </li>
-  <li>
-    Complete the one-time OAuth process with your Anthropic Console account.
-  </li>
-</ol>
+1. If you are new to Node.js and Node Package Manager (`npm`), then it is recommended that you configure an NPM prefix for your user.
+   Instructions on how to do this can be found [here](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview#recommended-create-a-new-user-writable-npm-prefix).
+
+   *Important* We recommend installing this package as a non-privileged user, not as an administrative user like `root`.
+   Installing as a non-privileged user helps maintain your system's security and stability.
+
+2. Install Claude Code:
+   
+   ```sh
+   npm install -g @anthropic-ai/claude-code
+   ```
+
+3. Navigate to your project directory and run <code>claude</code>.
+
+4. Complete the one-time OAuth process with your Anthropic Console account.
 
 ### Research Preview
 
