@@ -3,7 +3,7 @@
 ## 0.2.82
 
 - Added support for --disallowedTools
-- Renamed tools for consistency: AgentTool -> Task, LSTool -> LS, View -> Read, etc.
+- Renamed tools for consistency: LSTool -> LS, View -> Read, etc.
 
 ## 0.2.75
 
