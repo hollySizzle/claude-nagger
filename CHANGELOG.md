@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.93
+
+- Resume conversations from where you left off from with "claude --continue" and "claude --resume"
+- Claude now has access to a Todo list that helps it stay on track and be more organized
+
 ## 0.2.82
 
 - Added support for --disallowedTools
