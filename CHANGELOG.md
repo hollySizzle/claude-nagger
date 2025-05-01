@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.98
+
+- Fixed an issue where auto-compact was running twice
+
 ## 0.2.96
 
 - Claude Code can now also be used with a Claude Max subscription (https://claude.ai/upgrade)
