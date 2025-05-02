@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.100
+
+- Fixed a crash caused by a stack overflow error
+- Made db storage optional; missing db support disables --continue and --resume
+
 ## 0.2.98
 
 - Fixed an issue where auto-compact was running twice
