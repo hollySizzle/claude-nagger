@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.102
+
+- Improved thinking triggering reliability
+- Improved @mention reliability for images and folders
+- You can now paste multiple large chunks into one prompt
+
 ## 0.2.100
 
 - Fixed a crash caused by a stack overflow error
