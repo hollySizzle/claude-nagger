@@ -18,7 +18,7 @@ Some of its key capabilities include:
 ## Get started
 
 1. If you are new to Node.js and Node Package Manager (`npm`), then it is recommended that you configure an NPM prefix for your user.
-   Instructions on how to do this can be found [here](https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview#recommended-create-a-new-user-writable-npm-prefix).
+   Instructions on how to do this can be found [here](https://docs.anthropic.com/en/docs/claude-code/troubleshooting#recommended-solution-create-a-user-writable-npm-prefix).
 
    *Important* We recommend installing this package as a non-privileged user, not as an administrative user like `root`.
    Installing as a non-privileged user helps maintain your system's security and stability.
