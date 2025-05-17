@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.117
+
+- Breaking change: --print JSON output now returns nested message objects, for forwards-compatability as we introduce new metadata fields
+- Introduced settings.cleanupPeriodDays
+- Introduced CLAUDE_CODE_API_KEY_HELPER_TTL_MS env var
+- Introduced --debug mode
+
 ## 0.2.108
 
 - You can now send messages to Claude while it works to steer Claude in real-time
