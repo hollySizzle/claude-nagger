@@ -13,7 +13,7 @@ Some of its key capabilities include:
 - Execute and fix tests, lint, and other commands
 - Search through git history, resolve merge conflicts, and create commits and PRs
 
-**Learn more in the [official documentation](https://docs.anthropic.com/en/docs/agents/claude-code/introduction)**.
+**Learn more in the [official documentation](https://docs.anthropic.com/en/docs/claude-code/overview)**.
 
 ## Get started
 
@@ -29,9 +29,9 @@ Some of its key capabilities include:
    npm install -g @anthropic-ai/claude-code
    ```
 
-3. Navigate to your project directory and run <code>claude</code>.
+3. Navigate to your project directory and run `claude`.
 
-4. Complete the one-time OAuth process with your Anthropic Console account.
+4. Complete the one-time OAuth process with your Claude Max or Anthropic Console account.
 
 ### Reporting Bugs
 
