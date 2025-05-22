@@ -1,6 +1,12 @@
 # Changelog
 
+## 1.0.0
+
+- Claude Code is now generally available
+- Introducing Sonnet 4 and Opus 4 models
+
 ## 0.2.125
+
 - Breaking change: Bedrock ARN passed to `ANTHROPIC_MODEL` or `ANTHROPIC_SMALL_FAST_MODEL` should no longer contain an escaped slash (specify `/` instead of `%2F`)
 - Removed `DEBUG=true` in favor of `ANTHROPIC_LOG=debug`, to log all requests
 

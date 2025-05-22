@@ -1,4 +1,4 @@
-# Claude Code (Research Preview)
+# Claude Code
 
 ![](https://img.shields.io/badge/Node.js-18%2B-brightgreen?style=flat-square) [![npm]](https://www.npmjs.com/package/@anthropic-ai/claude-code)
 
@@ -20,11 +20,11 @@ Some of its key capabilities include:
 1. If you are new to Node.js and Node Package Manager (`npm`), then it is recommended that you configure an NPM prefix for your user.
    Instructions on how to do this can be found [here](https://docs.anthropic.com/en/docs/claude-code/troubleshooting#recommended-solution-create-a-user-writable-npm-prefix).
 
-   *Important* We recommend installing this package as a non-privileged user, not as an administrative user like `root`.
+   _Important_ We recommend installing this package as a non-privileged user, not as an administrative user like `root`.
    Installing as a non-privileged user helps maintain your system's security and stability.
 
 2. Install Claude Code:
-   
+
    ```sh
    npm install -g @anthropic-ai/claude-code
    ```
@@ -32,12 +32,6 @@ Some of its key capabilities include:
 3. Navigate to your project directory and run <code>claude</code>.
 
 4. Complete the one-time OAuth process with your Anthropic Console account.
-
-### Research Preview
-
-We're launching Claude Code as a beta product in research preview to learn directly from developers about their experiences collaborating with AI agents. Our aim is to learn more about how developers prefer to collaborate with AI tools, which development workflows benefit most from working with the agent, and how we can make the agent experience more intuitive.
-
-This is an early version of the product experience, and it's likely to evolve as we learn more about developer preferences. Claude Code is an early look into what's possible with agentic coding, and we know there are areas to improve. We plan to enhance tool execution reliability, support for long-running commands, terminal rendering, and Claude's self-knowledge of its capabilities -- as well as many other product experiences -- over the coming weeks.
 
 ### Reporting Bugs
 
