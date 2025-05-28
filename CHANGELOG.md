@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.4
+
+- Fixed a bug where MCP tool errors weren't being parsed correctly
+
 ## 1.0.1
 
 - Added `DISABLE_INTERLEAVED_THINKING` to give users the option to opt out of interleaved thinking.
