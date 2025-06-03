@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.0
+
+- Added markdown table support
+- Improved streaming performance
+
 ## 1.0.8
 
 - Fixed Vertex AI region fallback when using CLOUD_ML_REGION
