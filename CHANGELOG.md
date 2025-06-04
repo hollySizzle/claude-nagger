@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.11
+
+- Claude Code can now also be used with a Claude Pro subscription
+- Added /upgrade for smoother switching to Claude Max plans
+- Improved UI for authentication from API keys and Bedrock/Vertex/external auth tokens
+- Improved shell configuration error handling
+- Improved todo list handling during compaction
+
 ## 1.0.10
 
 - Added markdown table support
