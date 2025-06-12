@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.22
+
+- SDK: Renamed `total_cost` to `total_cost_usd`
+
+## 1.0.21
+
+- Improved editing of files with tab-based indentation
+- Fix for tool_use without matching tool_result errors
+- Fixed a bug where stdio MCP server processes would linger after quitting Claude Code
+
 ## 1.0.18
 
 - Added --add-dir CLI argument for specifying additional working directories
