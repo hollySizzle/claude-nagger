@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.25
+
+- Slash commands: moved "project" and "user" prefixes to descriptions
+- Slash commands: improved reliability for command discovery
+- Improved support for Ghostty
+- Improved web search reliability
+
+## 1.0.24
+
+- Improved /mcp output
+- Fixed a bug where settings arrays got overwritten instead of merged
+
+## 1.0.23
+
+- Released TypeScript SDK: import @anthropic-ai/claude-code to get started
+- Released Python SDK: pip install claude-code-sdk to get started
+
 ## 1.0.22
 
 - SDK: Renamed `total_cost` to `total_cost_usd`
