@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.0.35
+
+- Added support for MCP OAuth Authorization Server discovery
+
 ## 1.0.34
 
 - Fixed a memory leak causing a MaxListenersExceededWarning message to appear
