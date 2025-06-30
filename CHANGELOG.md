@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.0.38
+
+- Released [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks). Special thanks to community input in [Github Issues](https://github.com/anthropics/claude-code/issues/712)
+
+## 1.0.37
+
+- Remove ability to set `Proxy-Authorization` header via ANTHROPIC_AUTH_TOKEN or apiKeyHelper
+
+## 1.0.36
+
+- Web search now takes today's date into context
+- Fixed a bug where stdio MCP servers were not terminating properly on exit
+
 ## 1.0.35
 
 - Added support for MCP OAuth Authorization Server discovery
