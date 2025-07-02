@@ -2,7 +2,7 @@
 
 ## 1.0.38
 
-- Released [hooks](https://docs.anthropic.com/en/docs/claude-code/hooks). Special thanks to community input in [Github Issues](https://github.com/anthropics/claude-code/issues/712)
+- Released hooks. Special thanks to community input in https://github.com/anthropics/claude-code/issues/712. Docs: https://docs.anthropic.com/en/docs/claude-code/hooks
 
 ## 1.0.37
 
