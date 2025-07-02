@@ -1,44 +1,40 @@
-﻿#------------------------------------------------------------------------------
-# Script: run_devcontainer_claude_code.ps1
-# Author: [Your Name or Project Name]
-# Description: Automates the setup and connection to a DevContainer environment
-#              using either Docker or Podman on Windows.
-#
-# IMPORTANT USAGE REQUIREMENT:
-# This script MUST be executed from the ROOT directory of your project.
-# It assumes the script file itself is located in a 'Script' subdirectory.
-#
-# Assumed Project Structure:
-# Project/
-# ├── .devcontainer/
-# └── Script/
-#     └── run_devcontainer_claude_code.ps1  <-- This script's location
-#
-# How to Run:
-# 1. Open PowerShell.
-# 2. Change your current directory to the project root:
-#    cd c:\path\to\your\Project
-# 3. Execute the script, specifying the container backend:
-#    .\Script\run_devcontainer_claude_code.ps1 -Backend <docker|podman>
-#
-# The -Backend parameter is mandatory and accepts 'docker' or 'podman'.
-#------------------------------------------------------------------------------
+﻿<#
+.SYNOPSIS
+    Automates the setup and connection to a DevContainer environment using either Docker or Podman on Windows.
+
+.DESCRIPTION
+    This script automates the process of initializing, starting, and connecting to a DevContainer
+    using either Docker or Podman as the container backend. It must be executed from the root
+    directory of your project and assumes the script is located in a 'Script' subdirectory.
+
+.PARAMETER Backend
+    Specifies the container backend to use. Valid values are 'docker' or 'podman'.
+
+.EXAMPLE
+    .\Script\run_devcontainer_claude_code.ps1 -Backend docker
+    Uses Docker as the container backend.
+
+.EXAMPLE
+    .\Script\run_devcontainer_claude_code.ps1 -Backend podman
+    Uses Podman as the container backend.
+
+.NOTES
+    Project Structure:
+    Project/
+    ├── .devcontainer/
+    └── Script/
+        └── run_devcontainer_claude_code.ps1
+#>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)]
+    [ValidateSet('docker','podman')]
     [string]$Backend
 )
 
 # Notify script start
 Write-Host "--- DevContainer Startup & Connection Script ---"
 Write-Host "Using backend: $($Backend)"
-
-# Validate the input backend
-if ($Backend -notin @('docker', 'podman')) {
-    Write-Error "Invalid backend specified. Please use 'docker' or 'podman'."
-    Write-Host "Usage: ." + $MyInvocation.MyCommand.Definition + " -Backend <docker|podman>"
-    exit 1
-}
 
 # --- Backend-Specific Initialization ---
 if ($Backend -eq 'podman') {
