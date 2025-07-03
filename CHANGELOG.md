@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.43
+
+- Fixed a bug where the theme selector was saving excessively
+
+## 1.0.42
+
+- Added tilde (`~`) expansion support to `/add-dir` command
+
 ## 1.0.41
 
 - Hooks: Split Stop hook triggering into Stop and SubagentStop
