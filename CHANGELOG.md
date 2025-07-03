@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.0.41
+
+- Hooks: Split Stop hook triggering into Stop and SubagentStop
+- Hooks: Enabled optional timeout configuration for each command
+- Hooks: Added "hook_event_name" to hook input
+- Fixed a bug where MCP tools would display twice in tool list
+- New tool parameters JSON for Bash tool in `tool_decision` event
+
+## 1.0.40
+
+- Fixed a bug causing API connection errors with UNABLE_TO_GET_ISSUER_CERT_LOCALLY if `NODE_EXTRA_CA_CERTS` was set
+
+## 1.0.39
+
+- New Active Time metric in OpenTelemetry logging
+
 ## 1.0.38
 
 - Released hooks. Special thanks to community input in https://github.com/anthropics/claude-code/issues/712. Docs: https://docs.anthropic.com/en/docs/claude-code/hooks
