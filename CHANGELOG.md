@@ -1,8 +1,16 @@
 # Changelog
 
+## 1.0.44
+
+- New /export command lets you quickly export a conversation for sharing
+- MCP: resource_link tool results are now supported
+- MCP: tool annotations and tool titles now display in /mcp view
+- Changed Ctrl+Z to suspend Claude Code. Resume by running `fg`. Prompt input undo is now Ctrl+U.
+
 ## 1.0.43
 
 - Fixed a bug where the theme selector was saving excessively
+- Hooks: Added EPIPE system error handling
 
 ## 1.0.42
 
@@ -48,7 +56,7 @@
 ## 1.0.33
 
 - Improved logging functionality with session ID support
-- Added undo functionality (Ctrl+Z and vim 'u' command)
+- Added prompt input undo functionality (Ctrl+Z and vim 'u' command)
 - Improvements to plan mode
 
 ## 1.0.32
