@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.0.48
+
+- Fixed a bug in v1.0.45 where the app would sometimes freeze on launch
+- Added progress messages to Bash tool based on the last 5 lines of command output
+- Added expanding variables support for MCP server configuration
+- Moved shell snapshots from /tmp to ~/.claude for more reliable Bash tool calls
+- Improved IDE extension path handling when Claude Code runs in WSL
+- Hooks: Added a PreCompact hook
+- Vim mode: Added c, f/F, t/T
+
+## 1.0.45
+
+- Redesigned Search (Grep) tool with new tool input parameters and features
+- Disabled IDE diffs for notebook files, fixing "Timeout waiting after 1000ms" error
+- Fixed config file corruption issue by enforcing atomic writes
+- Updated prompt input undo to Ctrl+\_ to avoid breaking existing Ctrl+U behavior, matching zsh's undo shortcut
+- Stop Hooks: Fixed transcript path after /clear and fixed triggering when loop ends with tool call
+- Custom slash commands: Restored namespacing in command names based on subdirectories. For example, .claude/frontend/component.md is now /frontend:component, not /component.
+
 ## 1.0.44
 
 - New /export command lets you quickly export a conversation for sharing
