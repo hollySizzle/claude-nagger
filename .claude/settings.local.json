@@ -98,61 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash vibes/scripts/markdown_hook.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash vibes/scripts/hooks/start_task.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash vibes/scripts/markdown_hook.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash vibes/scripts/hooks/start_task.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash vibes/scripts/markdown_hook.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash vibes/scripts/hooks/start_task.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Edit|Write|MultiEdit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "bash vibes/scripts/markdown_hook.sh"
+            "command": "bash vibes/scripts/hooks/markdown_hook.sh"
           }
         ]
       }
