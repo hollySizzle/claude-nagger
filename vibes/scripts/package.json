@@ -1,0 +1,32 @@
+{
+  "name": "doc-automation-scripts",
+  "version": "1.0.0",
+  "description": "Documentation automation scripts for document-driven development",
+  "type": "module",
+  "scripts": {
+    "setup": "node setup.js",
+    "update-toc": "node update-toc.js",
+    "check-references": "node check-doc-references.js",
+    "generate-document": "node generate-document.js",
+    "doc-help": "node generate-document.js --help",
+    "quick-start": "echo '⚠️ 対話式CLIはAIエージェントで使用不可。代わりに: npm run vibes:setup 1' && echo '📖 詳細: npm run vibes:setup help'",
+    "vibes:setup": "node project-setup.js",
+    "vibes:config": "node project-setup.js config"
+  },
+  "keywords": [
+    "documentation",
+    "automation",
+    "markdown",
+    "claude-code"
+  ],
+  "author": "Claude Code",
+  "license": "MIT",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "fs-extra": "^11.1.1",
+    "glob": "^10.3.10",
+    "commander": "^11.1.0"
+  }
+}
