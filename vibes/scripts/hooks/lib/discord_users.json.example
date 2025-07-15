@@ -1,0 +1,29 @@
+{
+  "default": "YOUR_DEFAULT_USER_ID",
+  "users": {
+    "username1": "USER_ID_1",
+    "username2": "USER_ID_2"
+  },
+  "aliases": {
+    "me": "YOUR_USER_ID",
+    "自分": "YOUR_USER_ID"
+  },
+  "roles": {
+    "dev": "DEVELOPER_ROLE_ID",
+    "notification": "NOTIFICATION_ROLE_ID",
+    "team": "TEAM_ROLE_ID"
+  },
+  "groups": {
+    "backend": {
+      "users": ["USER_ID_1", "USER_ID_2"],
+      "role": "BACKEND_ROLE_ID"
+    },
+    "frontend": {
+      "users": ["USER_ID_3", "USER_ID_4"],
+      "role": "FRONTEND_ROLE_ID"
+    },
+    "all": {
+      "role": "EVERYONE_ROLE_ID"
+    }
+  }
+}
