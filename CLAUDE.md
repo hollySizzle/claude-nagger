@@ -47,23 +47,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## コマンド
 
 ```bash
-# 開発環境セットアップ
-npm install                             # Node.js依存関係インストール
-
-# ビルド
-npm run build                           # 開発ビルド
-npm run build-production                # 本番ビルド
-npm run watch                           # 開発モード（ファイル監視）
-
-# デプロイ（ビルド後のファイルをRedmineの公開ディレクトリへコピー）
-cp ./assets/javascripts/react_gantt_chart/dist/bundle.js /usr/src/redmine/public/plugin_assets/redmine_react_gantt_chart/
-
-# 開発用スクリプト（_dev/ディレクトリ）
-./_dev/setup.sh                         # Node.js 18インストール & 初回ビルド
-./_dev/watch_and_copy.sh                # watch & 自動コピー（開発時推奨）
-
 # ドキュメント管理
-cd vibes/scripts && npm install         # 初回のみ: 依存関係インストール
+cd vibes/scripts
 npm run update-toc                      # 目次更新
 npm run check-references                # 参照整合性チェック
 npm run generate-document               # 新規ドキュメント生成
@@ -101,9 +86,17 @@ npm run doc-help                        # ドキュメント生成ヘルプ
 
 ## ドキュメント
 
-**参照順序**: @vibes/INDEX.md → 定型タスクは@vibes/tasks → 複雑タスクは@vibes/temps でチェックリスト作成
-**重要**: ドキュメントは､情報量を損なわないよう圧縮し短くしてください｡具体的には､簡潔な文章表現/情報の集約/繰り返しを避ける 等をしてください｡
-**作成ルール**: @vibes/INDEX.md を確認し新規ドキュメントの必要性を再考 → 新規作成(`npm run generate-document`) → ガイドラインの確認(@vibes/docs/rules/documentation_standards.md) → 目次更新(`npm run update-toc`)→ 参照整合性チェック(`npm run check-references`)
+**重要**
+
+- ドキュメントは､簡潔かつ記載漏れのない圧縮言語で記載する
+  - 専門用語の活用/簡潔な文章表現/情報の集約/繰り返しを避ける 等を実行すること
+- 作成ルールに従うこと
+  - **重要** : 手動でドキュメントを作成せず､自動生成ツールを使用すること
+  - @vibes/INDEX.md を確認し新規ドキュメントの必要性を再考
+  - 新規作成(`npm run generate-document`)
+  - ガイドラインの確認(@vibes/docs/rules/documentation_standards.md)
+  - 目次更新(`npm run update-toc`)
+  - 参照整合性チェック(`npm run check-references`)
 
 ### vibes/docs ディレクトリ構成
 
