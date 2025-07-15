@@ -1,0 +1,55 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node vibes/scripts/hooks/lib/discord_notify.js \"🛑 Claude Code セッションが停止されました\""
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node vibes/scripts/hooks/lib/discord_notify.js \"📢 Claude Code から通知があります\""
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash vibes/scripts/hooks/markdown_hook.sh"
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash vibes/scripts/hooks/start_task.sh"
+          }
+        ]
+      }
+    ]
+  },
+  "allowedTools": ["Write", "Read", "vibes_scripts"],
+  "mcp": {
+    "servers": {
+      "filesystem": {
+        "command": "node",
+        "args": ["path/to/filesystem-server"]
+      }
+    }
+  }
+}
