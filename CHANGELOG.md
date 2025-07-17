@@ -6,7 +6,7 @@
 - Custom slash commands: Added argument-hint to frontmatter
 - Windows: OAuth uses port 45454 and properly constructs browser URL
 - Windows: mode switching now uses alt + m, and plan mode renders properly
-- Shell: Switch to in-memory shell snapshot to file-related errors
+- Shell: Switch to in-memory shell snapshot to fix file-related errors
 
 ## 1.0.53
 
