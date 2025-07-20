@@ -32,7 +32,13 @@ class DocReferenceChecker {
       const pattern = path.join(this.docDir, '**', '*.md').replace(/\\/g, '/');
       const mdFiles = await glob(pattern);
       
-      for (const filePath of mdFiles) {
+      // tempsディレクトリを除外（一時的なドキュメントは参照チェック対象外）
+      const filteredFiles = mdFiles.filter(filePath => {
+        const relativePath = path.relative(this.docDir, filePath);
+        return !relativePath.startsWith('temps/');
+      });
+      
+      for (const filePath of filteredFiles) {
         await this.checkFileReferences(filePath);
       }
     } catch (error) {
@@ -58,9 +64,9 @@ class DocReferenceChecker {
         }
       }
       
-      // 相対パス参照（禁止パターン）をチェック
+      // 相対パス参照（禁止パターン）をチェック（INDEX.mdファイルは除外）
       const relativeReferences = content.match(/\[.*?\]\((?:\.\.?\/[^\)]+|[^@\s][^\)]*\.md)\)/g);
-      if (relativeReferences) {
+      if (relativeReferences && !relativePath.endsWith('INDEX.md')) {
         for (const reference of relativeReferences) {
           this.warnings.push(`${relativePath}: 非推奨の相対パス参照 - ${reference}`);
         }
