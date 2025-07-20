@@ -309,7 +309,7 @@ ${timestamp}
     }
   }
 
-  // 階層的セクション構築（全階層のINDEXを表示）
+  // 階層的セクション構築（2階層制限+深度インジケータ）
   async buildHierarchicalSection(dirPath, depth) {
     let section = '';
     const indent = '  '.repeat(depth);
@@ -341,17 +341,29 @@ ${timestamp}
           if (hasIndex) {
             // INDEXがある場合はリンクを表示
             const relativePath = path.relative(this.docDir, subdirPath);
-            section += `${indent}- [${dirTitle}](@vibes/${relativePath}/INDEX.md)\n`;
+            
+            // 2階層制限: 2階層目以降はインジケータを表示
+            if (depth >= 1) {
+              const depthIndicator = await this.generateDepthIndicator(subdirPath);
+              section += `${indent}- [${dirTitle}](@vibes/${relativePath}/INDEX.md) ${depthIndicator}\n`;
+            } else {
+              section += `${indent}- [${dirTitle}](@vibes/${relativePath}/INDEX.md)\n`;
+              // 1階層目のみ再帰的に処理
+              const subContent = await this.buildHierarchicalSection(subdirPath, depth + 1);
+              if (subContent) {
+                section += subContent;
+              }
+            }
           } else {
             // INDEXがない場合は太字で表示
             section += `${indent}- **${dirTitle}**\n`;
-          }
-          
-          // INDEXがない場合のみ再帰的にサブディレクトリを処理
-          if (!hasIndex) {
-            const subContent = await this.buildHierarchicalSection(subdirPath, depth + 1);
-            if (subContent) {
-              section += subContent;
+            
+            // INDEXがない場合のみ再帰的にサブディレクトリを処理
+            if (depth < 1) {
+              const subContent = await this.buildHierarchicalSection(subdirPath, depth + 1);
+              if (subContent) {
+                section += subContent;
+              }
             }
           }
         }
@@ -361,6 +373,61 @@ ${timestamp}
     }
     
     return section;
+  }
+
+  // 階層深度インジケータ生成
+  async generateDepthIndicator(dirPath) {
+    const maxDepth = await this.calculateMaxDepth(dirPath);
+    const hasSubdirs = await this.hasSubdirectories(dirPath);
+    
+    // アイコンの決定
+    const icon = hasSubdirs ? '📁' : '📄';
+    
+    return `${icon} **→${maxDepth}階層**`;
+  }
+
+  // 最大階層深度を計算
+  async calculateMaxDepth(dirPath, currentDepth = 1) {
+    let maxDepth = currentDepth;
+    
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      const dirs = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'));
+      
+      for (const dir of dirs) {
+        const subdirPath = path.join(dirPath, dir.name);
+        const hasFiles = (await this.getDirectoryFiles(subdirPath)).length > 0;
+        
+        if (hasFiles) {
+          const subDepth = await this.calculateMaxDepth(subdirPath, currentDepth + 1);
+          maxDepth = Math.max(maxDepth, subDepth);
+        }
+      }
+    } catch (error) {
+      // エラーは無視
+    }
+    
+    return maxDepth;
+  }
+
+  // サブディレクトリの存在チェック
+  async hasSubdirectories(dirPath) {
+    try {
+      const entries = fs.readdirSync(dirPath, { withFileTypes: true });
+      const dirs = entries.filter(e => e.isDirectory() && !e.name.startsWith('.'));
+      
+      for (const dir of dirs) {
+        const subdirPath = path.join(dirPath, dir.name);
+        const hasFiles = (await this.getDirectoryFiles(subdirPath)).length > 0;
+        if (hasFiles) {
+          return true;
+        }
+      }
+    } catch (error) {
+      // エラーは無視
+    }
+    
+    return false;
   }
 
   // 従来のルートINDEX生成

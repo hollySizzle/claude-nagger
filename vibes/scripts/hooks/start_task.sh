@@ -23,8 +23,9 @@ fi
 # デフォルト値設定
 INDEX_MD_PATH=${INDEX_MD_PATH:-"vibes/docs/INDEX.md"}
 TEMP_DIR=${TEMP_DIR:-"/tmp"}
-HOOK_MESSAGE_PREFIX=${HOOK_MESSAGE_PREFIX:-"⚠️  タスクを実行する前に､タスクに関連するドキュメントを参照してください"}
-HOOK_MESSAGE_SUFFIX=${HOOK_MESSAGE_SUFFIX:-"タスクの実行を続けるならば､以下を実行してください.\\n - 参照するドキュメントを全て決定し出力してください"}
+ADDITIONAL_MESSAGE="0. @docs/rules/ai_collaboration_standards.md を参照しプロジェクト進行フローを確認してください."
+# HOOK_MESSAGE_PREFIX=${HOOK_MESSAGE_PREFIX:-"⚠️ "}
+# HOOK_MESSAGE_SUFFIX=${HOOK_MESSAGE_SUFFIX:-"タスクの実行を続けるならば､以下を実行してください.\\n 1.参照するドキュメントを全て決定し出力してください 2."}
 
 log_debug "Default values set: INDEX_MD_PATH=$INDEX_MD_PATH, TEMP_DIR=$TEMP_DIR"
 
@@ -97,7 +98,7 @@ log_debug "Created session marker file"
 
 # INDEX.mdの存在チェックと動的メッセージ生成
 if [ -f "$INDEX_MD_PATH" ]; then
-    INDEX_MESSAGE="📋 利用可能なドキュメント: @vibes/INDEX.md を参照してください (パス: ${INDEX_MD_PATH})"
+    INDEX_MESSAGE="タスクの実行を続けるならば､以下を実行してください ${ADDITIONAL_MESSAGE} 1.${INDEX_MD_PATH}からタスクに関連するドキュメントを全て決定し出力してください"
     log_debug "INDEX.md found"
 else
     INDEX_MESSAGE="⚠️ INDEX.mdが見つかりません (パス: ${INDEX_MD_PATH})"
@@ -105,23 +106,14 @@ else
 fi
 
 # reasonメッセージを構築
-REASON_MESSAGE="${HOOK_MESSAGE_PREFIX}\\n\\n${INDEX_MESSAGE}\\n\\n${HOOK_MESSAGE_SUFFIX}"
+# REASON_MESSAGE="${HOOK_MESSAGE_PREFIX}\\n\\n${INDEX_MESSAGE}\\n\\n${HOOK_MESSAGE_SUFFIX}"
+REASON_MESSAGE="${INDEX_MESSAGE}"
 log_debug "Reason message constructed: $REASON_MESSAGE"
 
-# JSON形式で出力（jqを使用して適切にエスケープ）
-OUTPUT=$(jq -n --arg reason "$REASON_MESSAGE" '{decision: "block", reason: $reason}' 2>/dev/null)
-EXIT_CODE=$?
-
-log_debug "jq output generation exit code: $EXIT_CODE"
-log_debug "Generated output: $OUTPUT"
-
-if [ $EXIT_CODE -eq 0 ] && [ -n "$OUTPUT" ]; then
-    echo "$OUTPUT"
-    log_debug "Successfully output JSON"
-else
-    log_debug "ERROR: Failed to generate JSON output"
-    echo '{"decision": "continue", "stopReason": "Failed to generate JSON output"}' 
-    exit 1
-fi
+# exit code 2でblockingエラーとして出力（JSONではなく単純なstderr出力）
+log_debug "Outputting blocking error via stderr"
+echo "$REASON_MESSAGE" >&2
+log_debug "Successfully output blocking message to stderr"
+exit 2
 
 log_debug "========== Hook Script Ended =========="
