@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.0.59
+
+- Rename CLAUDE_CODE_BASH_PREFIX to CLAUDE_CODE_SHELL_PREFIX
+- SDK: Added tool confirmation support with canUseTool callback
+- SDK: Allow specifying env for spawned process
+- Hooks: Exposed PermissionDecision to hooks (including "ask")
+- Hooks: UserPromptSubmit now supports additionalContext in advanced JSON output
+- Fixed issue where some Max users that specified Opus would still see fallback to Sonnet
+
 ## 1.0.58
 
 - Added support for reading PDFs
