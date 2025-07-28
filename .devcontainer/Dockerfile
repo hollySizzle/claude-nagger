@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   dnsutils \
   aggregate \
   jq \
+  nano \
+  vim \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Ensure default node user has access to /usr/local/share
@@ -59,6 +61,10 @@ ENV PATH=$PATH:/usr/local/share/npm-global/bin
 
 # Set the default shell to zsh rather than sh
 ENV SHELL=/bin/zsh
+
+# Set the default editor and visual
+ENV EDITOR nano
+ENV VISUAL nano
 
 # Default powerline10k theme
 ARG ZSH_IN_DOCKER_VERSION=1.2.0
