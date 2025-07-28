@@ -3,6 +3,8 @@ FROM node:20
 ARG TZ
 ENV TZ="$TZ"
 
+ARG CLAUDE_CODE_VERSION=latest
+
 # Install basic development tools and iptables/ipset
 RUN apt update && apt install -y less \
   git \
@@ -67,7 +69,7 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
   -x
 
 # Install Claude
-RUN npm install -g @anthropic-ai/claude-code@1.0.31
+RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
 
 # Copy and set up firewall script
