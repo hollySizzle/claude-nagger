@@ -20,6 +20,7 @@ jobs:
         with:
           issue-inactive-days: "7"
           process-only: "issues"
+          log-output: true
           issue-comment: >
             This issue has been automatically locked since it was
             closed and has not had any activity for 7 days.
