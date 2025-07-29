@@ -2,6 +2,10 @@
 set -euo pipefail  # Exit on error, undefined vars, and pipeline failures
 IFS=$'\n\t'       # Stricter word splitting
 
+# Extract Docker DNS ports before cleanup (for protection)
+TCP_PORT=$(iptables -t nat -L DOCKER_OUTPUT -n 2>/dev/null | grep 'tcp.*to:127.0.0.11:' | sed 's/.*127\.0\.0\.11://g' | cut -d' ' -f1 || echo "")
+UDP_PORT=$(iptables -t nat -L DOCKER_OUTPUT -n 2>/dev/null | grep 'udp.*to:127.0.0.11:' | sed 's/.*127\.0\.0\.11://g' | cut -d' ' -f1 || echo "")
+
 # Flush existing rules and delete existing ipsets
 iptables -F
 iptables -X
@@ -10,6 +14,19 @@ iptables -t nat -X
 iptables -t mangle -F
 iptables -t mangle -X
 ipset destroy allowed-domains 2>/dev/null || true
+
+# Restore Docker DNS NAT rules if they existed
+if [ -n "$TCP_PORT" ] && [ -n "$UDP_PORT" ]; then
+    echo "Restoring Docker DNS with TCP:$TCP_PORT, UDP:$UDP_PORT"
+    iptables -t nat -N DOCKER_OUTPUT
+    iptables -t nat -N DOCKER_POSTROUTING
+    iptables -t nat -A OUTPUT -d 127.0.0.11/32 -j DOCKER_OUTPUT
+    iptables -t nat -A POSTROUTING -d 127.0.0.11/32 -j DOCKER_POSTROUTING
+    iptables -t nat -A DOCKER_OUTPUT -d 127.0.0.11/32 -p tcp -j DNAT --to-destination 127.0.0.11:$TCP_PORT
+    iptables -t nat -A DOCKER_OUTPUT -d 127.0.0.11/32 -p udp -j DNAT --to-destination 127.0.0.11:$UDP_PORT
+    iptables -t nat -A DOCKER_POSTROUTING -s 127.0.0.11/32 -p tcp -j SNAT --to-source :53
+    iptables -t nat -A DOCKER_POSTROUTING -s 127.0.0.11/32 -p udp -j SNAT --to-source :53
+fi
 
 # First allow DNS and localhost before any restrictions
 # Allow outbound DNS
