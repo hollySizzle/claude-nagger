@@ -30,4 +30,6 @@ Found 3 possible duplicate issues:
 
 If your issue is a duplicate, please close it and 👍 the existing issue instead.
 
-## 🤖 Generated with [Claude Code](https://claude.ai/code)
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+---
