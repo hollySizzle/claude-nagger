@@ -30,6 +30,8 @@ Found 3 possible duplicate issues:
 
 If your issue is a duplicate, please close it and 👍 the existing issue instead.
 
+<sub>This issue will be automatically closed as a duplicate in 3 days if there are no additional comments. To prevent auto-closure, please 👎 this comment.</sub>
+
 🤖 Generated with [Claude Code](https://claude.ai/code)
 
 ---
