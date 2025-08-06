@@ -1,5 +1,5 @@
-name: Auto-close duplicate issues
-description: Auto-close issues marked as duplicates after 3 days if no response
+name: Auto-close duplicate issues (DRY RUN)
+description: Dry run - logs issues that would be auto-closed as duplicates after 3 days if no response
 on:
   schedule:
     - cron: '0 9 * * *'
@@ -72,24 +72,7 @@ jobs:
               
               if (authorThumbsDown) continue;
               
-              // Auto-close the issue as duplicate
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                state: 'closed',
-                state_reason: 'duplicate'
-              });
-              
-              // Add closing comment
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                body: `This issue has been automatically closed as a duplicate after 3 days with no response. If this was closed in error, please reopen it.
-
-🤖 Generated with Claude Code`
-              });
-              
-              console.log(`Auto-closed issue #${issue.number} as duplicate`);
+              // DRY RUN: Log the issue that would be auto-closed
+              const issueUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/issues/${issue.number}`;
+              console.log(`[DRY RUN] Would auto-close issue #${issue.number} as duplicate: ${issueUrl}`);
             }
