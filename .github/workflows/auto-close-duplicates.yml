@@ -2,7 +2,8 @@ name: Auto-close duplicate issues (DRY RUN)
 description: Dry run - logs issues that would be auto-closed as duplicates after 3 days if no response
 on:
   schedule:
-    - cron: '0 9 * * *'
+    - cron: "0 9 * * *"
+  workflow_dispatch:
 
 jobs:
   auto-close-duplicates:
@@ -10,69 +11,20 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      issues: write
+      issues: read
 
     steps:
-      - name: Auto-close duplicate issues
-        uses: actions/github-script@v7
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
         with:
-          script: |
-            const threeDaysAgo = new Date();
-            threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
-            
-            // Get all open issues
-            const { data: issues } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              per_page: 100
-            });
-            
-            for (const issue of issues) {
-              // Get comments for this issue
-              const { data: comments } = await github.rest.issues.listComments({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number
-              });
-              
-              // Find duplicate comments (look for "Found 1 possible duplicate" or "Found X possible duplicate")
-              const dupeComments = comments.filter(comment => 
-                comment.body.includes('Found') && 
-                comment.body.includes('possible duplicate') &&
-                comment.user.type === 'Bot'
-              );
-              
-              if (dupeComments.length === 0) continue;
-              
-              // Get the most recent duplicate comment
-              const lastDupeComment = dupeComments[dupeComments.length - 1];
-              const dupeCommentDate = new Date(lastDupeComment.created_at);
-              
-              // Check if the duplicate comment is 3+ days old
-              if (dupeCommentDate > threeDaysAgo) continue;
-              
-              // Check if there are any comments after the duplicate comment
-              const commentsAfterDupe = comments.filter(comment => 
-                new Date(comment.created_at) > dupeCommentDate
-              );
-              
-              if (commentsAfterDupe.length > 0) continue;
-              
-              // Check if issue author reacted with thumbs down to the duplicate comment
-              const { data: reactions } = await github.rest.reactions.listForIssueComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: lastDupeComment.id
-              });
-              
-              const authorThumbsDown = reactions.some(reaction => 
-                reaction.user.id === issue.user.id && reaction.content === '-1'
-              );
-              
-              if (authorThumbsDown) continue;
-              
-              // DRY RUN: Log the issue that would be auto-closed
-              const issueUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/issues/${issue.number}`;
-              console.log(`[DRY RUN] Would auto-close issue #${issue.number} as duplicate: ${issueUrl}`);
-            }
+          bun-version: latest
+      
+      - name: Auto-close duplicate issues
+        run: bun run scripts/auto-close-duplicates.ts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
