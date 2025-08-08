@@ -25,13 +25,16 @@ interface GitHubReaction {
   content: string;
 }
 
-async function githubRequest<T>(endpoint: string, token: string): Promise<T> {
+async function githubRequest<T>(endpoint: string, token: string, method: string = 'GET', body?: any): Promise<T> {
   const response = await fetch(`https://api.github.com${endpoint}`, {
+    method,
     headers: {
       Authorization: `Bearer ${token}`,
       Accept: "application/vnd.github.v3+json",
       "User-Agent": "auto-close-duplicates-script",
+      ...(body && { "Content-Type": "application/json" }),
     },
+    ...(body && { body: JSON.stringify(body) }),
   });
 
   if (!response.ok) {
@@ -41,6 +44,42 @@ async function githubRequest<T>(endpoint: string, token: string): Promise<T> {
   }
 
   return response.json();
+}
+
+function extractDuplicateIssueNumber(commentBody: string): number | null {
+  const match = commentBody.match(/#(\d+)/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+async function closeIssueAsDuplicate(
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  duplicateOfNumber: number,
+  token: string
+): Promise<void> {
+  await githubRequest(
+    `/repos/${owner}/${repo}/issues/${issueNumber}`,
+    token,
+    'PATCH',
+    {
+      state: 'closed',
+      state_reason: 'not_planned'
+    }
+  );
+
+  await githubRequest(
+    `/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
+    token,
+    'POST',
+    {
+      body: `This issue has been automatically closed as a duplicate of #${duplicateOfNumber}.
+
+If this is incorrect, please re-open this issue or create a new one.
+
+🤖 Generated with [Claude Code](https://claude.ai/code)`
+    }
+  );
 }
 
 async function autoCloseDuplicates(): Promise<void> {
@@ -187,11 +226,30 @@ async function autoCloseDuplicates(): Promise<void> {
       continue;
     }
 
+    const duplicateIssueNumber = extractDuplicateIssueNumber(lastDupeComment.body);
+    if (!duplicateIssueNumber) {
+      console.log(
+        `[DEBUG] Issue #${issue.number} - could not extract duplicate issue number from comment, skipping`
+      );
+      continue;
+    }
+
     candidateCount++;
     const issueUrl = `https://github.com/${owner}/${repo}/issues/${issue.number}`;
-    console.log(
-      `[DRY RUN] Would auto-close issue #${issue.number} as duplicate: ${issueUrl}`
-    );
+    
+    try {
+      console.log(
+        `[INFO] Auto-closing issue #${issue.number} as duplicate of #${duplicateIssueNumber}: ${issueUrl}`
+      );
+      await closeIssueAsDuplicate(owner, repo, issue.number, duplicateIssueNumber, token);
+      console.log(
+        `[SUCCESS] Successfully closed issue #${issue.number} as duplicate of #${duplicateIssueNumber}`
+      );
+    } catch (error) {
+      console.error(
+        `[ERROR] Failed to close issue #${issue.number} as duplicate: ${error}`
+      );
+    }
   }
 
   console.log(

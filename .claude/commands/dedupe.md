@@ -28,9 +28,10 @@ Found 3 possible duplicate issues:
 2. <link to issue>
 3. <link to issue>
 
-If your issue is a duplicate, please close it and 👍 the existing issue instead.
+This issue will be automatically closed as a duplicate in 3 days.
 
-<sub>This issue will be automatically closed as a duplicate in 3 days if there are no additional comments. To prevent auto-closure, please 👎 this comment.</sub>
+- If your issue is a duplicate, please close it and 👍 the existing issue instead
+- To prevent auto-closure, add a comment or 👎 this comment
 
 🤖 Generated with [Claude Code](https://claude.ai/code)
 
