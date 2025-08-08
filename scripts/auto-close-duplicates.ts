@@ -10,6 +10,7 @@ interface GitHubIssue {
   number: number;
   title: string;
   user: { id: number };
+  created_at: string;
 }
 
 interface GitHubComment {
@@ -61,11 +62,32 @@ async function autoCloseDuplicates(): Promise<void> {
     `[DEBUG] Checking for duplicate comments older than: ${threeDaysAgo.toISOString()}`
   );
 
-  console.log("[DEBUG] Fetching open issues...");
-  const issues: GitHubIssue[] = await githubRequest(
-    `/repos/${owner}/${repo}/issues?state=open&per_page=100`,
-    token
-  );
+  console.log("[DEBUG] Fetching open issues created more than 3 days ago...");
+  const allIssues: GitHubIssue[] = [];
+  let page = 1;
+  const perPage = 100;
+  
+  while (true) {
+    const pageIssues: GitHubIssue[] = await githubRequest(
+      `/repos/${owner}/${repo}/issues?state=open&per_page=${perPage}&page=${page}`,
+      token
+    );
+    
+    if (pageIssues.length === 0) break;
+    
+    // Filter for issues created more than 3 days ago
+    const oldEnoughIssues = pageIssues.filter(issue => 
+      new Date(issue.created_at) <= threeDaysAgo
+    );
+    
+    allIssues.push(...oldEnoughIssues);
+    page++;
+    
+    // Safety limit to avoid infinite loops
+    if (page > 20) break;
+  }
+  
+  const issues = allIssues;
   console.log(`[DEBUG] Found ${issues.length} open issues`);
 
   let processedCount = 0;
