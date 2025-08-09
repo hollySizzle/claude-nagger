@@ -1,5 +1,5 @@
-name: Auto-close duplicate issues (DRY RUN)
-description: Dry run - logs issues that would be auto-closed as duplicates after 3 days if no response
+name: Auto-close duplicate issues
+description: Auto-closes issues that are duplicates of existing issues
 on:
   schedule:
     - cron: "0 9 * * *"
@@ -16,12 +16,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
-      
+
       - name: Auto-close duplicate issues
         run: bun run scripts/auto-close-duplicates.ts
         env:
