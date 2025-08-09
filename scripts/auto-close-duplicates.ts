@@ -51,6 +51,42 @@ function extractDuplicateIssueNumber(commentBody: string): number | null {
   return match ? parseInt(match[1], 10) : null;
 }
 
+async function logStatsigEvent(eventName: string, value: number, metadata: Record<string, any>): Promise<void> {
+  const statsigApiKey = process.env.STATSIG_API_KEY;
+  if (!statsigApiKey) {
+    console.log("[DEBUG] STATSIG_API_KEY not found, skipping Statsig logging");
+    return;
+  }
+
+  const eventPayload = {
+    events: [{
+      eventName,
+      value,
+      metadata,
+      time: Math.floor(Date.now()).toString()
+    }]
+  };
+
+  try {
+    const response = await fetch('https://events.statsigapi.net/v1/log_event', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'STATSIG-API-KEY': statsigApiKey
+      },
+      body: JSON.stringify(eventPayload)
+    });
+
+    if (response.ok) {
+      console.log(`[DEBUG] Successfully logged Statsig event: ${eventName}`);
+    } else {
+      console.log(`[DEBUG] Failed to log Statsig event: ${response.status} ${response.statusText}`);
+    }
+  } catch (error) {
+    console.log(`[DEBUG] Error logging to Statsig: ${error}`);
+  }
+}
+
 async function closeIssueAsDuplicate(
   owner: string,
   repo: string,
@@ -80,6 +116,14 @@ If this is incorrect, please re-open this issue or create a new one.
 🤖 Generated with [Claude Code](https://claude.ai/code)`
     }
   );
+
+  // Log to Statsig
+  await logStatsigEvent('github_issue_closed_as_duplicate', 1, {
+    repository: `${owner}/${repo}`,
+    issue_number: issueNumber,
+    duplicate_of_issue: duplicateOfNumber,
+    closed_by: 'auto-close-script'
+  });
 }
 
 async function autoCloseDuplicates(): Promise<void> {
