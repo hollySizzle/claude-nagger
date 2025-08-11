@@ -65,7 +65,7 @@ async function closeIssueAsDuplicate(
     'PATCH',
     {
       state: 'closed',
-      state_reason: 'not_planned',
+      state_reason: 'duplicate',
       labels: ['duplicate']
     }
   );
