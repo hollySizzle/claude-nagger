@@ -115,14 +115,10 @@ jobs:
             CLOSED_AUTOMATICALLY="true"
           fi
           
-          # Check if closed as duplicate by looking for duplicate label or state_reason
+          # Check if closed as duplicate by state_reason
           CLOSED_AS_DUPLICATE="false"
-          if [ "$STATE_REASON" = "not_planned" ]; then
-            # Check if issue has duplicate label
-            LABELS=$(echo "$ISSUE_DATA" | jq -r '.labels[] | select(.name | test("duplicate"; "i")) | .name')
-            if [ -n "$LABELS" ]; then
-              CLOSED_AS_DUPLICATE="true"
-            fi
+          if [ "$STATE_REASON" = "duplicate" ]; then
+            CLOSED_AS_DUPLICATE="true"
           fi
           
           # Prepare the event payload
