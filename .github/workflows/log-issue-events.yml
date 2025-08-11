@@ -20,7 +20,7 @@ jobs:
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
-          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_TITLE=$(echo '${{ github.event.issue.title }}' | sed "s/'/'\\\\''/g")
           AUTHOR="${{ github.event.issue.user.login }}"
           CREATED_AT="${{ github.event.issue.created_at }}"
           
@@ -84,7 +84,7 @@ jobs:
         run: |
           ISSUE_NUMBER=${{ github.event.issue.number }}
           REPO=${{ github.repository }}
-          ISSUE_TITLE="${{ github.event.issue.title }}"
+          ISSUE_TITLE=$(echo '${{ github.event.issue.title }}' | sed "s/'/'\\\\''/g")
           CLOSED_BY="${{ github.event.issue.closed_by.login }}"
           CLOSED_AT="${{ github.event.issue.closed_at }}"
           STATE_REASON="${{ github.event.issue.state_reason }}"
