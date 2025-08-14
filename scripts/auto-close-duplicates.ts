@@ -47,8 +47,19 @@ async function githubRequest<T>(endpoint: string, token: string, method: string 
 }
 
 function extractDuplicateIssueNumber(commentBody: string): number | null {
-  const match = commentBody.match(/#(\d+)/);
-  return match ? parseInt(match[1], 10) : null;
+  // Try to match #123 format first
+  let match = commentBody.match(/#(\d+)/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  
+  // Try to match GitHub issue URL format: https://github.com/owner/repo/issues/123
+  match = commentBody.match(/github\.com\/[^\/]+\/[^\/]+\/issues\/(\d+)/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  
+  return null;
 }
 
 
