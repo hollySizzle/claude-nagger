@@ -2,7 +2,7 @@
 
 ## 1.0.83
 
-- Auto-complete: allow mentioning ~/.claude/* files
+- @-mention: Support files with spaces in path
 - New shimmering spinner
 
 ## 1.0.82
