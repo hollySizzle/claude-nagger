@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.83
+
+- Auto-complete: allow mentioning ~/.claude/* files
+- New shimmering spinner
+
 ## 1.0.82
 
 - SDK: Add request cancellation support
