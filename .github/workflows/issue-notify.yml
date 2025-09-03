@@ -1,0 +1,59 @@
+name: Issue Notification
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send notification
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_AUTHOR: ${{ github.event.issue.user.login }}
+          ISSUE_LABELS: ${{ toJSON(github.event.issue.labels) }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          ISSUE_CREATED_AT: ${{ github.event.issue.created_at }}
+          REPOSITORY: ${{ github.repository }}
+          DISPATCH_TOKEN: ${{ secrets.CROSS_REPO_TOKEN_CLAUDE_CODE }}
+          DISPATCH_ENDPOINT: ${{ secrets.DISPATCH_ENDPOINT }}
+        run: |          
+          if [ -z "$DISPATCH_TOKEN" ] || [ -z "$DISPATCH_ENDPOINT" ]; then
+            echo "Dispatch configuration not complete, skipping notification"
+            exit 0
+          fi
+          
+          # Prepare payload with issue metadata
+          PAYLOAD=$(cat <<EOF
+          {
+            "event_type": "issue_event",
+            "client_payload": {
+              "source_repo": "$REPOSITORY",
+              "issue_number": "$ISSUE_NUMBER",
+              "issue_title": $(echo "$ISSUE_TITLE" | jq -Rs .),
+              "issue_body": $(echo "$ISSUE_BODY" | jq -Rs .),
+              "issue_author": "$ISSUE_AUTHOR",
+              "issue_labels": $ISSUE_LABELS,
+              "issue_url": "$ISSUE_URL",
+              "issue_created_at": "$ISSUE_CREATED_AT",
+              "timestamp": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+            }
+          }
+          EOF
+          )
+          
+          # Send notification to configured endpoint
+          curl -X POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -H "Authorization: token $DISPATCH_TOKEN" \
+            -H "Content-Type: application/json" \
+            "$DISPATCH_ENDPOINT" \
+            -d "$PAYLOAD" \
+            --fail-with-body || echo "Notification sent"
