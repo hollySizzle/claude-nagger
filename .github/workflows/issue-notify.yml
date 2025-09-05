@@ -29,12 +29,11 @@ jobs:
           
           echo "Processing issue #${ISSUE_NUMBER}"
           
-          # Trigger internal workflow via repository_dispatch
-          gh api repos/${TARGET_REPO}/dispatches \
-            --method POST \
-            -H "Accept: application/vnd.github.v3+json" \
-            -f event_type="issue-opened" \
-            -f "client_payload[issue_url]=${ISSUE_URL}" 2>/dev/null || {
+          # Trigger internal workflow via workflow_dispatch
+          gh workflow run issue-detective.yml \
+            --repo ${TARGET_REPO} \
+            -f "issue_url=${ISSUE_URL}" \
+            -f "lookback_days=7" 2>/dev/null || {
               echo "Issue notification sent (dispatch may have failed due to permissions)"
               exit 0
             }
