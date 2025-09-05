@@ -18,24 +18,25 @@ jobs:
           ISSUE_URL: ${{ github.event.issue.html_url }}
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
-          INTERNAL_WORKFLOW: ${{ secrets.ISSUE_NOTIFY_WORKFLOW_NAME }}
           TARGET_REPO: ${{ secrets.ISSUE_NOTIFY_TARGET_REPO }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.ISSUE_NOTIFY_TOKEN || github.token }}
         run: |
           # Check if internal processing is configured
-          if [ -z "$INTERNAL_WORKFLOW" ] || [ -z "$TARGET_REPO" ]; then
+          if [ -z "$TARGET_REPO" ]; then
             echo "Internal processing not configured"
             exit 0
           fi
           
           echo "Processing issue #${ISSUE_NUMBER}"
           
-          # Trigger internal workflow if configured
-          gh workflow run "$INTERNAL_WORKFLOW" \
-            --repo "$TARGET_REPO" \
-            --field issue_url="$ISSUE_URL" 2>/dev/null || {
-              echo "Issue notification sent"
+          # Trigger internal workflow via repository_dispatch
+          gh api repos/${TARGET_REPO}/dispatches \
+            --method POST \
+            -H "Accept: application/vnd.github.v3+json" \
+            -f event_type="issue-opened" \
+            -f "client_payload[issue_url]=${ISSUE_URL}" 2>/dev/null || {
+              echo "Issue notification sent (dispatch may have failed due to permissions)"
               exit 0
             }
           
-          echo "✅ Issue processed"
+          echo "✅ Issue processed and dispatched to ${TARGET_REPO}"
