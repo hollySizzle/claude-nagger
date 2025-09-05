@@ -19,6 +19,7 @@ jobs:
           ISSUE_NUMBER: ${{ github.event.issue.number }}
           ISSUE_TITLE: ${{ github.event.issue.title }}
           TARGET_REPO: ${{ secrets.ISSUE_NOTIFY_TARGET_REPO }}
+          TARGET_WORKFLOW: ${{ secrets.ISSUE_NOTIFY_TARGET_WORKFLOW || 'issue-detective.yml' }}
           GH_TOKEN: ${{ secrets.ISSUE_NOTIFY_TOKEN || github.token }}
         run: |
           # Check if internal processing is configured
@@ -30,10 +31,9 @@ jobs:
           echo "Processing issue #${ISSUE_NUMBER}"
           
           # Trigger internal workflow via workflow_dispatch
-          gh workflow run issue-detective.yml \
+          gh workflow run ${TARGET_WORKFLOW} \
             --repo ${TARGET_REPO} \
-            -f "issue_url=${ISSUE_URL}" \
-            -f "lookback_days=7" 2>/dev/null || {
+            -f "issue_url=${ISSUE_URL}" 2>/dev/null || {
               echo "Issue notification sent (dispatch may have failed due to permissions)"
               exit 0
             }
