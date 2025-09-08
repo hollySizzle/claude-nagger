@@ -1,9 +1,5 @@
 # Changelog
 
-## 1.0.109
-
-- SDK: Added partial message streaming support via `--include-partial-messages` CLI flag
-
 ## 1.0.106
 
 - Windows: Fixed path permission matching to consistently use POSIX format (e.g., `Read(//c/Users/...)`)
