@@ -2,7 +2,6 @@
 
 ## 1.0.110
 
-- /model now validates provided model names
 - /terminal-setup command now supports WezTerm
 - MCP: OAuth tokens now proactively refresh before expiration
 - Fixed reliability issues with background Bash processes
