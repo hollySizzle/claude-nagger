@@ -1,0 +1,10 @@
+**.pyc
+__pycache__/
+
+# 機密情報を含む設定ファイル
+secrets.json5
+
+# ログ
+*.log
+logs/
+log/

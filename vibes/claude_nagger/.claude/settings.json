@@ -1,0 +1,56 @@
+{
+  "hooks": {
+    "env": { "DISABLE_AUTOUPDATER": "1" },
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*__write.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 src/domain/hooks/implementation_design_hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*replace.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 src/domain/hooks/implementation_design_hook.py"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*insert.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 src/domain/hooks/implementation_design_hook.py"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 src/infrastructure/notifiers/discord_notifier.py \"📢 Claude Code から通知があります\""
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 src/infrastructure/notifiers/discord_notifier.py \"🛑 Claude Code セッションが停止されました\""
+          }
+        ]
+      }
+    ]
+  }
+}

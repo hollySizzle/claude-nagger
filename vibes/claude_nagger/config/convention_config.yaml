@@ -1,0 +1,67 @@
+# 規約管理設定ファイル
+
+# コンテキストベース規約リマインダー設定
+context_management:
+  # コンテキストサイズの閾値設定（トークン数）
+  reminder_thresholds:
+    # 初回リマインダー（軽微な警告）
+    light_warning: 30000    # 30Kトークン
+    
+    # 中間リマインダー（詳細な規約情報表示）  
+    medium_warning: 60000   # 60Kトークン
+    
+    # 重要リマインダー（強制的な規約確認）
+    critical_warning: 100000 # 100Kトークン
+    
+    # 最終警告（compaction直前）
+    final_warning: 140000   # 140Kトークン（80%手前）
+
+  # compactionの閾値（Claude Codeデフォルト）
+  compaction_threshold: 160000  # 200K * 0.8
+
+# リマインダー表示設定
+reminder_display:
+  # 各段階での表示内容レベル
+  light:
+    show_violation_count: true
+    show_session_age: false
+    show_recent_files: false
+    show_context_usage: true
+    
+  medium:
+    show_violation_count: true
+    show_session_age: true
+    show_recent_files: true
+    show_context_usage: true
+    show_rule_summary: true
+    
+  critical:
+    show_violation_count: true
+    show_session_age: true
+    show_recent_files: true
+    show_context_usage: true
+    show_rule_summary: true
+    show_violation_details: true
+    
+  final:
+    show_violation_count: true
+    show_session_age: true
+    show_recent_files: true
+    show_context_usage: true
+    show_rule_summary: true
+    show_violation_details: true
+    force_context_injection: true
+
+# マーカーファイル管理
+marker_management:
+  # コンテキストサイズベースでのマーカー有効期限
+  marker_valid_until_tokens: 50000  # 50Kトークン増加まで有効
+  
+  # 最大マーカー保持期間（フォールバック）
+  max_marker_age_minutes: 120  # 2時間
+
+# デバッグ設定
+debug:
+  log_context_analysis: true
+  log_violation_detection: true
+  save_analysis_cache: true
