@@ -1,0 +1,103 @@
+// vibes_tools/config.json5
+// パスの記述方法:
+// - 相対パス: main.pyからの相対パスとして解決されます (例: "../docs")
+// - 絶対パス: そのまま使用されます (例: "/myapp/Source/rails/vibes/docs")
+{
+  // システム設定
+  system: {
+    version: "1.0.0",
+    rails_root: "../../", // main.pyから見たRailsルート
+    doc_root: "../docs", // main.pyから見たドキュメントルート
+    scripts_root: "./", // main.pyがあるディレクトリ
+    claude_dir: "../../.claude", // vibes/scripts/.claudeディレクトリ !プロジェクト毎に要変更
+  },
+
+  // ドキュメント管理設定
+  document: {
+    templates_dir: "templates", // テンプレート格納ディレクトリ
+    output_dir: "output", // 出力先ディレクトリ
+    target_dirs: {
+      // カテゴリ別ターゲットディレクトリ
+      rules: "../docs/rules", // 規約類
+      specs: "../docs/specs", // 技術仕様書
+      tasks: "../docs/tasks", // 定型タスク手順書
+      logics: "../docs/logics", // ビジネスロジック
+      apis: "../docs/apis", // 外部連携仕様書
+    },
+  },
+
+  // 通知設定
+  notifications: {
+    discord: {
+      enabled: true,
+      // secrets.json5 または環境変数から取得
+      webhook_url: "${DISCORD_WEBHOOK_URL}",
+      thread_id: "${DISCORD_THREAD_ID}",
+      thread_name: "vibes-dev",
+      mention_everyone: false,
+    },
+    slack: {
+      enabled: false,
+      webhook_url: "${SLACK_WEBHOOK_URL}",
+    },
+  },
+
+  // ルール定義ファイル
+  rules: {
+    file_conventions: "./rules/file_conventions.yaml",
+    validation_rules: "./rules/validation_rules.yaml", // 将来的な拡張用
+  },
+
+  // 規約Hook設定 (コンテキストベース管理)
+  convention_hooks: {
+    context_management: {
+      // コンテキストサイズベースの閾値設定 (トークン数)
+      thresholds: {
+        light_warning: 30000,      // 30Kトークン: 初回の軽微な規約リマインダー表示
+        medium_warning: 60000,     // 60Kトークン: セッション情報付きの詳細リマインダー
+        critical_warning: 100000,  // 100Kトークン: 強制的な規約確認（違反詳細表示）
+        final_warning: 140000,     // 140Kトークン: compaction直前の最終警告
+        compaction_threshold: 160000 // 160Kトークン: Claude Codeの自動compaction閾値 (200K * 0.8)
+      },
+      
+      // マーカー管理設定（規約別マーカー管理）
+      marker_management: {
+        enabled: true // 規約別マーカー処理を有効化（個別token_thresholdで制御）
+      }
+    },
+    
+    // 表示レベル別設定（各閾値で表示する情報を制御）
+    display_levels: {
+      light: { // 30K-60K: 軽微な警告レベル
+        show_violation_count: true,    // 規約違反回数を表示
+        show_context_usage: true,      // コンテキスト使用率を表示
+        show_session_age: false,       // セッション継続時間は非表示
+        show_recent_files: false       // 最近編集したファイル一覧は非表示
+      },
+      medium: { // 60K-100K: 詳細情報表示レベル  
+        show_violation_count: true,    // 規約違反回数を表示
+        show_context_usage: true,      // コンテキスト使用率を表示
+        show_session_age: true,        // セッション継続時間を表示
+        show_recent_files: true,       // 最近編集したファイル一覧を表示
+        show_rule_summary: true        // 主要規約の要約を表示
+      },
+      critical: { // 100K-140K: 重要警告レベル
+        show_violation_count: true,    // 規約違反回数を表示
+        show_context_usage: true,      // コンテキスト使用率を表示
+        show_session_age: true,        // セッション継続時間を表示
+        show_recent_files: true,       // 最近編集したファイル一覧を表示
+        show_rule_summary: true,       // 主要規約の要約を表示
+        show_violation_details: true   // 過去の規約違反の詳細情報を表示
+      },
+      final: { // 140K+: 最終警告レベル（compaction直前）
+        show_violation_count: true,    // 規約違反回数を表示
+        show_context_usage: true,      // コンテキスト使用率を表示
+        show_session_age: true,        // セッション継続時間を表示
+        show_recent_files: true,       // 最近編集したファイル一覧を表示
+        show_rule_summary: true,       // 主要規約の要約を表示
+        show_violation_details: true,  // 過去の規約違反の詳細情報を表示
+        force_context_injection: true  // 強制的にコンテキストに規約情報を注入（compaction対策）
+      }
+    }
+  },
+}

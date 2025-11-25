@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(bash:*)",
+      "Bash(realpath:*)",
+      "Bash(ln:*)",
+      "Bash(python3:*)",
+      "Bash(git checkout:*)",
+      "Bash(cp:*)",
+      "Bash(rm:*)",
+      "Bash(pip install:*)",
+      "Bash(python -m pytest tests/test_discord_notifier.py -v)",
+      "Bash(PYTHONPATH=/myapp/Source/rails/vibes/scripts python3 src/infrastructure/notifiers/discord_notifier.py \"テストメッセージ\")",
+      "Bash(THREAD_NAME=\"env-var-override\" python3 src/infrastructure/notifiers/discord_notifier.py \"環境変数が最優先\")",
+      "Bash(chmod:*)",
+      "Bash(mkdir:*)",
+      "Bash(cat:*)",
+      "Bash(tree:*)",
+      "Bash(docker compose:*)"
+    ],
+    "deny": [],
+    "additionalDirectories": [
+      "/myapp/Source/rails",
+      "/tmp"
+    ]
+  }
+}

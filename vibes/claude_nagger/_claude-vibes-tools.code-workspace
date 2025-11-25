@@ -1,0 +1,23 @@
+{
+  "folders": [
+    {
+      "path": "./"
+    },
+    {
+      "name": "rails",
+      "path": "/myapp/Source/rails"
+    }
+  ],
+  "settings": {
+    "terminal.integrated.scrollback": 10000,
+    "editor.tabSize": 2,
+    "remote.SSH.defaultForwardedPorts": [
+      {
+        "localPort": 3000,
+        "remotePort": 3000,
+
+        "name": "rails"
+      }
+    ]
+  }
+}
