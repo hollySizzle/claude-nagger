@@ -1,0 +1,207 @@
+"""ファイル編集規約マッチングサービス"""
+
+import yaml
+import fnmatch
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+
+
+@dataclass
+class ConventionRule:
+    """規約ルール"""
+    name: str
+    patterns: List[str]
+    severity: str  # 'block' or 'warn'
+    message: str
+    token_threshold: Optional[int] = None  # 規約別トークン閾値
+
+
+class FileConventionMatcher:
+    """ファイルパスと編集規約のマッチングを行うサービス"""
+
+    def __init__(self, rules_file: Optional[Path] = None, debug: bool = False):
+        """
+        初期化
+        
+        Args:
+            rules_file: ルール定義ファイルのパス
+            debug: デバッグモードフラグ
+        """
+        if rules_file is None:
+            # デフォルトパスを使用
+            rules_file = Path(__file__).parent.parent.parent.parent / "rules" / "file_conventions.yaml"
+        
+        self.rules_file = Path(rules_file)
+        self.debug = debug
+        self._setup_logging()
+        self.rules = self._load_rules()
+        
+    def _setup_logging(self):
+        """ロギングの設定"""
+        log_file = Path("/tmp/file_convention_matcher.log")
+        
+        # ロガーを作成
+        self.logger = logging.getLogger(self.__class__.__name__)
+        # デバッグ用に一時的にDEBUGレベル
+        self.logger.setLevel(logging.DEBUG)
+        
+        # 既存のハンドラを削除
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+        
+        # ファイルハンドラを追加
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('[%(asctime)s] %(name)s %(levelname)s: %(message)s')
+        file_handler.setFormatter(formatter)
+        self.logger.addHandler(file_handler)
+        
+        # デバッグモード時のみコンソール出力（本来は不要だが一時的にコメントアウト）
+        # if self.debug:
+        #     console_handler = logging.StreamHandler()
+        #     console_handler.setLevel(logging.DEBUG)
+        #     console_handler.setFormatter(formatter)
+        #     self.logger.addHandler(console_handler)
+
+    def _load_rules(self) -> List[ConventionRule]:
+        """ルールファイルを読み込む"""
+        self.logger.info(f"Loading rules from: {self.rules_file}")
+        
+        if not self.rules_file.exists():
+            self.logger.error(f"Rules file not found: {self.rules_file}")
+            return []
+        
+        try:
+            with open(self.rules_file, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            
+            rules = []
+            for rule_data in data.get('rules', []):
+                rule = ConventionRule(
+                    name=rule_data['name'],
+                    patterns=rule_data['patterns'],
+                    severity=rule_data.get('severity', 'warn'),
+                    message=rule_data['message'],
+                    token_threshold=rule_data.get('token_threshold')
+                )
+                rules.append(rule)
+                self.logger.debug(f"Loaded rule: {rule.name} with patterns: {rule.patterns}")
+            
+            self.logger.info(f"Successfully loaded {len(rules)} rules")
+            return rules
+        except Exception as e:
+            error_msg = f"ルールファイルの読み込みエラー: {e}"
+            self.logger.error(error_msg)
+            print(error_msg)
+            return []
+
+    def matches_pattern(self, file_path: str, patterns: List[str]) -> bool:
+        """
+        ファイルパスがパターンにマッチするか確認
+        pathlib.Path.match()を使用して**パターンを正しくサポート
+        
+        Args:
+            file_path: チェック対象のファイルパス
+            patterns: パターンリスト
+            
+        Returns:
+            マッチする場合True
+        """
+        # 正規化されたパスに変換
+        normalized_path = str(Path(file_path).as_posix())
+        self.logger.info(f"🔍 PATTERN MATCH DEBUG: Checking file path: {normalized_path}")
+        
+        for pattern in patterns:
+            self.logger.info(f"  🎯 Testing pattern: {pattern}")
+            
+            try:
+                # pathlib.Path.match()は**をサポート
+                if Path(normalized_path).match(pattern):
+                    self.logger.info(f"  ✅ Pattern matched: {pattern}")
+                    return True
+                
+                # 絶対パターンの場合も対応（/で始まるパターン）
+                if pattern.startswith('/'):
+                    if Path('/' + normalized_path).match(pattern):
+                        self.logger.info(f"  ✅ Absolute pattern matched: {pattern}")
+                        return True
+                        
+                self.logger.info(f"  ❌ Pattern not matched: {pattern}")
+                
+            except ValueError as e:
+                # 無効なパターンをスキップ
+                self.logger.info(f"  ⚠️ Invalid pattern skipped: {pattern} - {e}")
+                continue
+        
+        
+        self.logger.info(f"🚫 No patterns matched for: {normalized_path}")
+        return False
+
+    def check_file(self, file_path: str) -> Optional[ConventionRule]:
+        """
+        ファイルパスに該当する規約を返す
+        
+        Args:
+            file_path: チェック対象のファイルパス
+            
+        Returns:
+            該当する規約ルール（なければNone）
+        """
+        self.logger.info(f"📋 CHECK FILE: {file_path}")
+        self.logger.info(f"📊 Total rules loaded: {len(self.rules)}")
+        
+        for rule in self.rules:
+            self.logger.info(f"🔎 Testing rule: {rule.name}")
+            if self.matches_pattern(file_path, rule.patterns):
+                self.logger.info(f"✅ FILE MATCHED RULE: {rule.name} (severity: {rule.severity})")
+                return rule
+        
+        self.logger.info(f"❌ NO RULES MATCHED FOR FILE: {file_path}")
+        return None
+
+    def get_confirmation_message(self, file_path: str) -> Optional[Dict[str, Any]]:
+        """
+        確認メッセージを生成
+        
+        Args:
+            file_path: チェック対象のファイルパス
+            
+        Returns:
+            確認メッセージ情報（なければNone）
+        """
+        rule = self.check_file(file_path)
+        if not rule:
+            return None
+        
+        # messageに規約ドキュメントへの参照が既に含まれているため、そのまま使用
+        formatted_message = f"""⚠️  {rule.message}"""
+        
+        return {
+            'rule_name': rule.name,
+            'severity': rule.severity,
+            'message': formatted_message,
+            'token_threshold': rule.token_threshold
+        }
+
+    def reload_rules(self):
+        """ルールをリロード"""
+        self.rules = self._load_rules()
+
+    def list_rules(self) -> List[Dict[str, Any]]:
+        """
+        全ルールのリストを返す
+        
+        Returns:
+            ルール情報のリスト
+        """
+        return [
+            {
+                'name': rule.name,
+                'patterns': rule.patterns,
+                'message': rule.message,
+                'severity': rule.severity
+            }
+            for rule in self.rules
+        ]

@@ -1,0 +1,60 @@
+// vibes_tools/config.sample.json5
+// このファイルをconfig.json5にコピーして使用してください
+// パスの記述方法:
+// - 相対パス: main.pyからの相対パスとして解決されます (例: "../docs")
+// - 絶対パス: そのまま使用されます (例: "/myapp/Source/rails/vibes/docs")
+{
+  // システム設定
+  system: {
+    version: "1.0.0",
+    rails_root: "../../", // main.pyから見たRailsルート
+    doc_root: "../docs", // main.pyから見たドキュメントルート
+    scripts_root: "./", // main.pyがあるディレクトリ
+  },
+
+  // ドキュメント管理設定
+  document: {
+    templates_dir: "templates", // テンプレート格納ディレクトリ
+    output_dir: "output", // 出力先ディレクトリ
+    target_dirs: {
+      // カテゴリ別ターゲットディレクトリ
+      rules: "../docs/rules", // 規約類
+      specs: "../docs/specs", // 技術仕様書
+      tasks: "../docs/tasks", // 定型タスク手順書
+      logics: "../docs/logics", // ビジネスロジック
+      apis: "../docs/apis", // 外部連携仕様書
+    },
+  },
+
+  // フック設定（.claude/settings.json互換）
+  hooks: {
+    enabled: true,
+    settings_file: "../../.claude/settings.json",
+    python_hooks: {
+      // Python実装済みフック
+      discord_notify: true,
+      plantuml_check: true,
+      reference_check: true,
+    },
+  },
+
+  // 通知設定
+  notifications: {
+    discord: {
+      enabled: true,
+      // 環境変数から取得する場合
+      webhook_url: "${DISCORD_WEBHOOK_URL}",
+      thread_id: "${DISCORD_THREAD_ID}",
+      thread_name: "${THREAD_NAME}",
+      // 直接設定する場合（実際のURLとIDに置き換えてください）
+      // webhook_url: "https://discord.com/api/webhooks/YOUR_WEBHOOK_ID/YOUR_WEBHOOK_TOKEN",
+      // thread_id: "YOUR_THREAD_ID",
+      // thread_name: "your-thread-name",
+      mention_everyone: false,
+    },
+    slack: {
+      enabled: false,
+      webhook_url: "${SLACK_WEBHOOK_URL}",
+    },
+  },
+}

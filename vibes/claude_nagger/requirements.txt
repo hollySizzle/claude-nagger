@@ -1,0 +1,9 @@
+# vibes_tools requirements
+questionary>=2.0.0
+pytz>=2023.3
+json5>=0.9.14
+pyyaml>=6.0
+pathlib>=1.0.1
+typing-extensions>=4.8.0
+rich>=13.0.0
+aiohttp>=3.8.0
