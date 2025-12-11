@@ -93,11 +93,6 @@ Found 3 issues:
 
 <link to file and line with full sha1 + line range for context>
 
-🤖 Generated with [Claude Code](https://claude.ai/code)
-
-
-<sub>- If this code review was useful, please react with 👍. Otherwise, react with 👎.</sub>
-
 ---
 
 - Or, if you found no issues:
@@ -107,8 +102,6 @@ Found 3 issues:
 ## Auto code review
 
 No issues found. Checked for bugs and CLAUDE.md compliance.
-
-🤖 Generated with [Claude Code](https://claude.ai/code)
 
 ---
 
