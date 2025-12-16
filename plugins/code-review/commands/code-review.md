@@ -52,7 +52,9 @@ Note: Still review Claude generated PR's.
 
 6. Filter out any issues that were not validated in step 5. This step will give us our list of high signal issues for our review.
 
-7. Finally, comment on the pull request.
+7. Finally, output the review.
+   - If the `--comment` argument is provided, post the review as a comment on the pull request using `gh pr comment`
+   - Otherwise (default), output the review directly to the terminal for local viewing
    When writing your comment, follow these guidelines:
    a. Keep your output brief
    b. Avoid emojis
