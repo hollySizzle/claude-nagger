@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*)
+allowed-tools: Bash(gh issue view:*), Bash(gh search:*), Bash(gh issue list:*), Bash(gh pr comment:*), Bash(gh pr diff:*), Bash(gh pr view:*), Bash(gh pr list:*), mcp__github_inline_comment__create_inline_comment
 description: Code review a pull request
 ---
 
@@ -11,7 +11,7 @@ To do this, follow these steps precisely:
    - The pull request is closed
    - The pull request is a draft
    - The pull request does not need code review (e.g. automated PR, trivial change that is obviously correct)
-   - You have already submitted a code review on this pull request
+   - Claude has already commented on this PR (check `gh pr view <PR> --comments` for comments left by claude)
 
    If any condition is true, stop and do not proceed.
 
@@ -52,14 +52,33 @@ Note: Still review Claude generated PR's.
 
 6. Filter out any issues that were not validated in step 5. This step will give us our list of high signal issues for our review.
 
-7. Finally, output the review.
-   - If the `--comment` argument is provided, post the review as a comment on the pull request using `gh pr comment`
-   - Otherwise (default), output the review directly to the terminal for local viewing
+7. Post summary comment FIRST using `gh pr comment` (if `--comment` argument is provided):
+   - Total number of issues found
+   - Brief one-line summary of each issue (no "Bug:" prefix)
+   - Or if no issues: "No issues found. Checked for bugs and CLAUDE.md compliance."
+
    When writing your comment, follow these guidelines:
    a. Keep your output brief
    b. Avoid emojis
    c. Link and cite relevant code, files, and URLs for each issue
    d. When citing CLAUDE.md violations, you MUST quote the exact text from CLAUDE.md that is being violated (e.g., CLAUDE.md says: "Use snake_case for variable names")
+
+8. THEN post inline comments for each issue using `mcp__github_inline_comment__create_inline_comment`:
+   - `path`: the file path
+   - `line` (and `startLine` for ranges): select the buggy lines so the user sees them
+   - `body`: Brief description of the issue (no "Bug:" prefix). For small fixes (up to 5 lines changed), include a committable suggestion:
+     ```suggestion
+     corrected code here
+     ```
+     For larger fixes (6+ lines or structural changes), do NOT use suggestion blocks. Instead:
+     1. Describe what the issue is
+     2. Explain the suggested fix at a high level
+     3. Include a copyable prompt for Claude Code that the user can use to fix the issue, formatted as:
+        ```
+        Fix [file:line]: [brief description of issue and suggested fix]
+        ```
+
+   **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
 
 Use this list when evaluating issues in Steps 4 and 5 (these are false positives, do NOT flag):
 
