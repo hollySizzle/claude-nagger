@@ -53,7 +53,6 @@ Note: Still review Claude generated PR's.
 6. Filter out any issues that were not validated in step 5. This step will give us our list of high signal issues for our review.
 
 7. Post summary comment FIRST using `gh pr comment` (if `--comment` argument is provided):
-   - "## Code review" header
    - Total number of issues found
    - Brief one-line summary of each issue (no "Bug:" prefix)
    - Or if no issues: "No issues found. Checked for bugs and CLAUDE.md compliance."
@@ -71,7 +70,13 @@ Note: Still review Claude generated PR's.
      ```suggestion
      corrected code here
      ```
-     For larger fixes (6+ lines or structural changes), do NOT use suggestion blocks. Instead, describe at a high level how to fix the issue (e.g., "Consider adding a null check before accessing this property" or "This condition should use === instead of =").
+     For larger fixes (6+ lines or structural changes), do NOT use suggestion blocks. Instead:
+     1. Describe what the issue is
+     2. Explain the suggested fix at a high level
+     3. Include a copyable prompt for Claude Code that the user can use to fix the issue, formatted as:
+        ```
+        Fix [file:line]: [brief description of issue and suggested fix]
+        ```
 
    **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
 
