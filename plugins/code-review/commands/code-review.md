@@ -67,11 +67,11 @@ Note: Still review Claude generated PR's.
 8. THEN post inline comments for each issue using `mcp__github_inline_comment__create_inline_comment`:
    - `path`: the file path
    - `line` (and `startLine` for ranges): select the buggy lines so the user sees them
-   - `body`: Brief description of the issue (no "Bug:" prefix). For small fixes (1-3 lines changed), include a committable suggestion:
+   - `body`: Brief description of the issue (no "Bug:" prefix). For small fixes (up to 5 lines changed), include a committable suggestion:
      ```suggestion
      corrected code here
      ```
-     For larger fixes (4+ lines or structural changes), do NOT use suggestion blocks. Instead, describe at a high level how to fix the issue (e.g., "Consider adding a null check before accessing this property" or "This condition should use === instead of =").
+     For larger fixes (6+ lines or structural changes), do NOT use suggestion blocks. Instead, describe at a high level how to fix the issue (e.g., "Consider adding a null check before accessing this property" or "This condition should use === instead of =").
 
    **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
 
