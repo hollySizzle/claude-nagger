@@ -52,23 +52,26 @@ Note: Still review Claude generated PR's.
 
 6. Filter out any issues that were not validated in step 5. This step will give us our list of high signal issues for our review.
 
-7. Finally, output the review.
-   - If the `--comment` argument is provided, post the review as a comment on the pull request using `gh pr comment`
-   - Otherwise (default), output the review directly to the terminal for local viewing
+7. Post summary comment FIRST using `gh pr comment` (if `--comment` argument is provided):
+   - "## Code review" header
+   - Total number of issues found
+   - Brief one-line summary of each issue (no "Bug:" prefix)
+   - Or if no issues: "No issues found. Checked for bugs and CLAUDE.md compliance."
+
    When writing your comment, follow these guidelines:
    a. Keep your output brief
    b. Avoid emojis
    c. Link and cite relevant code, files, and URLs for each issue
    d. When citing CLAUDE.md violations, you MUST quote the exact text from CLAUDE.md that is being violated (e.g., CLAUDE.md says: "Use snake_case for variable names")
 
-8. Post inline comments for each issue using `mcp__github_inline_comment__create_inline_comment`:
+8. THEN post inline comments for each issue using `mcp__github_inline_comment__create_inline_comment`:
    - `path`: the file path
    - `line` (and `startLine` for ranges): select the buggy lines so the user sees them
-   - `body`: Brief description of the issue. For small fixes (1-3 lines), include a committable suggestion:
+   - `body`: Brief description of the issue (no "Bug:" prefix). For small fixes (1-3 lines changed), include a committable suggestion:
      ```suggestion
      corrected code here
      ```
-     For larger fixes, describe the solution approach instead of providing code.
+     For larger fixes (4+ lines or structural changes), do NOT use suggestion blocks. Instead, describe at a high level how to fix the issue (e.g., "Consider adding a null check before accessing this property" or "This condition should use === instead of =").
 
    **IMPORTANT: Only post ONE comment per unique issue. Do not post duplicate comments.**
 
