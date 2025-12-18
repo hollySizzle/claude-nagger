@@ -64,7 +64,10 @@ Note: Still review Claude generated PR's.
      ```suggestion
      corrected code here
      ```
-     For larger fixes (6+ lines or structural changes), do NOT use suggestion blocks. Instead:
+
+     **Suggestions must be COMPLETE.** If a fix requires additional changes elsewhere (e.g., renaming a variable requires updating all usages), do NOT use a suggestion block. The author should be able to click "Commit suggestion" and have a working fix - no followup work required.
+
+     For larger fixes (6+ lines, structural changes, or changes spanning multiple locations), do NOT use suggestion blocks. Instead:
      1. Describe what the issue is
      2. Explain the suggested fix at a high level
      3. Include a copyable prompt for Claude Code that the user can use to fix the issue, formatted as:
