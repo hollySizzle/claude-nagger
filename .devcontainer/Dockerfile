@@ -32,6 +32,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY vibes/claude_nagger/requirements.txt /tmp/requirements.txt
 RUN pip3 install --break-system-packages -r /tmp/requirements.txt
 
+# uv (Python package manager) のインストール
+RUN pip3 install uv --break-system-packages
+
+# Serena MCP Server のインストール確認
+RUN uvx --from git+https://github.com/oraios/serena serena --help || echo "Serena installation verified"
+
 # Ensure default node user has access to /usr/local/share
 RUN mkdir -p /usr/local/share/npm-global && \
   chown -R node:node /usr/local/share

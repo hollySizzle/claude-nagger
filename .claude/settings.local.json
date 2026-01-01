@@ -1,0 +1,7 @@
+{
+  "enabledMcpjsonServers": [
+    "git",
+    "serena",
+    "redmine_epic_grid"
+  ]
+}

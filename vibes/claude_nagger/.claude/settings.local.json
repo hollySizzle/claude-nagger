@@ -25,5 +25,9 @@
       "/myapp/Source/rails",
       "/tmp"
     ]
-  }
+  },
+  "disabledMcpjsonServers": [
+    "git",
+    "redmine_epic_grid"
+  ]
 }

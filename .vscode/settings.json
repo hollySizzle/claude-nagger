@@ -1,0 +1,5 @@
+{
+  "redmine.apiKey": "${REDMINE_API_KEY}",
+  "redmine.url": "${READMINE_PROJECT_URL}",
+  "redmine.defaultProject": "${REDMINE_X_DEFAULT_PROJECT}"
+}
