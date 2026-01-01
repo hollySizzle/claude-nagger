@@ -2,4 +2,5 @@ vibes/scripts/hooks/.env
 vibes/scripts/node_modules
 vibes/scripts/hooks/log
 .DS_Store
-
+.mcp.json
+.devcontainer/.env

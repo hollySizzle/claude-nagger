@@ -10,14 +10,15 @@
       "ZSH_IN_DOCKER_VERSION": "1.2.0"
     }
   },
-  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW"],
+  "runArgs": ["--cap-add=NET_ADMIN", "--cap-add=NET_RAW", "--env-file", ".devcontainer/.env"],
   "customizations": {
     "vscode": {
       "extensions": [
         "anthropic.claude-code",
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
-        "eamodio.gitlens"
+        "eamodio.gitlens",
+        "hollySizzle.redmine-epic-ladder"
       ],
       "settings": {
         "editor.formatOnSave": true,
