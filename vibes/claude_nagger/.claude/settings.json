@@ -1,6 +1,5 @@
 {
   "hooks": {
-    "env": { "DISABLE_AUTOUPDATER": "1" },
     "PreToolUse": [
       {
         "matcher": "mcp__.*__write.*",
