@@ -66,7 +66,8 @@
       "Bash(/tmp/test-venv/bin/pip install:*)",
       "Bash(/home/node/.local/bin/vibes-tools:*)",
       "Bash(uv --version:*)",
-      "Bash(uvx:*)"
+      "Bash(uvx:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nREADME.md全面改訂 issue_3839\n\n## 変更内容\n- バッジ追加（Python/License/PyPI）\n- クイックスタートを3ステップに整理\n- 設定ファイル詳細（config.yaml/file_conventions.yaml/command_conventions.yaml）を追加\n- ユースケース例（Rails/React/Python）を追加\n- README_DRAFT.md削除（統合完了）\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ],
     "deny": [],
     "additionalDirectories": [
