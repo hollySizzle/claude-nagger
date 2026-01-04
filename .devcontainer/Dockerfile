@@ -28,9 +28,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3-pip \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages for claude_nagger
-COPY vibes/claude_nagger/requirements.txt /tmp/requirements.txt
-RUN pip3 install --break-system-packages -r /tmp/requirements.txt
+# Install claude_nagger package (editable mode)
+COPY vibes/claude_nagger/ /tmp/claude_nagger/
+RUN pip3 install --break-system-packages -e /tmp/claude_nagger/
 
 # uv (Python package manager) のインストール
 RUN pip3 install uv --break-system-packages
