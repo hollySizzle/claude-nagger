@@ -1,0 +1,41 @@
+# {規約名}
+# {目的の1行説明}
+
+rules:
+  must:
+    - 必須事項1
+    - 必須事項2
+
+  must_not:
+    - 禁止事項1: 理由
+    - 禁止事項2: 理由
+
+  should:
+    - 推奨事項1
+    - 推奨事項2
+
+# ドメイン固有セクション（必要に応じて追加）
+# naming:
+#   pattern: "{prefix}_{name}"
+#   example: "user_profile"
+#
+# directory_structure:
+#   path/: 説明
+#
+# commands:
+#   action: "command --option"
+
+examples:
+  - name: 推奨例
+    code: |
+      # ✅ 推奨
+      good_example()
+
+  - name: 非推奨例
+    code: |
+      # ❌ 非推奨
+      bad_example()
+
+related_files:
+  coding_standards: "@vibes/rules/coding_standards.yaml"
+  documentation: "@vibes/rules/documentation_standards.yaml"

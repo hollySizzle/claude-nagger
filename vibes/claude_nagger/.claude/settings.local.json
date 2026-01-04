@@ -45,7 +45,14 @@
       "mcp__redmine_epic_grid__update_issue_status_tool",
       "mcp__redmine_epic_grid__update_issue_description_tool",
       "mcp__redmine_epic_grid__assign_to_version_tool",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "mcp__serena__search_for_pattern",
+      "mcp__serena__create_text_file",
+      "Bash(python -m pytest:*)",
+      "Bash(/home/node/.local/bin/pytest tests/test_hook_schema_validation.py::TestHookSchemaValidator -v --tb=short)",
+      "Bash(/home/node/.local/bin/pytest tests/test_hook_schema_validation.py::TestImplementationDesignHookIntegration -v --tb=short)",
+      "Bash(/home/node/.local/bin/pytest:*)",
+      "Bash(git add:*)"
     ],
     "deny": [],
     "additionalDirectories": [

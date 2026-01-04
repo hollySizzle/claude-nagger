@@ -1,0 +1,90 @@
+# Claude Codeフック開発・テスト規約
+# 実データキャプチャ方式による結合テスト自動化
+
+rules:
+  must:
+    - フック出力はJSON形式、decisionフィールド必須
+    - decision値はapprove/block/warn/allowのいずれか
+    - 新規フック作成時は結合テスト必須（subprocess実行確認）
+    - フィクスチャはコミット前にサニタイズ必須
+    - テストはpytest形式で記述
+
+  must_not:
+    - 未サニタイズフィクスチャのコミット
+    - 手作りモックによる入力データ偽装（実データキャプチャ使用）
+    - APIキー・パスワード等の秘密情報をフィクスチャに含める
+    - /Users/{実ユーザー名}等の個人情報をフィクスチャに含める
+
+  should:
+    - 空出力許可（処理対象外スキップケース）
+    - バージョンアップ時は新データを再キャプチャ
+    - テストクラス名はTest{機能名}形式
+    - コメントは日本語推奨
+
+output_schema:
+  required:
+    decision: "approve|block|warn|allow"
+  optional:
+    reason: "判定理由メッセージ"
+    hookEventName: "PreToolUse|PostToolUse"
+    permissionDecision: "allow|deny"
+    permissionDecisionReason: "理由メッセージ"
+
+fixture_management:
+  capture_source: "/tmp/claude/"
+  fixture_dir: "tests/fixtures/claude_code/"
+  naming: "{event}_{tool}_{scenario}_{yyyymmdd}.json"
+
+  directory_structure:
+    pre_tool_use/: PreToolUseイベントのフィクスチャ
+    post_tool_use/: PostToolUseイベントのフィクスチャ
+    "{event}/{tool}/": ツール種別ごとにサブディレクトリ
+
+  sanitize_targets:
+    - "/Users/{ユーザー名} → /Users/testuser"
+    - "/home/{ユーザー名} → /home/testuser"
+    - "セッションID → 00000000-0000-0000-0000-000000000000"
+    - "APIキー(sk-*) → REDACTED_API_KEY"
+    - "Discord Webhook URL → REDACTED"
+
+commands:
+  capture: "python scripts/capture_fixture.py --sanitize"
+  list: "python scripts/capture_fixture.py --list"
+  validate: "python scripts/capture_fixture.py --validate {file}"
+  sanitize: "python scripts/sanitizer.py {input} -o {output}"
+  test: "pytest tests/test_hook_schema_validation.py tests/test_sanitizer.py -v"
+
+examples:
+  - name: スキーマ検証テスト
+    code: |
+      class TestHookSchemaValidator:
+          def test_valid_approve_output(self, validator):
+              """正常なapprove出力の検証"""
+              output = json.dumps({'decision': 'approve', 'reason': 'OK'})
+              result = validator.validate(output)
+              assert result['valid'] is True
+
+  - name: 結合テスト（subprocess実行）
+    code: |
+      class TestImplementationDesignHookIntegration:
+          def test_hook_output_schema_compliance(self, hook_runner):
+              """出力スキーマ準拠テスト"""
+              input_data = {'session_id': '...', 'tool_input': {...}}
+              result = hook_runner.run_with_data(input_data)
+              assert result['validation']['valid'] is True
+
+  - name: フィクスチャキャプチャ
+    code: |
+      # 最新1件をサニタイズして取り込み
+      python scripts/capture_fixture.py --sanitize --scenario design_doc
+
+      # 結果確認
+      python scripts/capture_fixture.py --list
+
+related_files:
+  sanitizer: "@claude_nagger/scripts/sanitizer.py"
+  capture: "@claude_nagger/scripts/capture_fixture.py"
+  schema_test: "@claude_nagger/tests/test_hook_schema_validation.py"
+  sanitizer_test: "@claude_nagger/tests/test_sanitizer.py"
+  ci_workflow: "@claude_nagger/.github/workflows/test.yml"
+  base_hook: "@claude_nagger/src/domain/hooks/base_hook.py"
