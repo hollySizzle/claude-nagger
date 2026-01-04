@@ -88,6 +88,8 @@ fi
 for domain in \
     "registry.npmjs.org" \
     "api.anthropic.com" \
+    "pypi.org" \
+    "files.pythonhosted.org" \
     "sentry.io" \
     "statsig.anthropic.com" \
     "statsig.com" \
