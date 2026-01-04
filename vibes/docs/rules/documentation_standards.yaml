@@ -1,0 +1,119 @@
+# ドキュメント規約
+# 目的: プロジェクトの理解と実装を支援
+
+rules:
+  must:
+    - YAML形式で記述（トークン量節約）
+    - 簡潔かつ端的な記述
+    - 「何を」「なぜ」「どのように」に集中
+    - 1文完結（伝わる内容は1文で）
+    - 新規作成時は npm run generate-document 使用
+    - 目次更新は npm run update-toc 実行
+
+  must_not:
+    - 冗長な前置き・後置き・説明文
+    - バージョン番号・変更履歴・作成日時の記載
+    - 手動でのドキュメント作成（自動生成ツール使用）
+    - 同一内容の重複記載
+
+  should:
+    - 詳細は別ドキュメントまたはコメントで分離
+    - 具体例はexamplesセクションに集約
+    - 関連ファイルはrelated_filesで参照
+
+  exceptions:
+    - APIバージョン・スキーマバージョン（システム動作に直接影響）
+    - HTML形式の自動挿入タイムスタンプ
+
+directory_structure:
+  apis/:
+    purpose: 外部サービス連携
+    content: API仕様書、連携プロトコル
+    restriction: 原則変更不可
+    audience: システム管理者
+
+  logics/:
+    purpose: ビジネスロジック
+    content: 業務フロー、計算式、判定条件
+    restriction: 仕様変更に応じて更新
+    audience: 開発者、業務担当者
+
+  rules/:
+    purpose: プロジェクト規約
+    content: コーディング規約、命名規則
+    restriction: チーム合意に基づく変更
+    audience: 全開発者
+
+  tasks/:
+    purpose: 作業手順書
+    content: 手順書、チェックリスト、ガイド
+    restriction: 実作業に応じて柔軟に更新
+    audience: 実装者、運用担当者
+
+  specs/:
+    purpose: 技術仕様
+    content: システム仕様、アーキテクチャ設計
+    restriction: アーキテクチャ変更時のみ
+    audience: アーキテクト
+
+  temps/:
+    purpose: 一時ドキュメント
+    content: 進行中タスク、検討事項、実装メモ
+    restriction: 作業完了後削除
+    audience: 実装者
+
+temp_document:
+  naming: "{目的}_{内容種別}_checklist.md"
+  location: "vibes/docs/temps/"
+
+  required_sections:
+    - "📋 目的: ドキュメントの目的と背景"
+    - "🎯 課題: 解決すべき具体的課題"
+    - "📊 進捗: 現在の状況と成果指標"
+    - "✅ 実行計画: Phase別タスクリスト"
+
+  optional_sections:
+    - "🔍 分析結果"
+    - "💡 解決案"
+    - "⚠️ 注意点"
+    - "📈 期待効果"
+
+  progress_markers:
+    completed: "[x]"
+    in_progress: "[ ] 📝"
+    on_hold: "[ ] ⏸️ {理由}"
+
+commands:
+  create: "cd vibes/scripts && npm run generate-document"
+  update_toc: "cd vibes/scripts && npm run update-toc"
+  check_refs: "cd vibes/scripts && npm run check-references"
+  help: "cd vibes/scripts && npm run doc-help"
+
+yaml_template: |
+  # {規約名}
+  # {目的の1行説明}
+
+  rules:
+    must:
+      - 必須事項1
+      - 必須事項2
+    must_not:
+      - 禁止事項1
+    should:
+      - 推奨事項1
+
+  {domain_specific_section}:
+    key: value
+
+  examples:
+    - name: 例の名前
+      code: |
+        # コード例
+
+  related_files:
+    key: "@vibes/path/to/file"
+
+related_files:
+  coding_standards: "@vibes/rules/coding_standards.md"
+  architecture: "@vibes/specs/architecture.md"
+  index: "@vibes/INDEX.md"

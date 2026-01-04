@@ -16,4 +16,54 @@ rules:
     message: |
       このファイルを変更する場合は､ @vibes/docs/rules/view_standards.md をよく確認し従うこと
       作業を続けるためには､上記ドキュメントを確認したことを示してください
+
+  # フック開発関連
+  - name: "Claude Codeフック開発規約"
+    patterns:
+      - "**/src/domain/hooks/*.py"
+      - "src/domain/hooks/*.py"
+      - "**/src/domain/hooks/**/*.py"
+    severity: "warn"
+    token_threshold: 30000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/claude_code_hook_testing.yaml をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+
+  # テストフィクスチャ関連
+  - name: "テストフィクスチャ管理規約"
+    patterns:
+      - "**/tests/fixtures/**/*.json"
+      - "tests/fixtures/**/*.json"
+      - "**/tests/fixtures/claude_code/**"
+    severity: "block"
+    token_threshold: 20000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/claude_code_hook_testing.yaml をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+
+  # 規約ドキュメント関連
+  - name: "規約ドキュメント編集規約"
+    patterns:
+      - "**/vibes/docs/rules/*.yaml"
+      - "vibes/docs/rules/*.yaml"
+      - "**/vibes/docs/rules/*.md"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/documentation_standards.yaml をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+
+  # Python コード全般
+  - name: "Pythonコーディング規約"
+    patterns:
+      - "**/src/**/*.py"
+      - "src/**/*.py"
+      - "**/scripts/*.py"
+      - "scripts/*.py"
+    severity: "warn"
+    token_threshold: 40000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/coding_standards.yaml をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+      また実装完了後は pytest tests/ -v を実行し、テスト成功を確認すること
   
