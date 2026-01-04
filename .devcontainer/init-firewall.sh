@@ -60,7 +60,7 @@ while read -r cidr; do
         exit 1
     fi
     echo "Adding GitHub range $cidr"
-    ipset add allowed-domains "$cidr"
+    ipset add allowed-domains "$cidr" -exist
 done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 
 # Add domains from FIREWALL_ALLOWED_DOMAINS env var (comma-separated)
@@ -74,7 +74,7 @@ if [ -n "${FIREWALL_ALLOWED_DOMAINS:-}" ]; then
                 while read -r ip; do
                     if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
                         echo "Adding $ip for $extra"
-                        ipset add allowed-domains "$ip"
+                        ipset add allowed-domains "$ip" -exist -exist
                     fi
                 done < <(echo "$ips")
             else
@@ -109,7 +109,7 @@ for domain in \
             exit 1
         fi
         echo "Adding $ip for $domain"
-        ipset add allowed-domains "$ip"
+        ipset add allowed-domains "$ip" -exist
     done < <(echo "$ips")
 done
 
