@@ -24,20 +24,20 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "Edit|Write|MultiEdit",
+        "matcher": "Edit|Write|MultiEdit|mcp__serena__create_text_file|mcp__serena__replace_content|mcp__serena__replace_symbol_body",
         "hooks": [
           {
             "type": "command",
-            "command": "bash vibes/scripts/hooks/markdown_hook.sh"
+            "command": "python3 vibes/claude_nagger/src/domain/hooks/implementation_design_hook.py"
           }
         ]
       },
       {
-        "matcher": "",
+        "matcher": "Bash|mcp__serena__execute_shell_command",
         "hooks": [
           {
             "type": "command",
-            "command": "bash vibes/scripts/hooks/start_task.sh"
+            "command": "python3 vibes/claude_nagger/src/domain/hooks/implementation_design_hook.py"
           }
         ]
       }
