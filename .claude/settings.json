@@ -1,48 +1,5 @@
 {
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node vibes/scripts/hooks/lib/discord_notify.js \"🛑 Claude Code セッションが停止されました\""
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node vibes/scripts/hooks/lib/discord_notify.js \"📢 Claude Code から通知があります\""
-          }
-        ]
-      }
-    ],
-    "PreToolUse": [
-      {
-        "matcher": "Edit|Write|MultiEdit|mcp__serena__create_text_file|mcp__serena__replace_content|mcp__serena__replace_symbol_body",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 vibes/claude_nagger/src/domain/hooks/implementation_design_hook.py"
-          }
-        ]
-      },
-      {
-        "matcher": "Bash|mcp__serena__execute_shell_command",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 vibes/claude_nagger/src/domain/hooks/implementation_design_hook.py"
-          }
-        ]
-      }
-    ]
-  },
+  "hooks": {},
   "allowedTools": ["Write", "Read", "vibes_scripts"],
   "mcp": {
     "servers": {
