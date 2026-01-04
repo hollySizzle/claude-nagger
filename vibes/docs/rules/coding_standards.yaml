@@ -1,0 +1,90 @@
+# コーディング規約
+# 対象: vibesワークスペース全体（Python/JavaScript/TypeScript）
+
+rules:
+  must:
+    - コメントは日本語で記載
+    - 新機能は必ずテスト実装
+    - 変数名・関数名は英語（既存コード準拠）
+    - 静的解析ツール準拠（Python: flake8, JS: ESLint）
+    - TDD遵守（Red → Green → Refactor）
+
+  must_not:
+    - 秘密情報のハードコード（APIキー、パスワード等）
+    - 同一変数の複数ファイル定義
+    - 過剰な抽象化（緩やかなDRY原則）
+    - 基幹クラスへの業務ロジック混入
+
+  should:
+    - 設計思想: 外部設計 → 内部設計 → 実装
+    - 最小単位実装 → テスト → 改善サイクル
+    - 用途明確な命名規則
+
+architecture:
+  pattern: クリーンアーキテクチャ
+  layers:
+    domain/:
+      purpose: ドメインロジック・エンティティ
+      dependencies: なし（最内層）
+    application/:
+      purpose: ユースケース・アプリケーションロジック
+      dependencies: domain
+    infrastructure/:
+      purpose: 外部サービス連携・永続化
+      dependencies: domain, application
+    shared/:
+      purpose: 共通ユーティリティ・基盤機能
+      dependencies: なし
+
+python:
+  style: PEP8準拠
+  linter: flake8
+  test: pytest
+  naming:
+    class: PascalCase
+    function: snake_case
+    constant: UPPER_SNAKE_CASE
+    private: _prefix
+  docstring: 日本語、Google Style推奨
+
+javascript:
+  style: ESLint準拠
+  test: Jest（未整備）
+  naming:
+    class: PascalCase
+    function: camelCase
+    constant: UPPER_SNAKE_CASE
+
+env_management:
+  principles:
+    - 責任分離: 用途別適切ファイル配置
+    - 重複禁止: 同一変数複数ファイル定義禁止
+    - セキュリティ: 認証情報適切管理、コミット前確認
+
+  files:
+    secrets.json5: 秘密情報（gitignore対象）
+    config.json5: 環境設定
+    ".env": 環境変数（gitignore対象）
+
+workflow:
+  approach: Explore → Plan → Code → Verify
+  steps:
+    Explore: "think hard"で設計書確認・影響範囲特定
+    Plan: 実装方針明文化・機能ID対応確認
+    Code: 最小単位実装 → テスト → 改善サイクル
+    Verify: 自動チェック・設計書準拠性確認
+
+  ai_thinking:
+    think_hard: 設計書確認時
+    think_harder: アーキテクチャ変更時
+
+completion_checklist:
+  - テスト成功確認
+  - 静的解析（flake8/ESLint）パス
+  - ドキュメント更新完了
+  - 設計書準拠性確認
+
+related_files:
+  documentation: "@vibes/rules/documentation_standards.yaml"
+  hook_testing: "@vibes/rules/claude_code_hook_testing.yaml"
+  architecture: "@vibes/specs/architecture.md"
