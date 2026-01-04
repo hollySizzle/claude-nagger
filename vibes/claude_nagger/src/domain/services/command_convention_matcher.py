@@ -32,8 +32,13 @@ class CommandConventionMatcher(BaseConventionMatcher):
             debug: デバッグモードフラグ
         """
         if rules_file is None:
-            # デフォルトパスを使用
-            rules_file = Path(__file__).parent.parent.parent.parent / "rules" / "command_conventions.yaml"
+            # プロジェクト固有設定を優先（.claude-nagger/）
+            project_config = Path.cwd() / ".claude-nagger" / "command_conventions.yaml"
+            if project_config.exists():
+                rules_file = project_config
+            else:
+                # パッケージ内デフォルトを使用
+                rules_file = Path(__file__).parent.parent.parent.parent / "rules" / "command_conventions.yaml"
         
         self.rules_file = Path(rules_file)
         self.debug = debug
@@ -85,8 +90,18 @@ class CommandConventionMatcher(BaseConventionMatcher):
             
             self.logger.info(f"Successfully loaded {len(rules)} command rules")
             return rules
+        except yaml.YAMLError as e:
+            error_msg = f"設定ファイル構文エラー ({self.rules_file}): {e}"
+            self.logger.error(error_msg)
+            print(error_msg)
+            return []
+        except KeyError as e:
+            error_msg = f"設定ファイルに必須フィールドがありません ({self.rules_file}): {e}"
+            self.logger.error(error_msg)
+            print(error_msg)
+            return []
         except Exception as e:
-            error_msg = f"コマンド規約ルールファイルの読み込みエラー: {e}"
+            error_msg = f"コマンド規約ルールファイルの読み込みエラー ({self.rules_file}): {e}"
             self.logger.error(error_msg)
             print(error_msg)
             return []
