@@ -1,5 +1,6 @@
 """アプリケーション層 - オーケストレータ"""
 
-from .document_management import DocumentManagementCLI
+from .cli import main
+from .install_hooks import InstallHooksCommand
 
-__all__ = ['DocumentManagementCLI']
+__all__ = ['main', 'InstallHooksCommand']
