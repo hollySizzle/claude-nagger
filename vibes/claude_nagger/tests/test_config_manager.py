@@ -302,3 +302,243 @@ class TestCIEnvironmentCompatibility:
         config2 = manager.config
         
         assert config1 is config2  # 同じオブジェクトが返される（キャッシュ）
+
+
+class TestYAMLConfigLoading:
+    """YAML形式設定ファイルの読み込みテスト
+    
+    Issue #3889: ConfigManager YAML読み込みテスト追加
+    TDD Red Phase: 実装前のテスト（初期状態では失敗する）
+    """
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def valid_yaml_config(self):
+        """有効なYAML設定データ"""
+        return """system:
+  version: "yaml-test-1.0.0"
+  rails_root: "./"
+  doc_root: "./docs"
+  scripts_root: "./"
+
+document:
+  templates_dir: "templates"
+  output_dir: "output"
+  target_dirs: {}
+"""
+
+    def test_yaml_config_loading(self, temp_dir, valid_yaml_config):
+        """YAML形式の設定ファイルを正常に読み込めること"""
+        yaml_config_path = temp_dir / "config.yaml"
+        yaml_config_path.write_text(valid_yaml_config, encoding="utf-8")
+        
+        manager = ConfigManager(config_path=yaml_config_path)
+        
+        assert manager.config["system"]["version"] == "yaml-test-1.0.0"
+        assert manager.config["system"]["rails_root"] == "./"
+        assert manager.config["document"]["templates_dir"] == "templates"
+
+    def test_yml_extension_loading(self, temp_dir, valid_yaml_config):
+        """".yml"拡張子のYAML設定ファイルも読み込めること"""
+        yml_config_path = temp_dir / "config.yml"
+        yml_config_path.write_text(valid_yaml_config, encoding="utf-8")
+        
+        manager = ConfigManager(config_path=yml_config_path)
+        
+        assert manager.config["system"]["version"] == "yaml-test-1.0.0"
+
+
+class TestClaudeNaggerYAMLPriority:
+    """.claude-nagger/config.yaml優先読み込みテスト
+    
+    Issue #3889: .claude-nagger/config.yaml優先読み込み
+    """
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def yaml_project_config(self):
+        """プロジェクト固有YAML設定データ"""
+        return """system:
+  version: "yaml-project-1.0.0"
+  rails_root: "./yaml-project"
+  doc_root: "./yaml-project/docs"
+  scripts_root: "./"
+
+document:
+  templates_dir: "templates"
+  output_dir: "output"
+  target_dirs: {}
+"""
+
+    def test_claude_nagger_yaml_priority(self, temp_dir, yaml_project_config):
+        """.claude-nagger/config.yamlが存在する場合、それを優先して使用する"""
+        # .claude-nagger/ディレクトリを作成
+        claude_nagger_dir = temp_dir / ".claude-nagger"
+        claude_nagger_dir.mkdir()
+        
+        yaml_config_file = claude_nagger_dir / "config.yaml"
+        yaml_config_file.write_text(yaml_project_config, encoding="utf-8")
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            
+            # config_path=Noneで呼び出し（デフォルト動作をテスト）
+            manager = ConfigManager(config_path=None)
+            
+            # .claude-nagger/config.yamlが選択されていることを確認
+            assert manager.config_path == yaml_config_file
+            assert manager.config["system"]["version"] == "yaml-project-1.0.0"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_yaml_priority_over_json5(self, temp_dir, yaml_project_config):
+        """YAML形式がJSON5形式より優先されること（両方存在する場合）"""
+        claude_nagger_dir = temp_dir / ".claude-nagger"
+        claude_nagger_dir.mkdir()
+        
+        # YAML設定
+        yaml_config_file = claude_nagger_dir / "config.yaml"
+        yaml_config_file.write_text(yaml_project_config, encoding="utf-8")
+        
+        # JSON5設定（異なるバージョン）
+        json5_config = {
+            "system": {
+                "version": "json5-project-2.0.0",
+                "rails_root": "./json5-project",
+                "doc_root": "./json5-project/docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            }
+        }
+        json5_config_file = claude_nagger_dir / "config.json5"
+        json5_config_file.write_text(json.dumps(json5_config), encoding="utf-8")
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            
+            manager = ConfigManager(config_path=None)
+            
+            # YAMLが優先される
+            assert manager.config_path == yaml_config_file
+            assert manager.config["system"]["version"] == "yaml-project-1.0.0"
+        finally:
+            os.chdir(original_cwd)
+
+
+class TestYAMLSyntaxErrorHandling:
+    """YAML構文エラー時のフォールバックテスト
+    
+    Issue #3889: YAML構文エラー時のフォールバック
+    """
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_yaml_syntax_error_fallback(self, temp_dir, capsys):
+        """YAML構文エラー時、エラーメッセージを出力してデフォルトにフォールバック"""
+        invalid_yaml_file = temp_dir / "invalid.yaml"
+        # 不正なYAML（インデントエラー）
+        invalid_yaml_file.write_text("""system:
+  version: "test"
+    invalid_indent: true
+  another: value
+""", encoding="utf-8")
+        
+        manager = ConfigManager(config_path=invalid_yaml_file)
+        
+        # デフォルト設定にフォールバック
+        assert manager.config["system"]["version"] == "1.0.0"
+        
+        # エラーメッセージが出力されていることを確認
+        captured = capsys.readouterr()
+        assert "設定ファイル" in captured.out
+        assert str(invalid_yaml_file) in captured.out
+
+    def test_yaml_tab_character_error(self, temp_dir, capsys):
+        """YAMLでタブ文字使用時のエラーハンドリング"""
+        tab_yaml_file = temp_dir / "tab_error.yaml"
+        # タブ文字を含むYAML（YAMLではタブはエラー）
+        tab_yaml_file.write_text("system:\n\tversion: 'test'", encoding="utf-8")
+        
+        manager = ConfigManager(config_path=tab_yaml_file)
+        
+        # デフォルト設定にフォールバック
+        assert manager.config["system"]["version"] == "1.0.0"
+
+
+class TestEmptyYAMLHandling:
+    """空YAMLファイルのハンドリングテスト
+    
+    Issue #3889: 空YAMLファイルのハンドリング
+    """
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_empty_yaml_file_fallback(self, temp_dir, capsys):
+        """空のYAMLファイルの場合、デフォルト設定にフォールバック"""
+        empty_yaml_file = temp_dir / "empty.yaml"
+        empty_yaml_file.write_text("", encoding="utf-8")
+        
+        manager = ConfigManager(config_path=empty_yaml_file)
+        
+        # デフォルト設定にフォールバック
+        assert manager.config["system"]["version"] == "1.0.0"
+        assert manager.config["document"]["templates_dir"] == "templates"
+
+    def test_yaml_only_comments_fallback(self, temp_dir, capsys):
+        """コメントのみのYAMLファイルの場合、デフォルト設定にフォールバック"""
+        comments_only_yaml = temp_dir / "comments_only.yaml"
+        comments_only_yaml.write_text("""# This is a comment
+# Another comment
+# No actual configuration
+""", encoding="utf-8")
+        
+        manager = ConfigManager(config_path=comments_only_yaml)
+        
+        # デフォルト設定にフォールバック（YAMLパース結果がNone）
+        assert manager.config["system"]["version"] == "1.0.0"
+
+    def test_yaml_null_document_fallback(self, temp_dir, capsys):
+        """YAMLが明示的にnullの場合、デフォルト設定にフォールバック"""
+        null_yaml_file = temp_dir / "null.yaml"
+        null_yaml_file.write_text("null", encoding="utf-8")
+        
+        manager = ConfigManager(config_path=null_yaml_file)
+        
+        # デフォルト設定にフォールバック
+        assert manager.config["system"]["version"] == "1.0.0"
+
+    def test_yaml_empty_dict_handling(self, temp_dir, capsys):
+        """空のdict {}の場合の処理"""
+        empty_dict_yaml = temp_dir / "empty_dict.yaml"
+        empty_dict_yaml.write_text("{}", encoding="utf-8")
+        
+        manager = ConfigManager(config_path=empty_dict_yaml)
+        
+        # 空のdictなのでデフォルト設定にフォールバック
+        # または空dictとして読み込まれる（実装依存）
+        # この場合、キーアクセス時にKeyErrorを避けるためデフォルトにフォールバックすべき
+        assert manager.config["system"]["version"] == "1.0.0"
