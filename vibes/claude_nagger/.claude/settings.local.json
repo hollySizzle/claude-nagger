@@ -52,7 +52,12 @@
       "Bash(/home/node/.local/bin/pytest tests/test_hook_schema_validation.py::TestHookSchemaValidator -v --tb=short)",
       "Bash(/home/node/.local/bin/pytest tests/test_hook_schema_validation.py::TestImplementationDesignHookIntegration -v --tb=short)",
       "Bash(/home/node/.local/bin/pytest:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "mcp__redmine_epic_grid__create_bug_tool",
+      "mcp__redmine_epic_grid__update_issue_subject_tool",
+      "Bash(PYTHONPATH=/workspace/vibes/claude_nagger /home/node/.local/bin/pytest:*)",
+      "Bash(pip3 install:*)",
+      "mcp__serena__find_file"
     ],
     "deny": [],
     "additionalDirectories": [
