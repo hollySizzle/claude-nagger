@@ -18,20 +18,27 @@
       "Bash(mkdir:*)",
       "Bash(cat:*)",
       "Bash(tree:*)",
-      "Bash(docker compose:*)"
+      "Bash(docker compose:*)",
+      "WebSearch",
+      "mcp__redmine_epic_grid__list_epics_tool",
+      "mcp__redmine_epic_grid__list_versions_tool",
+      "mcp__redmine_epic_grid__create_version_tool",
+      "mcp__redmine_epic_grid__create_epic_tool",
+      "mcp__redmine_epic_grid__create_feature_tool",
+      "mcp__redmine_epic_grid__create_user_story_tool",
+      "mcp__redmine_epic_grid__create_task_tool",
+      "mcp__redmine_epic_grid__get_project_structure_tool",
+      "mcp__redmine_epic_grid__create_test_tool"
     ],
     "deny": [],
     "additionalDirectories": [
-      "/myapp/Source/rails",
       "/tmp"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
-    "serena"
-  ],
-  "disabledMcpjsonServers": [
+    "serena",
     "git",
     "redmine_epic_grid"
-  ],
-  "enableAllProjectMcpServers": true
+  ]
 }
