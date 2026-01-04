@@ -1,8 +1,13 @@
 {
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "git",
     "serena",
     "redmine_epic_grid"
   ],
-  "enableAllProjectMcpServers": true
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)"
+    ]
+  }
 }

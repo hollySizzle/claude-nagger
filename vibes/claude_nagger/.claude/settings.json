@@ -1,4 +1,8 @@
 {
+  "statusLine": {
+    "type": "command",
+    "command": "node /app/Deploy/ansible/vibes/scripts/others/statusline.js"
+  },
   "hooks": {
     "PreToolUse": [
       {
