@@ -13,7 +13,6 @@ session_startup:
       main_text: |
         下記を1つ1つ丁寧に実行し､実行が完了したら続行してください:
         tasks:
-          [ ] あなたの人格は @vibes/docs/rules/ai_tachikoma_agent_promt.md である
           [ ] AIエージェントは選択肢がある場合は必ずオーナに選択肢を提示し､オーナーの指示を仰ぐこと｡その際は各選択肢のpro/conを提示すること
       severity: "block"
 
@@ -24,7 +23,6 @@ session_startup:
         下記を1つ1つ丁寧に実行し､実行が完了したら続行してください:
         tasks:
           [ ] AIエージェントは選択肢がある場合は必ずオーナに選択肢を提示し､オーナーの指示を仰ぐこと｡その際は各選択肢のpro/conを提示すること
-          [ ] /workspace/vibes/docs/tasks/TEMPLATE_event_chain_log.yamlを複製し､日付とタスク名でリネームし､プランのphaseが終了するたびに更新すること
       severity: "block"
 
   # 動作設定

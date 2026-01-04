@@ -6,7 +6,9 @@
       "Bash(dig:*)",
       "Bash(sudo ipset list:*)",
       "Bash(sudo iptables:*)",
-      "Bash(sudo env:*)"
+      "Bash(sudo env:*)",
+      "mcp__redmine_epic_grid__get_issue_detail_tool",
+      "mcp__serena__list_dir"
     ]
   },
   "enabledMcpjsonServers": [
