@@ -1,64 +1,131 @@
-# Vibes Scripts
+# claude-nagger
 
-Railsプロジェクト用のユーティリティスクリプト集
+Claude Codeに「必要な時だけ」規約を読ませるフックツール
+
+## 解決する問題
+
+Claude Codeで中〜大規模プロジェクトを扱う際、以下の問題が発生します:
+
+| 問題 | 説明 |
+|------|------|
+| **コンテキスト肥大化** | 全規約をCLAUDE.mdに書くとトークン消費が膨大 |
+| **規約の忘却** | コンテキスト圧縮(compacting)により規約が「忘れられる」 |
+| **無関係な情報** | モデル編集時にCSS規約は不要、逆も然り |
+
+## 解決策: 操作に応じた規約の動的注入
+
+```
+EditツールでCSS編集 → CSS規約のみ注入
+Editツールでモデル編集 → モデル規約のみ注入
+```
+
+CLAUDE.mdでは実現できない「PreToolUseフックによる条件付き規約注入」を提供します。
+
+## インストール
+
+```bash
+# uvx (推奨)
+uvx claude-nagger install-hooks
+
+# pip
+pip install claude-nagger
+claude-nagger install-hooks
+```
 
 ## セットアップ
 
 ```bash
-# 依存関係のインストール
-pip install -r requirements.txt
+# プロジェクトルートでフックをインストール
+claude-nagger install-hooks
 
-# 設定ファイルの準備
-cp config.sample.json5 config.json5
-cp secrets.sample.json5 secrets.json5  # 機密情報（APIキーなど）
+# dry-runで確認
+claude-nagger install-hooks --dry-run
 ```
 
-## 主な機能
+以下の構造が生成されます:
 
-### Discord通知
+```
+your-project/
+├── .claude-nagger/
+│   ├── config.yaml              # メイン設定
+│   ├── file_conventions.yaml    # ファイル別規約
+│   ├── command_conventions.yaml # コマンド規約
+│   └── hooks/                   # フックスクリプト
+└── .claude/
+    └── settings.json            # ← claude-naggerが自動設定
+```
+
+## 設定例
+
+### .claude-nagger/file_conventions.yaml
+
+```yaml
+# ファイルパターン別の規約注入
+conventions:
+  - pattern: "**/*.css"
+    rules: |
+      ## CSS規約
+      - BEM命名規則を使用
+      - !important は禁止
+      - ネストは3階層まで
+
+  - pattern: "**/models/**/*.py"
+    rules: |
+      ## モデル規約
+      - フィールド名はsnake_case
+      - 必ずdocstringを記載
+```
+
+## 動作原理
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ Claude Code                                             │
+│                                                         │
+│  ユーザー: "このCSSを修正して"                          │
+│       ↓                                                 │
+│  Claude: Edit ツール呼び出し (*.css)                    │
+│       ↓                                                 │
+│  ┌─────────────────────────────────────┐               │
+│  │ PreToolUse Hook (claude-nagger)     │               │
+│  │                                     │               │
+│  │ 1. パターン照合: "**/*.css" ✓       │               │
+│  │ 2. 対応する規約を読み込み           │               │
+│  │ 3. 規約をコンテキストに注入         │               │
+│  └─────────────────────────────────────┘               │
+│       ↓                                                 │
+│  Claude: 規約を参照しながらCSS編集                      │
+└─────────────────────────────────────────────────────────┘
+```
+
+## コマンド
 
 ```bash
-# どこからでも実行可能
-python3 /path/to/vibes/scripts/src/infrastructure/notifiers/discord_notifier.py "メッセージ"
+# フックのインストール（.claude/settings.jsonに設定追加）
+claude-nagger install-hooks
 
-# bin/discord-notifyを使用（実行権限付与済み）
-/path/to/vibes/scripts/bin/discord-notify "メッセージ"
+# dry-run（実際には変更しない）
+claude-nagger install-hooks --dry-run
+
+# 強制上書き
+claude-nagger install-hooks --force
+
+# バージョン表示
+claude-nagger --version
 ```
 
-### セッション管理
+## なぜCLAUDE.mdだけでは不十分か
 
-- `SessionManager`: セッションIDとエージェント名を統一管理
-- Claudeフック環境での自動セッションID取得
+| アプローチ | コンテキスト消費 | 規約遵守率 | 柔軟性 |
+|-----------|-----------------|-----------|--------|
+| 全規約をCLAUDE.mdに記載 | 高 (常時) | 低 (忘却) | 低 |
+| claude-nagger | 低 (必要時のみ) | 高 | 高 |
 
-### 設定管理
+## 要件
 
-設定の優先順位（高→低）:
-1. 環境変数 (os.environ)
-2. secrets.json5
-3. config.json5
+- Python 3.10以上
+- Claude Code CLI
 
-## ディレクトリ構造
+## ライセンス
 
-```
-vibes/scripts/
-├── src/
-│   ├── infrastructure/        # インフラ層
-│   │   ├── config/            # 設定管理
-│   │   └── notifiers/         # 通知機能
-│   └── shared/                # 共通機能
-│       └── utils/             # ユーティリティ
-├── tests/                     # テストコード
-├── bin/                       # 実行可能スクリプト
-├── config.json5              # 一般設定
-└── secrets.json5             # 機密情報（Git管理外）
-```
-
-## テスト
-
-```bash
-# 全テストを実行
-python3 -m pytest tests/ -v
-
-# 特定のテストを実行
-python3 -m pytest tests/test_discord_notifier.py -v
-```
+MIT License - 詳細は [LICENSE](LICENSE) を参照
