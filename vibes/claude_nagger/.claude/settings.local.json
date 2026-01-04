@@ -33,7 +33,19 @@
       "Bash(dig:*)",
       "Bash(iptables:*)",
       "Bash(echo:*)",
-      "Bash(sudo FIREWALL_ALLOWED_DOMAINS=\"$FIREWALL_ALLOWED_DOMAINS\" /usr/local/bin/init-firewall.sh)"
+      "Bash(sudo FIREWALL_ALLOWED_DOMAINS=\"$FIREWALL_ALLOWED_DOMAINS\" /usr/local/bin/init-firewall.sh)",
+      "mcp__redmine_epic_grid__get_issue_detail_tool",
+      "mcp__serena__list_dir",
+      "mcp__serena__activate_project",
+      "mcp__serena__check_onboarding_performed",
+      "mcp__serena__read_file",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_symbol",
+      "mcp__redmine_epic_grid__add_issue_comment_tool",
+      "mcp__redmine_epic_grid__update_issue_status_tool",
+      "mcp__redmine_epic_grid__update_issue_description_tool",
+      "mcp__redmine_epic_grid__assign_to_version_tool",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "additionalDirectories": [

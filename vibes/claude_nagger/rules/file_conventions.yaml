@@ -3,94 +3,17 @@
 # ClaudeCodeがこれらのファイルを編集する際に、規約確認を促します
 
 rules:
-  - name: "実行ログ･プラン規約"
+  # View層関連
+  - name: "View層編集規約"
     patterns:
-      - "*"
-    severity: "block" # block: 完全ブロック, warn: 警告のみ
-    token_threshold: 15000 # 重要なドキュメント規約は低い閾値
-    # 基本メッセージ（簡潔版）
-    message: |
-      [ ] ファイル変更を伴うタスクを実行する場合はまず/workspace/vibes/docs/plans/TEMPLATE_plan.yamlを複製し､日付とタスク名でリネームし､実行するタスクプランを記載しユーザの承認を得ること
-      [ ] /workspace/vibes/docs/tasks/TEMPLATE_event_chain_log.yamlを複製し､日付とタスク名でリネームし､プランのphaseが終了するたびに更新すること
-
-  - name: "Vibesドキュメント規約"
-    patterns:
-      - "**/docs/**/*.md"
-      - "**/vibes/docs/**/*.md"
-      - "vibes/docs/**/*.md"
-      - "**/*.md" # 全mdファイル対応（最も包括的）
-      - "*.md" # rootドキュメントの更新
-      - "docs/**/*.md"
-    severity: "block" # block: 完全ブロック, warn: 警告のみ
-    token_threshold: 15000 # 重要なドキュメント規約は低い閾値
-    # 基本メッセージ（簡潔版）
-    message: |
-      このファイルを変更する場合は､  @vibes/docs/rules/vibes_documentation_standards.md をよく確認し従うこと
-      作業を続けるためには､上記ドキュメントを確認したことを示してください
-
-  # 実装設計書関連
-  - name: "実装設計書編集規約"
-    patterns:
-      - "**/実装設計書.pu"
-      - "**/実装設計.pu"
-      - "**/実装設計書*.pu"
-    severity: "block" # block: 完全ブロック, warn: 警告のみ
-    token_threshold: 18000
-    # 基本メッセージ（簡潔版）
-    message: |
-      このファイルを変更する場合は､  @vibes/docs/rules/detailed_spec_docs/implementation_design_standards.md をよく確認し従うこと
-      作業を続けるためには､上記ドキュメントを確認したことを示してください
-
-  - name: "機能設計書規約"
-    patterns:
-      - "**/機能設計書.pu"
-      - "**/機能設計書.pu"
-      - "**/機能設計書*.pu"
-    severity: "block" # block: 完全ブロック, warn: 警告のみ
-    token_threshold: 18000
-    # 基本メッセージ（簡潔版）
-    message: |
-      このファイルを変更する場合は､  @/myapp/Source/rails/vibes/docs/rules/detailed_spec_docs/functional_design_standards.md をよく確認し従うこと
-      作業を続けるためには､上記ドキュメントを確認したことを示してください
-
-  # 外部設計書関連
-  - name: "外部設計書編集規約"
-    patterns:
-      - "Doc/700_サーバ設計/**/*"
-      - "**/機能リスト.json"
-      - "**/_機能リスト.json"
-      - "**/画面定義書.json"
+      - "**/app/views/**.erb"
+      - "app/views/**.erb"
+      - "app/views/**/*.erb"
+      - "**/app/views/**.html.erb"
+      - "app/views/**.html.erb"
     severity: "block"
-    token_threshold: 10000 # 最重要規約は最低閾値
-    # 基本メッセージ（簡潔版）
+    token_threshold: 35000
     message: |
-      🚫 外部設計書はプロジェクトオーナー管轄
-      📋 参照: @vibes/docs/rules/ai_collaboration_standards.md
-
-  # Ansible運用関連
-  - name: "Ansibleプレイブック編集規約"
-    patterns:
-      - "**/playbooks/**/*.yml"
-      - "**/playbooks/**/*.yaml"
-      - "**/playbooks/*.yml"
-      - "**/playbooks/*.yaml"
-      - "Deploy/ansible/playbooks/**/*"
-      - "Deploy/ansible/README.md"
-    severity: "block" # 警告レベル（参照推奨）
-    token_threshold: 12000
-    # 基本メッセージ（簡潔版）
-    message: |
-      このファイルを変更する場合は､  @vibes/docs/rules/playbook_creation_standards.md をよく確認し従うこと
+      このファイルを変更する場合は､ @vibes/docs/rules/view_standards.md をよく確認し従うこと
       作業を続けるためには､上記ドキュメントを確認したことを示してください
-
-  # 実行ログ
-  - name: "実行ログ規約"
-    patterns:
-      - "Deploy/ansible/実行ログ/*.yaml"
-      - "Deploy/ansible/実行ログ/*.yml"
-    severity: "block" # 警告レベル（参照推奨）
-    token_threshold: 12000
-    # 基本メッセージ（簡潔版）
-    message: |
-      このファイルを変更する場合は､  @/app/Deploy/ansible/実行ログ/README.md をよく確認し従うこと
-      作業を続けるためには､上記ドキュメントを確認したことを示してください
+  

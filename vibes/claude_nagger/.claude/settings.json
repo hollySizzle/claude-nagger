@@ -1,10 +1,19 @@
 {
   "statusLine": {
     "type": "command",
-    "command": "node /app/Deploy/ansible/vibes/scripts/others/statusline.js"
+    "command": "node /workspace/vibes/claude_nagger/others/statusline.js"
   },
   "hooks": {
     "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 src/domain/hooks/session_startup_hook.py"
+          }
+        ]
+      },
       {
         "matcher": "mcp__.*__write.*",
         "hooks": [
