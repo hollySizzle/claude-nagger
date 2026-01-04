@@ -28,7 +28,17 @@ class ConfigManager:
         # parent.parent.parent = src/infrastructure/config -> src/infrastructure -> src
         # parent.parent.parent.parent = scripts/
         self.base_dir = Path(__file__).parent.parent.parent.parent  # scripts/
-        self.config_path = config_path or (self.base_dir / "config.json5")
+        
+        if config_path is None:
+            # プロジェクト固有設定を優先（.claude-nagger/）
+            project_config = Path.cwd() / ".claude-nagger" / "config.json5"
+            if project_config.exists():
+                config_path = project_config
+            else:
+                # パッケージ内デフォルトを使用
+                config_path = self.base_dir / "config.json5"
+        
+        self.config_path = config_path
         self.secrets_path = self.base_dir / "secrets.json5"
         self._config: Optional[Dict[str, Any]] = None
         self._secrets: Optional[Dict[str, Any]] = None
@@ -52,8 +62,11 @@ class ConfigManager:
         except FileNotFoundError:
             print(f"⚠️ 設定ファイルが見つかりません: {self.config_path}")
             return self._get_default_config()
+        except json.JSONDecodeError as e:
+            print(f"❌ 設定ファイル構文エラー ({self.config_path}): {e}")
+            return self._get_default_config()
         except Exception as e:
-            print(f"❌ 設定ファイル読み込みエラー: {e}")
+            print(f"❌ 設定ファイル読み込みエラー ({self.config_path}): {e}")
             return self._get_default_config()
 
     def _get_default_config(self) -> Dict[str, Any]:
