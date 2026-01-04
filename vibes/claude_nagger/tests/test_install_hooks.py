@@ -9,7 +9,7 @@ import tempfile
 import os
 from pathlib import Path
 
-from src.application.install_hooks import InstallHooksCommand
+from src.application.install_hooks import InstallHooksCommand, ensure_config_exists
 
 
 class TestCreateClaudeNaggerDir:
@@ -487,3 +487,83 @@ class TestCLIIntegration:
         )
         assert result.returncode == 0
         assert "install-hooks" in result.stdout
+
+
+class TestEnsureConfigExists:
+    """ensure_config_exists()関数のテスト (Issue #3910)"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_creates_config_if_not_exists(self, temp_dir):
+        """設定ファイルが存在しない場合、生成される"""
+        result = ensure_config_exists(temp_dir)
+
+        assert result is True
+        assert (temp_dir / ".claude-nagger").exists()
+        assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
+        assert (temp_dir / ".claude-nagger" / "file_conventions.yaml").exists()
+        assert (temp_dir / ".claude-nagger" / "command_conventions.yaml").exists()
+
+    def test_returns_false_if_config_exists(self, temp_dir):
+        """設定ファイルが既に存在する場合、Falseを返す"""
+        # 既存ファイルを作成
+        nagger_dir = temp_dir / ".claude-nagger"
+        nagger_dir.mkdir()
+        (nagger_dir / "config.yaml").write_text("# existing", encoding="utf-8")
+
+        result = ensure_config_exists(temp_dir)
+
+        assert result is False
+
+    def test_idempotency(self, temp_dir):
+        """冪等性: 複数回呼んでも同じ結果になる"""
+        # 1回目の呼び出し
+        result1 = ensure_config_exists(temp_dir)
+        assert result1 is True
+
+        # 2回目の呼び出し（既に存在するので何もしない）
+        result2 = ensure_config_exists(temp_dir)
+        assert result2 is False
+
+        # ファイルが存在することを確認
+        assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
+
+    def test_creates_missing_files_only(self, temp_dir):
+        """不足分のみ生成: 部分的に存在する場合"""
+        # ディレクトリと一部ファイルのみ作成
+        nagger_dir = temp_dir / ".claude-nagger"
+        nagger_dir.mkdir()
+        (nagger_dir / "file_conventions.yaml").write_text("# existing", encoding="utf-8")
+
+        result = ensure_config_exists(temp_dir)
+
+        assert result is True
+        # 既存ファイルは保持
+        assert (nagger_dir / "file_conventions.yaml").read_text(encoding="utf-8") == "# existing"
+        # 不足分が生成される
+        assert (nagger_dir / "config.yaml").exists()
+        assert (nagger_dir / "command_conventions.yaml").exists()
+
+    def test_outputs_warning_to_stderr(self, temp_dir, capsys):
+        """自動生成時にstderrへ警告出力"""
+        ensure_config_exists(temp_dir)
+
+        captured = capsys.readouterr()
+        assert "警告" in captured.err
+        assert "自動生成" in captured.err
+
+    def test_uses_cwd_if_no_path_provided(self, temp_dir):
+        """パス指定なしの場合、カレントディレクトリを使用"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            result = ensure_config_exists()
+
+            assert result is True
+            assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
+        finally:
+            os.chdir(original_cwd)

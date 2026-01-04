@@ -8,6 +8,7 @@
 
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -235,3 +236,53 @@ debug:
         """settings.json を保存"""
         content = json.dumps(settings, indent=2, ensure_ascii=False)
         path.write_text(content + "\n", encoding="utf-8")
+
+
+def ensure_config_exists(project_root: Path = None) -> bool:
+    """設定ファイルの存在を保証する（冪等）
+    
+    .claude-nagger/ディレクトリと設定ファイル群が存在しない場合は生成する。
+    フック実行時に自動的に呼び出される。
+    
+    Args:
+        project_root: プロジェクトルートパス（デフォルト: カレントディレクトリ）
+    
+    Returns:
+        bool: ファイルが生成された場合True、既存の場合False
+    """
+    if project_root is None:
+        project_root = Path.cwd()
+    
+    nagger_dir = project_root / ".claude-nagger"
+    config_path = nagger_dir / "config.yaml"
+    
+    # 設定ファイルが存在すれば何もしない
+    if config_path.exists():
+        return False
+    
+    # 設定ファイルを生成
+    generated = False
+    
+    # ディレクトリ作成
+    if not nagger_dir.exists():
+        nagger_dir.mkdir(exist_ok=True)
+        generated = True
+    
+    # 各ファイルを不足分のみ生成
+    files = {
+        "file_conventions.yaml": InstallHooksCommand.FILE_CONVENTIONS_TEMPLATE,
+        "command_conventions.yaml": InstallHooksCommand.COMMAND_CONVENTIONS_TEMPLATE,
+        "config.yaml": InstallHooksCommand.CONFIG_TEMPLATE,
+    }
+    
+    for filename, content in files.items():
+        file_path = nagger_dir / filename
+        if not file_path.exists():
+            file_path.write_text(content, encoding="utf-8")
+            generated = True
+    
+    # 自動生成時の警告出力
+    if generated:
+        print("警告: 設定ファイルを自動生成しました (.claude-nagger/)", file=sys.stderr)
+    
+    return generated

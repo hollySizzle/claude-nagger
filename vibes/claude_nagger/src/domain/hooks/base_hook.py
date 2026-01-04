@@ -475,6 +475,10 @@ class BaseHook(ABC):
         Returns:
             終了コード（0: 成功、1: エラー）
         """
+        # 設定ファイル存在保証（自動生成）
+        from application.install_hooks import ensure_config_exists
+        ensure_config_exists()
+        
         self.log_info(f"{'='*10} {self.__class__.__name__} Started {'='*10}")
         
         try:
