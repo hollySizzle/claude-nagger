@@ -8,3 +8,9 @@ secrets.json5
 *.log
 logs/
 log/
+
+# ビルド成果物
+build/
+dist/
+*.egg-info/
+.coverage
