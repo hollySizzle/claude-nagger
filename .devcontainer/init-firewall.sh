@@ -63,6 +63,27 @@ while read -r cidr; do
     ipset add allowed-domains "$cidr"
 done < <(echo "$gh_ranges" | jq -r '(.web + .api + .git)[]' | aggregate -q)
 
+# Add domains from FIREWALL_ALLOWED_DOMAINS env var (comma-separated)
+if [ -n "${FIREWALL_ALLOWED_DOMAINS:-}" ]; then
+    while IFS= read -r extra; do
+        extra=$(echo "$extra" | xargs)  # trim whitespace
+        if [ -n "$extra" ]; then
+            echo "Resolving extra domain: $extra"
+            ips=$(dig +noall +answer A "$extra" | awk '$4 == "A" {print $5}')
+            if [ -n "$ips" ]; then
+                while read -r ip; do
+                    if [[ "$ip" =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+                        echo "Adding $ip for $extra"
+                        ipset add allowed-domains "$ip"
+                    fi
+                done < <(echo "$ips")
+            else
+                echo "WARNING: Failed to resolve $extra (skipping)"
+            fi
+        fi
+    done < <(echo "$FIREWALL_ALLOWED_DOMAINS" | tr ',' '\n')
+fi
+
 # Resolve and add other allowed domains
 for domain in \
     "registry.npmjs.org" \
