@@ -71,9 +71,13 @@ class TestDiscordNotifier:
             assert notifier.config['DISCORD_THREAD_ID'] == '999'
             assert notifier.config['DISCORD_MENTION_EVERYONE'] == 'true'
     
-    def test_get_session_id_from_env(self, mock_config_manager):
-        """環境変数からセッションID取得のテスト"""
-        with patch.dict(os.environ, {'SESSION_ID': 'test-session-123'}):
+    def test_get_session_id_from_session_manager(self, mock_config_manager):
+        """SessionManagerからセッションID取得のテスト"""
+        mock_session_manager = Mock()
+        mock_session_manager.session_id = 'test-session-123'
+        mock_session_manager.agent_name = 'Test-Agent'
+
+        with patch('src.infrastructure.notifiers.discord_notifier.get_session_manager', return_value=mock_session_manager):
             notifier = DiscordNotifier(config_manager=mock_config_manager)
             assert notifier.session_id == 'test-session-123'
     
@@ -83,22 +87,15 @@ class TestDiscordNotifier:
             notifier = DiscordNotifier(config_manager=mock_config_manager)
             assert notifier.session_id == str(os.getpid())
     
-    def test_generate_agent_name(self, notifier):
-        """エージェント名生成のテスト"""
-        # 同じセッションIDからは同じ名前が生成される
-        name1 = notifier._generate_agent_name("test-session")
-        name2 = notifier._generate_agent_name("test-session")
-        assert name1 == name2
-        
-        # 異なるセッションIDからは異なる名前が生成される可能性がある
-        name3 = notifier._generate_agent_name("different-session")
-        # 名前の形式をチェック
-        assert '-' in name1
-        assert '-' in name3
-        
-        # エージェント名が有効な名前リストから選ばれているか
-        agent_name_part = name1.split('-')[0]
-        assert agent_name_part in DiscordNotifier.AGENT_NAMES
+    def test_get_agent_name_from_session_manager(self, mock_config_manager):
+        """SessionManagerからエージェント名取得のテスト"""
+        mock_session_manager = Mock()
+        mock_session_manager.session_id = 'test-session'
+        mock_session_manager.agent_name = 'Mochi-1234'
+
+        with patch('src.infrastructure.notifiers.discord_notifier.get_session_manager', return_value=mock_session_manager):
+            notifier = DiscordNotifier(config_manager=mock_config_manager)
+            assert notifier.agent_name == 'Mochi-1234'
     
     @pytest.mark.asyncio
     async def test_send_message_success(self, notifier):
