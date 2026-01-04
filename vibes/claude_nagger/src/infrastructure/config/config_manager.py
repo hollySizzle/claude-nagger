@@ -6,6 +6,10 @@ try:
     import json5
 except ImportError:
     json5 = None
+try:
+    import yaml
+except ImportError:
+    yaml = None
 from pathlib import Path
 from typing import Any, Dict, Optional
 
@@ -13,8 +17,10 @@ from typing import Any, Dict, Optional
 class ConfigManager:
     """設定管理クラス
     
-    config.json5の読み込みとパス解決を担当。
+    設定ファイル（YAML/JSON5/JSON）の読み込みとパス解決を担当。
     パスは相対パス（main.pyからの相対）と絶対パスの両方をサポート。
+    
+    設定ファイル優先順位: config.yaml > config.yml > config.json5
     """
 
     def __init__(self, config_path: Optional[Path] = None):
@@ -30,18 +36,47 @@ class ConfigManager:
         self.base_dir = Path(__file__).parent.parent.parent.parent  # scripts/
         
         if config_path is None:
-            # プロジェクト固有設定を優先（.claude-nagger/）
-            project_config = Path.cwd() / ".claude-nagger" / "config.json5"
-            if project_config.exists():
-                config_path = project_config
-            else:
-                # パッケージ内デフォルトを使用
-                config_path = self.base_dir / "config.json5"
+            # 設定ファイル探索順序: yaml > yml > json5
+            # プロジェクト固有設定（.claude-nagger/）を優先
+            config_path = self._find_config_file()
         
         self.config_path = config_path
         self.secrets_path = self.base_dir / "secrets.json5"
         self._config: Optional[Dict[str, Any]] = None
         self._secrets: Optional[Dict[str, Any]] = None
+
+    def _find_config_file(self) -> Path:
+        """設定ファイルを探索
+        
+        探索順序（優先度高い順）:
+        1. .claude-nagger/config.yaml
+        2. .claude-nagger/config.yml
+        3. .claude-nagger/config.json5
+        4. base_dir/config.yaml
+        5. base_dir/config.yml
+        6. base_dir/config.json5
+        
+        Returns:
+            見つかった設定ファイルパス（見つからない場合はデフォルト）
+        """
+        # 探索対象の拡張子（優先度順）
+        extensions = ['.yaml', '.yml', '.json5']
+        
+        # プロジェクト固有設定を優先（.claude-nagger/）
+        project_dir = Path.cwd() / ".claude-nagger"
+        for ext in extensions:
+            config_file = project_dir / f"config{ext}"
+            if config_file.exists():
+                return config_file
+        
+        # パッケージ内デフォルトを探索
+        for ext in extensions:
+            config_file = self.base_dir / f"config{ext}"
+            if config_file.exists():
+                return config_file
+        
+        # どれも見つからない場合はデフォルトパス
+        return self.base_dir / "config.json5"
 
     @property
     def config(self) -> Dict[str, Any]:
@@ -51,18 +86,38 @@ class ConfigManager:
         return self._config
 
     def _load_config(self) -> Dict[str, Any]:
-        """設定ファイルを読み込み"""
+        """設定ファイルを読み込み
+        
+        対応形式: YAML (.yaml, .yml), JSON5 (.json5), JSON (.json)
+        設定が空または不完全な場合はデフォルト設定にフォールバック
+        """
         try:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 content = f.read()
-                if self.config_path.suffix == '.json5' and json5:
-                    return json5.loads(content)
+                suffix = self.config_path.suffix.lower()
+                
+                # YAML形式
+                if suffix in ('.yaml', '.yml'):
+                    if yaml:
+                        config = yaml.safe_load(content)
+                    else:
+                        raise ImportError("PyYAMLがインストールされていません")
+                # JSON5形式
+                elif suffix == '.json5' and json5:
+                    config = json5.loads(content)
+                # JSON形式（フォールバック）
                 else:
-                    return json.loads(content)
+                    config = json.loads(content)
+                
+                # 空または不完全な設定の場合はデフォルトにフォールバック
+                if not config or not isinstance(config, dict) or "system" not in config:
+                    return self._get_default_config()
+                
+                return config
         except FileNotFoundError:
             print(f"⚠️ 設定ファイルが見つかりません: {self.config_path}")
             return self._get_default_config()
-        except json.JSONDecodeError as e:
+        except (json.JSONDecodeError, yaml.YAMLError if yaml else Exception) as e:
             print(f"❌ 設定ファイル構文エラー ({self.config_path}): {e}")
             return self._get_default_config()
         except Exception as e:
