@@ -12,6 +12,7 @@
   ],
   "settings": {
     "terminal.integrated.scrollback": 10000,
+    "terminal.integrated.cwd": "./",
     "editor.tabSize": 2,
     "redmine.apiKey": "${REDMINE_API_KEY}",
     "redmine.url": "${READMINE_PROJECT_URL}",

@@ -1,13 +1,20 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(curl:*)",
+      "mcp__redmine_epic_grid__get_issue_detail_tool",
+      "mcp__serena__list_dir",
+      "mcp__serena__activate_project",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_symbol",
+      "mcp__serena__read_file",
+      "mcp__serena__replace_symbol_body"
+    ]
+  },
   "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "git",
     "serena",
     "redmine_epic_grid"
-  ],
-  "permissions": {
-    "allow": [
-      "Bash(curl:*)"
-    ]
-  }
+  ]
 }
