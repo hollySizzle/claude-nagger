@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo:*)",
+      "Bash(ipset list:*)",
+      "Bash(dig:*)",
+      "Bash(sudo ipset list:*)",
+      "Bash(sudo iptables:*)",
+      "Bash(sudo env:*)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "git",
+    "serena",
+    "redmine_epic_grid"
+  ]
+}
