@@ -16,7 +16,11 @@
       "Bash(python3 -m pytest:*)",
       "mcp__redmine_epic_grid__add_issue_comment_tool",
       "mcp__redmine_epic_grid__update_issue_status_tool",
-      "mcp__redmine_epic_grid__list_user_stories_tool"
+      "mcp__redmine_epic_grid__list_user_stories_tool",
+      "mcp__redmine_epic_grid__get_project_structure_tool",
+      "mcp__redmine_epic_grid__list_versions_tool",
+      "mcp__redmine_epic_grid__create_user_story_tool",
+      "mcp__redmine_epic_grid__create_task_tool"
     ]
   },
   "enableAllProjectMcpServers": true,
