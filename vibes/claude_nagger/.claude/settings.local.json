@@ -57,7 +57,16 @@
       "mcp__redmine_epic_grid__update_issue_subject_tool",
       "Bash(PYTHONPATH=/workspace/vibes/claude_nagger /home/node/.local/bin/pytest:*)",
       "Bash(pip3 install:*)",
-      "mcp__serena__find_file"
+      "mcp__serena__find_file",
+      "Bash(/home/node/.local/bin/claude-nagger:*)",
+      "Bash(claude-nagger --version:*)",
+      "Bash(pip show:*)",
+      "mcp__redmine_epic_grid__list_user_stories_tool",
+      "Bash(curl:*)",
+      "Bash(/tmp/test-venv/bin/pip install:*)",
+      "Bash(/home/node/.local/bin/vibes-tools:*)",
+      "Bash(uv --version:*)",
+      "Bash(uvx:*)"
     ],
     "deny": [],
     "additionalDirectories": [
