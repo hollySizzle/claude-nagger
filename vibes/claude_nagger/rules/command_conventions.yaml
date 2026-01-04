@@ -12,28 +12,6 @@ rules:
       Git操作を実行する場合は、@vibes/docs/rules/git_operation_standards.md をよく確認し従うこと
       作業を続けるためには､上記ドキュメントを確認したことを示してください
 
-  - name: "Rails Scaffold操作確認"
-    patterns:
-      - "*ansible-vault encrypt*"
-    severity: "blok"
-    token_threshold: 35000
-    message: |
-      encryptは不要です｡
-
-  - name: "Rails Scaffold操作確認"
-    patterns:
-      - "rails generate scaffold*"
-      - "bin/rails generate scaffold*"
-      - "bundle exec rails generate scaffold*"
-      - "rails g scaffold*"
-      - "bin/rails g scaffold*"
-      - "bundle exec rails g scaffold*"
-    severity: "warn"
-    token_threshold: 35000
-    message: |
-      scaffoldを実行する場合は､@vibes/docs/rules/migration_standards.md をよく確認し従うこと
-      作業を続けるためには､上記ドキュメントを確認したことを示してください
-
   - name: "Docker操作規約"
     patterns:
       - "docker*"
@@ -41,5 +19,4 @@ rules:
     severity: "warn"
     token_threshold: 40000
     message: |
-      Rails設定YAMLはプロジェクトオーナー管轄です
       微調整レベルの変更のみ許可されています
