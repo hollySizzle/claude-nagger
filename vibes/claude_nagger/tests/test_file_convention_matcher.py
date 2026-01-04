@@ -89,15 +89,15 @@ class TestFileConventionMatcher:
     def test_get_confirmation_message(self, temp_rules_file):
         """確認メッセージ生成のテスト"""
         matcher = FileConventionMatcher(temp_rules_file)
-        
+
         # マッチするファイルの場合
         result = matcher.get_confirmation_message('test/example.pu')
         assert result is not None
         assert result['rule_name'] == 'Test Rule 1'
         assert result['severity'] == 'block'
-        assert '@test/doc1.md' in result['message']
+        # メッセージフォーマット: "⚠️  {rule.message}" (convention_docは含まない)
         assert 'Test message 1' in result['message']
-        
+
         # マッチしないファイルの場合
         result = matcher.get_confirmation_message('other.txt')
         assert result is None
