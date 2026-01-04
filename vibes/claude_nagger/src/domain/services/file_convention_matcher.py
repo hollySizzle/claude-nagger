@@ -1,11 +1,11 @@
 """ファイル編集規約マッチングサービス"""
 
 import yaml
-import fnmatch
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
+from wcmatch import glob as wc_glob
 
 
 @dataclass
@@ -115,42 +115,35 @@ class FileConventionMatcher:
     def matches_pattern(self, file_path: str, patterns: List[str]) -> bool:
         """
         ファイルパスがパターンにマッチするか確認
-        pathlib.Path.match()を使用して**パターンを正しくサポート
-        
+        wcmatch.globを使用して**パターンを正しくサポート
+
         Args:
             file_path: チェック対象のファイルパス
             patterns: パターンリスト
-            
+
         Returns:
             マッチする場合True
         """
         # 正規化されたパスに変換
         normalized_path = str(Path(file_path).as_posix())
         self.logger.info(f"🔍 PATTERN MATCH DEBUG: Checking file path: {normalized_path}")
-        
+
         for pattern in patterns:
             self.logger.info(f"  🎯 Testing pattern: {pattern}")
-            
+
             try:
-                # pathlib.Path.match()は**をサポート
-                if Path(normalized_path).match(pattern):
+                # wcmatch.globmatchで**パターンを完全サポート
+                if wc_glob.globmatch(normalized_path, pattern, flags=wc_glob.GLOBSTAR):
                     self.logger.info(f"  ✅ Pattern matched: {pattern}")
                     return True
-                
-                # 絶対パターンの場合も対応（/で始まるパターン）
-                if pattern.startswith('/'):
-                    if Path('/' + normalized_path).match(pattern):
-                        self.logger.info(f"  ✅ Absolute pattern matched: {pattern}")
-                        return True
-                        
+
                 self.logger.info(f"  ❌ Pattern not matched: {pattern}")
-                
-            except ValueError as e:
+
+            except Exception as e:
                 # 無効なパターンをスキップ
                 self.logger.info(f"  ⚠️ Invalid pattern skipped: {pattern} - {e}")
                 continue
-        
-        
+
         self.logger.info(f"🚫 No patterns matched for: {normalized_path}")
         return False
 
