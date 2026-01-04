@@ -26,8 +26,12 @@
       "/tmp"
     ]
   },
+  "enabledMcpjsonServers": [
+    "serena"
+  ],
   "disabledMcpjsonServers": [
     "git",
     "redmine_epic_grid"
-  ]
+  ],
+  "enableAllProjectMcpServers": true
 }
