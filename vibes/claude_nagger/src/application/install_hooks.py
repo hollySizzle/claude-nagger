@@ -139,11 +139,31 @@ discord:
 
     # デフォルトのNotificationフック設定
     # 通知発生時（複数API呼び出し間等）に実行される
-    DEFAULT_NOTIFICATION_HOOKS: list = []
+    DEFAULT_NOTIFICATION_HOOKS: list = [
+        {
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "python3 -m infrastructure.notifiers.discord_notifier \"📢 Claude Code から通知があります\""
+                }
+            ]
+        }
+    ]
 
     # デフォルトのStopフック設定
     # タスク完了・停止時に実行される
-    DEFAULT_STOP_HOOKS: list = []
+    DEFAULT_STOP_HOOKS: list = [
+        {
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "python3 -m infrastructure.notifiers.discord_notifier \"🛑 Claude Code セッションが停止されました\""
+                }
+            ]
+        }
+    ]
 
     def __init__(self, force: bool = False, dry_run: bool = False):
         """
