@@ -427,5 +427,162 @@ class TestCapturedFixtures:
                     )
 
 
+class TestHooksWithCapturedFixtures:
+    """キャプチャ済みフィクスチャを使用したフック実行テスト"""
+    
+    @pytest.fixture
+    def fixture_dir(self):
+        return PROJECT_ROOT / 'tests' / 'fixtures' / 'claude_code'
+    
+    @pytest.fixture
+    def hook_runner(self):
+        """implementation_design_hook用のHookRunner"""
+        hook_path = PROJECT_ROOT / 'src' / 'domain' / 'hooks' / 'implementation_design_hook.py'
+        return HookRunner(hook_path)
+    
+    def get_all_fixtures(self, fixture_dir: Path):
+        """全フィクスチャファイルを取得"""
+        fixtures = []
+        for json_file in fixture_dir.glob('**/*.json'):
+            if not json_file.name.startswith('.'):
+                fixtures.append(json_file)
+        return fixtures
+    
+    def get_fixtures_by_tool(self, fixture_dir: Path):
+        """ツールタイプ別にフィクスチャを分類"""
+        fixtures_by_tool = {}
+        for json_file in fixture_dir.glob('**/*.json'):
+            if json_file.name.startswith('.'):
+                continue
+            # パス構造: .../pre_tool_use/{tool_name}/filename.json
+            tool_name = json_file.parent.name
+            if tool_name not in fixtures_by_tool:
+                fixtures_by_tool[tool_name] = []
+            fixtures_by_tool[tool_name].append(json_file)
+        return fixtures_by_tool
+    
+    def test_all_fixtures_produce_valid_output(self, hook_runner, fixture_dir):
+        """全フィクスチャでフック実行し、出力スキーマ準拠を確認"""
+        fixtures = self.get_all_fixtures(fixture_dir)
+        assert len(fixtures) > 0, "No fixtures found"
+        
+        errors = []
+        for fixture in fixtures:
+            result = hook_runner.run_with_fixture(fixture)
+            
+            # 実行エラーチェック
+            if not result['success']:
+                errors.append(f"{fixture.name}: Execution failed - {result['stderr']}")
+                continue
+            
+            # 出力がある場合はスキーマ検証
+            if result['stdout'].strip():
+                validation = result['validation']
+                if not validation['valid']:
+                    errors.append(
+                        f"{fixture.name}: Schema validation failed - {validation['errors']}"
+                    )
+        
+        if errors:
+            pytest.fail(f"Fixture test failures:\n" + "\n".join(errors))
+    
+    def test_fixtures_by_tool_type(self, hook_runner, fixture_dir):
+        """各ツールタイプ別にフィクスチャでフック実行テスト"""
+        fixtures_by_tool = self.get_fixtures_by_tool(fixture_dir)
+        assert len(fixtures_by_tool) > 0, "No fixtures found"
+        
+        results_summary = {}
+        
+        for tool_name, fixtures in fixtures_by_tool.items():
+            tool_results = {
+                'total': len(fixtures),
+                'success': 0,
+                'skipped': 0,
+                'failed': 0,
+                'errors': []
+            }
+            
+            for fixture in fixtures:
+                result = hook_runner.run_with_fixture(fixture)
+                
+                if not result['success']:
+                    tool_results['failed'] += 1
+                    tool_results['errors'].append(
+                        f"{fixture.name}: {result['stderr']}"
+                    )
+                elif not result['stdout'].strip():
+                    # 空出力 = スキップ
+                    tool_results['skipped'] += 1
+                    tool_results['success'] += 1
+                else:
+                    validation = result['validation']
+                    if validation['valid']:
+                        tool_results['success'] += 1
+                    else:
+                        tool_results['failed'] += 1
+                        tool_results['errors'].append(
+                            f"{fixture.name}: {validation['errors']}"
+                        )
+            
+            results_summary[tool_name] = tool_results
+        
+        # 失敗があればレポート
+        all_errors = []
+        for tool_name, results in results_summary.items():
+            if results['failed'] > 0:
+                all_errors.append(
+                    f"{tool_name}: {results['failed']}/{results['total']} failed"
+                )
+                all_errors.extend(f"  - {e}" for e in results['errors'])
+        
+        if all_errors:
+            pytest.fail(f"Tool type test failures:\n" + "\n".join(all_errors))
+    
+    def test_output_schema_validation_details(self, hook_runner, fixture_dir):
+        """出力スキーマ検証の詳細テスト"""
+        fixtures = self.get_all_fixtures(fixture_dir)
+        assert len(fixtures) > 0, "No fixtures found"
+        
+        schema_stats = {
+            'total': 0,
+            'valid': 0,
+            'empty': 0,
+            'has_decision': 0,
+            'has_permission_decision': 0,
+            'decisions': {}
+        }
+        
+        for fixture in fixtures:
+            result = hook_runner.run_with_fixture(fixture)
+            schema_stats['total'] += 1
+            
+            if not result['success']:
+                continue
+            
+            if not result['stdout'].strip():
+                schema_stats['empty'] += 1
+                schema_stats['valid'] += 1
+                continue
+            
+            validation = result['validation']
+            if validation['valid']:
+                schema_stats['valid'] += 1
+                
+                if validation['data']:
+                    data = validation['data']
+                    if 'decision' in data:
+                        schema_stats['has_decision'] += 1
+                        decision = data['decision']
+                        schema_stats['decisions'][decision] = \
+                            schema_stats['decisions'].get(decision, 0) + 1
+                    
+                    if 'permissionDecision' in data:
+                        schema_stats['has_permission_decision'] += 1
+        
+        # 全て有効であることを確認
+        assert schema_stats['valid'] == schema_stats['total'], \
+            f"Some outputs are invalid: {schema_stats['valid']}/{schema_stats['total']}"
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
