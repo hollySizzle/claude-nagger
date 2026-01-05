@@ -64,7 +64,7 @@ fi
 
 # 4. GitHubリリース作成
 echo "Creating GitHub release..."
-gh release create "$TAG" --title "$TAG" --generate-notes
+gh release create "$TAG" --title "$TAG" --generate-notes --repo hollySizzle/claude-nagger
 
 echo ""
 echo "=== Release $TAG created ==="
