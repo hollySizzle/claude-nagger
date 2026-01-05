@@ -1,0 +1,13 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/-workspace-vibes-claude-nagger/00000000-0000-0000-0000-000000000000.jsonl",
+  "cwd": "/workspace/vibes/claude_nagger",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "git add tests/fixtures/claude_code/ && git commit -m \"$(cat <<'EOF'\nローカルテスト環境セットアップ基盤 issue_3958\n\n## 追加\n- scripts/setup_test_env.sh: uvxテスト環境構築スクリプト\n- tests/fixtures/claude_code/: キャプチャ済みフィクスチャ\n\n## 機能\n- テストディレクトリ自動作成\n- uvx install-hooks 実行\n- フィクスチャキャプチャ連携\n- スキーマ検証テスト実行\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n)\"",
+    "description": "Commit test environment setup"
+  },
+  "tool_use_id": "toolu_012VFHYHY4jmBNevzhufwHpZ"
+}

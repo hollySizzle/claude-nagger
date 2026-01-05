@@ -1,0 +1,9 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/workspace/vibes/docs/specs/実装設計書.pu",
+    "old_string": "test",
+    "new_string": "updated"
+  }
+}

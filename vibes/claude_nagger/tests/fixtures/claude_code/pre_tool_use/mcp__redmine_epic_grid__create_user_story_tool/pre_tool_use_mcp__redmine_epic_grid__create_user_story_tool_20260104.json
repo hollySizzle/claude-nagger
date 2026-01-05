@@ -1,0 +1,14 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/-workspace-vibes-claude-nagger/00000000-0000-0000-0000-000000000000.jsonl",
+  "cwd": "/workspace/vibes/claude_nagger",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "mcp__redmine_epic_grid__create_user_story_tool",
+  "tool_input": {
+    "subject": "ローカルテスト環境セットアップ基盤",
+    "parent_feature_id": "3847",
+    "description": "## 概要\nuvxでclaude-naggerをローカルテストするための環境構築スクリプト\n\n## 背景\n- 手動でテストディレクトリ作成・uvxコマンド実行は煩雑\n- フィクスチャキャプチャとの連携が必要\n- 再利用可能な基盤が欲しい\n\n## 成果物\n- `scripts/setup_test_env.sh` - テスト環境構築スクリプト\n\n## 受け入れ条件\n- [ ] テストディレクトリ自動作成\n- [ ] uvx install-hooks 実行\n- [ ] フィクスチャキャプチャ連携\n- [ ] スキーマ検証テスト実行"
+  },
+  "tool_use_id": "toolu_012DEfKEFcanVTJgAB8JDmVq"
+}
