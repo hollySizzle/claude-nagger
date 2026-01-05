@@ -973,6 +973,54 @@ class TestLoadSecrets:
 
         assert result == {}
 
+    def test_load_secrets_yaml(self, temp_dir, valid_config):
+        """vault/secrets.yamlからの読み込み"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        # vault/secrets.yamlを作成
+        vault_dir = temp_dir / ".claude-nagger" / "vault"
+        vault_dir.mkdir(parents=True)
+        secrets_yaml = vault_dir / "secrets.yaml"
+        secrets_yaml.write_text("""discord:
+  webhook_url: "https://test.webhook.url"
+  thread_id: "12345"
+""", encoding="utf-8")
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            manager = ConfigManager(config_path=config_path)
+            # secrets_pathを明示的に設定
+            manager.secrets_path = secrets_yaml
+            result = manager._load_secrets()
+
+            assert result["discord"]["webhook_url"] == "https://test.webhook.url"
+            assert result["discord"]["thread_id"] == "12345"
+        finally:
+            os.chdir(original_cwd)
+
+    def test_find_secrets_file_vault_priority(self, temp_dir, valid_config):
+        """vault/secrets.yamlが優先される"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        # vault/secrets.yamlを作成
+        vault_dir = temp_dir / ".claude-nagger" / "vault"
+        vault_dir.mkdir(parents=True)
+        secrets_yaml = vault_dir / "secrets.yaml"
+        secrets_yaml.write_text("discord:\n  webhook_url: test\n", encoding="utf-8")
+
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            manager = ConfigManager(config_path=config_path)
+
+            # vault/secrets.yamlが選択される
+            assert manager.secrets_path == secrets_yaml
+        finally:
+            os.chdir(original_cwd)
+
 
 class TestGetClaudeDir:
     """get_claude_dirメソッドのテスト"""

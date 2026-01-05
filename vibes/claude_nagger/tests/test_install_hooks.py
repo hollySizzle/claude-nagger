@@ -80,6 +80,52 @@ class TestCreateClaudeNaggerDir:
         finally:
             os.chdir(original_cwd)
 
+    def test_creates_vault_directory(self, temp_dir):
+        """`vault/`ディレクトリが生成される"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            cmd = InstallHooksCommand()
+            cmd._create_claude_nagger_dir()
+
+            vault_dir = temp_dir / ".claude-nagger" / "vault"
+            assert vault_dir.exists()
+            assert vault_dir.is_dir()
+        finally:
+            os.chdir(original_cwd)
+
+    def test_creates_vault_secrets_yaml(self, temp_dir):
+        """`vault/secrets.yaml`が生成される"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            cmd = InstallHooksCommand()
+            cmd._create_claude_nagger_dir()
+
+            secrets = temp_dir / ".claude-nagger" / "vault" / "secrets.yaml"
+            assert secrets.exists()
+            content = secrets.read_text(encoding="utf-8")
+            assert "discord:" in content
+            assert "webhook_url:" in content
+        finally:
+            os.chdir(original_cwd)
+
+    def test_creates_vault_gitignore(self, temp_dir):
+        """`vault/.gitignore`が生成される"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            cmd = InstallHooksCommand()
+            cmd._create_claude_nagger_dir()
+
+            gitignore = temp_dir / ".claude-nagger" / "vault" / ".gitignore"
+            assert gitignore.exists()
+            content = gitignore.read_text(encoding="utf-8")
+            assert "*" in content
+            assert "!.gitignore" in content
+        finally:
+            os.chdir(original_cwd)
+
     def test_skips_existing_files_without_force(self, temp_dir):
         """既存ファイルがある場合、forceなしではスキップされる"""
         original_cwd = os.getcwd()
@@ -326,6 +372,11 @@ class TestExecute:
             assert (temp_dir / ".claude-nagger" / "command_conventions.yaml").exists()
             assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
 
+            # vault/ の確認
+            assert (temp_dir / ".claude-nagger" / "vault").exists()
+            assert (temp_dir / ".claude-nagger" / "vault" / "secrets.yaml").exists()
+            assert (temp_dir / ".claude-nagger" / "vault" / ".gitignore").exists()
+
             # .claude/ の確認
             assert (temp_dir / ".claude").exists()
             assert (temp_dir / ".claude" / "settings.json").exists()
@@ -507,6 +558,10 @@ class TestEnsureConfigExists:
         assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
         assert (temp_dir / ".claude-nagger" / "file_conventions.yaml").exists()
         assert (temp_dir / ".claude-nagger" / "command_conventions.yaml").exists()
+        # vault/ディレクトリも生成される
+        assert (temp_dir / ".claude-nagger" / "vault").exists()
+        assert (temp_dir / ".claude-nagger" / "vault" / "secrets.yaml").exists()
+        assert (temp_dir / ".claude-nagger" / "vault" / ".gitignore").exists()
 
     def test_returns_false_if_config_exists(self, temp_dir):
         """設定ファイルが既に存在する場合、Falseを返す"""
