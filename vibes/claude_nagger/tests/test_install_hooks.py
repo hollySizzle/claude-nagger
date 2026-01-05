@@ -349,6 +349,34 @@ class TestMergePreToolUseHooks:
                 assert "$CLAUDE_PROJECT_DIR" not in command, \
                     f"コマンドに$CLAUDE_PROJECT_DIRが含まれるべきでない: {command}"
 
+    def test_prints_skip_message_for_existing_hooks(self, capsys):
+        """既存フックがスキップされた場合に通知を表示する (issue_4001)"""
+        cmd = InstallHooksCommand()
+        # session_startup_hookのみ既存
+        settings = {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "python3 -m domain.hooks.session_startup_hook"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+
+        cmd._merge_pretooluse_hooks(settings)
+        captured = capsys.readouterr()
+
+        # 既存フックのスキップ通知
+        assert "スキップ（既存）: python3 -m domain.hooks.session_startup_hook" in captured.out
+        # 新規フックの追加通知
+        assert "追加: python3 -m domain.hooks.implementation_design_hook" in captured.out
+
 
 class TestDryRunMode:
     """dry-runモードのテスト"""
