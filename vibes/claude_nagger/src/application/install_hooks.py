@@ -74,6 +74,27 @@ debug:
   enable_logging: false
 """
 
+    SECRETS_TEMPLATE = """\
+# 機密情報設定ファイル
+# このファイルはGit管理対象外です（.gitignoreで除外済み）
+
+# Discord通知設定
+discord:
+  webhook_url: ""
+  thread_id: ""
+
+# その他の機密情報
+# api_keys:
+#   service_name: "your-api-key"
+"""
+
+    GITIGNORE_TEMPLATE = """\
+# vault/ディレクトリ内の全ファイルを除外
+# 機密情報の漏洩防止
+*
+!.gitignore
+"""
+
     # デフォルトのPreToolUseフック設定
     DEFAULT_PRETOOLUSE_HOOKS = [
         {
@@ -136,6 +157,29 @@ debug:
 
         for filename, content in files.items():
             file_path = nagger_dir / filename
+            self._write_file(file_path, content)
+
+        # vault/ ディレクトリと機密ファイル生成
+        self._create_vault_dir(nagger_dir)
+
+    def _create_vault_dir(self, nagger_dir: Path):
+        """vault/ディレクトリと機密ファイルを生成"""
+        vault_dir = nagger_dir / "vault"
+
+        if self.dry_run:
+            print(f"[dry-run] ディレクトリ作成: {vault_dir}")
+        else:
+            vault_dir.mkdir(exist_ok=True)
+            print(f"ディレクトリ確認: {vault_dir}")
+
+        # vault内ファイル生成
+        vault_files = {
+            "secrets.yaml": self.SECRETS_TEMPLATE,
+            ".gitignore": self.GITIGNORE_TEMPLATE,
+        }
+
+        for filename, content in vault_files.items():
+            file_path = vault_dir / filename
             self._write_file(file_path, content)
 
     def _write_file(self, path: Path, content: str):
@@ -277,6 +321,23 @@ def ensure_config_exists(project_root: Path = None) -> bool:
     
     for filename, content in files.items():
         file_path = nagger_dir / filename
+        if not file_path.exists():
+            file_path.write_text(content, encoding="utf-8")
+            generated = True
+    
+    # vault/ディレクトリと機密ファイル生成
+    vault_dir = nagger_dir / "vault"
+    if not vault_dir.exists():
+        vault_dir.mkdir(exist_ok=True)
+        generated = True
+    
+    vault_files = {
+        "secrets.yaml": InstallHooksCommand.SECRETS_TEMPLATE,
+        ".gitignore": InstallHooksCommand.GITIGNORE_TEMPLATE,
+    }
+    
+    for filename, content in vault_files.items():
+        file_path = vault_dir / filename
         if not file_path.exists():
             file_path.write_text(content, encoding="utf-8")
             generated = True
