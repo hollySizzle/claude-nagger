@@ -17,7 +17,7 @@ class TestCLI:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "claude-nagger v1.0.0" in captured.out
+        assert "claude-nagger v" in captured.out
 
     def test_no_command_shows_help(self, capsys):
         """コマンド未指定時はヘルプが表示される"""

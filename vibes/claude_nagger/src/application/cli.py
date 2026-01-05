@@ -32,10 +32,17 @@ def main():
         help="実行内容を表示するのみ（実際には変更しない）"
     )
 
+    # diagnose サブコマンド
+    subparsers.add_parser(
+        "diagnose",
+        help="環境診断・設定確認"
+    )
+
     args = parser.parse_args()
 
     if args.version:
-        print("claude-nagger v1.0.0")
+        from shared.version import __version__
+        print(f"claude-nagger v{__version__}")
         return 0
 
     if args.command == "install-hooks":
@@ -44,6 +51,11 @@ def main():
             force=args.force,
             dry_run=args.dry_run
         )
+        return cmd.execute()
+
+    if args.command == "diagnose":
+        from application.diagnose import DiagnoseCommand
+        cmd = DiagnoseCommand()
         return cmd.execute()
 
     # コマンド未指定時はヘルプ表示

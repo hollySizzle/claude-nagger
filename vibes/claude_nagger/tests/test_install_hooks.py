@@ -281,8 +281,9 @@ class TestMergePreToolUseHooks:
         assert len(settings["hooks"]["PreToolUse"]) > 0
 
     def test_prevents_duplicate_hooks(self):
-        """同一コマンドの重複回避"""
+        """同一matcher+コマンドの重複回避"""
         cmd = InstallHooksCommand()
+        # 全てのデフォルトフックが既に存在する場合
         settings = {
             "hooks": {
                 "PreToolUse": [
@@ -291,7 +292,34 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python3 .claude-nagger/hooks/session_startup_hook.py"
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR"/src/domain/hooks/session_startup_hook.py'
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "mcp__.*__write.*",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR"/src/domain/hooks/implementation_design_hook.py'
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "mcp__.*replace.*",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR"/src/domain/hooks/implementation_design_hook.py'
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "mcp__.*insert.*",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": 'python3 "$CLAUDE_PROJECT_DIR"/src/domain/hooks/implementation_design_hook.py'
                             }
                         ]
                     }
@@ -303,7 +331,7 @@ class TestMergePreToolUseHooks:
 
         # 重複があるため追加されない
         assert result is False
-        assert len(settings["hooks"]["PreToolUse"]) == 1
+        assert len(settings["hooks"]["PreToolUse"]) == 4
 
 
 class TestDryRunMode:
@@ -493,7 +521,7 @@ class TestCLIIntegration:
         )
         assert result.returncode == 0
         assert "claude-nagger" in result.stdout
-        assert "1.0.0" in result.stdout
+        assert "1.0." in result.stdout  # バージョン番号
 
     def test_cli_install_hooks_dry_run(self, temp_dir):
         """install-hooks --dry-runオプション"""
