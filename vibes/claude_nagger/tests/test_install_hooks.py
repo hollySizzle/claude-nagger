@@ -372,10 +372,10 @@ class TestMergePreToolUseHooks:
         cmd._merge_pretooluse_hooks(settings)
         captured = capsys.readouterr()
 
-        # 既存フックのスキップ通知
-        assert "スキップ（既存）: python3 -m domain.hooks.session_startup_hook" in captured.out
-        # 新規フックの追加通知
-        assert "追加: python3 -m domain.hooks.implementation_design_hook" in captured.out
+        # 既存フックのスキップ通知（フックタイプ付き）
+        assert "スキップ（既存）[PreToolUse]: python3 -m domain.hooks.session_startup_hook" in captured.out
+        # 新規フックの追加通知（フックタイプ付き）
+        assert "追加 [PreToolUse]: python3 -m domain.hooks.implementation_design_hook" in captured.out
 
 
 class TestDryRunMode:
@@ -694,3 +694,145 @@ class TestEnsureConfigExists:
             assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
         finally:
             os.chdir(original_cwd)
+
+
+class TestMergeHookEntries:
+    """_merge_hook_entries汎用マージのテスト (Issue #4009, #4010)"""
+
+    def test_merge_notification_hooks_to_empty(self):
+        """空の設定にNotificationフック追加"""
+        cmd = InstallHooksCommand()
+        settings = {}
+        test_hooks = [
+            {
+                "matcher": "",
+                "hooks": [{"type": "command", "command": "echo notification"}]
+            }
+        ]
+
+        result = cmd._merge_hook_entries(settings, "Notification", test_hooks)
+
+        assert result is True
+        assert "hooks" in settings
+        assert "Notification" in settings["hooks"]
+        assert len(settings["hooks"]["Notification"]) == 1
+
+    def test_merge_stop_hooks_to_empty(self):
+        """空の設定にStopフック追加"""
+        cmd = InstallHooksCommand()
+        settings = {}
+        test_hooks = [
+            {
+                "matcher": "",
+                "hooks": [{"type": "command", "command": "echo stop"}]
+            }
+        ]
+
+        result = cmd._merge_hook_entries(settings, "Stop", test_hooks)
+
+        assert result is True
+        assert "hooks" in settings
+        assert "Stop" in settings["hooks"]
+        assert len(settings["hooks"]["Stop"]) == 1
+
+    def test_merge_prevents_duplicates(self):
+        """同一matcher+commandの重複回避"""
+        cmd = InstallHooksCommand()
+        settings = {
+            "hooks": {
+                "Notification": [
+                    {
+                        "matcher": "",
+                        "hooks": [{"type": "command", "command": "echo test"}]
+                    }
+                ]
+            }
+        }
+        test_hooks = [
+            {
+                "matcher": "",
+                "hooks": [{"type": "command", "command": "echo test"}]
+            }
+        ]
+
+        result = cmd._merge_hook_entries(settings, "Notification", test_hooks)
+
+        assert result is False
+        assert len(settings["hooks"]["Notification"]) == 1
+
+    def test_merge_adds_new_matcher(self):
+        """異なるmatcherのフックは追加される"""
+        cmd = InstallHooksCommand()
+        settings = {
+            "hooks": {
+                "Stop": [
+                    {
+                        "matcher": "Write",
+                        "hooks": [{"type": "command", "command": "echo write"}]
+                    }
+                ]
+            }
+        }
+        test_hooks = [
+            {
+                "matcher": "Read",
+                "hooks": [{"type": "command", "command": "echo read"}]
+            }
+        ]
+
+        result = cmd._merge_hook_entries(settings, "Stop", test_hooks)
+
+        assert result is True
+        assert len(settings["hooks"]["Stop"]) == 2
+
+    def test_default_notification_hooks_defined(self):
+        """DEFAULT_NOTIFICATION_HOOKSが定義されている"""
+        cmd = InstallHooksCommand()
+        assert hasattr(cmd, "DEFAULT_NOTIFICATION_HOOKS")
+        assert isinstance(cmd.DEFAULT_NOTIFICATION_HOOKS, list)
+
+    def test_default_stop_hooks_defined(self):
+        """DEFAULT_STOP_HOOKSが定義されている"""
+        cmd = InstallHooksCommand()
+        assert hasattr(cmd, "DEFAULT_STOP_HOOKS")
+        assert isinstance(cmd.DEFAULT_STOP_HOOKS, list)
+
+    def test_merge_hook_entries_prints_hook_type(self, capsys):
+        """マージ時にフックタイプが表示される"""
+        cmd = InstallHooksCommand()
+        settings = {}
+        test_hooks = [
+            {
+                "matcher": "",
+                "hooks": [{"type": "command", "command": "echo test"}]
+            }
+        ]
+
+        cmd._merge_hook_entries(settings, "Notification", test_hooks)
+        captured = capsys.readouterr()
+
+        assert "[Notification]" in captured.out
+        assert "追加" in captured.out
+
+    def test_merge_preserves_existing_hook_types(self):
+        """既存の他フックタイプが保持される"""
+        cmd = InstallHooksCommand()
+        settings = {
+            "hooks": {
+                "PreToolUse": [
+                    {"matcher": "", "hooks": [{"type": "command", "command": "pre"}]}
+                ]
+            }
+        }
+        test_hooks = [
+            {
+                "matcher": "",
+                "hooks": [{"type": "command", "command": "notify"}]
+            }
+        ]
+
+        cmd._merge_hook_entries(settings, "Notification", test_hooks)
+
+        assert "PreToolUse" in settings["hooks"]
+        assert "Notification" in settings["hooks"]
+        assert len(settings["hooks"]["PreToolUse"]) == 1
