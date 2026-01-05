@@ -96,13 +96,42 @@ discord:
 """
 
     # デフォルトのPreToolUseフック設定
+    # モジュール呼び出し形式（python3 -m）を使用
+    # パッケージインストール後は domain.hooks.* でアクセス可能
     DEFAULT_PRETOOLUSE_HOOKS = [
         {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "python3 .claude-nagger/hooks/session_startup_hook.py"
+                    "command": "python3 -m domain.hooks.session_startup_hook"
+                }
+            ]
+        },
+        {
+            "matcher": "mcp__.*__write.*",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "python3 -m domain.hooks.implementation_design_hook"
+                }
+            ]
+        },
+        {
+            "matcher": "mcp__.*replace.*",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "python3 -m domain.hooks.implementation_design_hook"
+                }
+            ]
+        },
+        {
+            "matcher": "mcp__.*insert.*",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "python3 -m domain.hooks.implementation_design_hook"
                 }
             ]
         }
@@ -256,21 +285,23 @@ discord:
 
         pretooluse = hooks["PreToolUse"]
 
-        # 既存のフックコマンドを収集
-        existing_commands = set()
+        # 既存の(matcher, command)ペアを収集
+        existing_entries = set()
         for hook_entry in pretooluse:
+            matcher = hook_entry.get("matcher", "")
             for hook in hook_entry.get("hooks", []):
                 if "command" in hook:
-                    existing_commands.add(hook["command"])
+                    existing_entries.add((matcher, hook["command"]))
 
-        # 新規フックを追加（重複回避）
+        # 新規フックを追加（matcher+commandの組み合わせで重複回避）
         added = False
         for new_entry in self.DEFAULT_PRETOOLUSE_HOOKS:
+            matcher = new_entry.get("matcher", "")
             for hook in new_entry.get("hooks", []):
                 cmd = hook.get("command", "")
-                if cmd and cmd not in existing_commands:
+                if cmd and (matcher, cmd) not in existing_entries:
                     pretooluse.append(new_entry)
-                    existing_commands.add(cmd)
+                    existing_entries.add((matcher, cmd))
                     added = True
                     print(f"  追加: {cmd}")
 
