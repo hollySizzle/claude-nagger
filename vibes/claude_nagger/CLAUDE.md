@@ -20,6 +20,11 @@ python3 -m pytest --cov=src --cov-report=term-missing
 
 # フィクスチャキャプチャ
 python3 scripts/capture_fixture.py --sanitize -n 10
+
+# リリース（PyPI自動公開）
+./scripts/release.sh <version>           # フル: バージョン更新→push→GitHubリリース
+./scripts/release.sh <version> --release-only  # GitHubリリースのみ
+# 要: .env に GH_TOKEN 設定
 ```
 
 ## ディレクトリ構成
