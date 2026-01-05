@@ -1,0 +1,13 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/-workspace-vibes-claude-nagger/00000000-0000-0000-0000-000000000000.jsonl",
+  "cwd": "/workspace/vibes/claude_nagger",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "mcp__redmine_epic_grid__get_project_structure_tool",
+  "tool_input": {
+    "max_depth": 4,
+    "include_closed": true
+  },
+  "tool_use_id": "toolu_01K43Rhf7tZGepJv9xuiwPJz"
+}

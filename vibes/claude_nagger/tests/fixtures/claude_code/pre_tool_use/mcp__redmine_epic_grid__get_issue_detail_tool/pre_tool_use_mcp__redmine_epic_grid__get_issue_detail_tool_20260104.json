@@ -1,0 +1,12 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/-workspace-vibes-claude-nagger/00000000-0000-0000-0000-000000000000.jsonl",
+  "cwd": "/workspace/vibes/claude_nagger",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "mcp__redmine_epic_grid__get_issue_detail_tool",
+  "tool_input": {
+    "issue_id": "3849"
+  },
+  "tool_use_id": "toolu_015eviL1HNbi7toCq7mvDg24"
+}
