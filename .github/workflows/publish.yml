@@ -10,6 +10,9 @@ jobs:
     environment: pypi
     permissions:
       id-token: write
+    defaults:
+      run:
+        working-directory: vibes/claude_nagger
     steps:
       - uses: actions/checkout@v4
 
@@ -26,3 +29,5 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: vibes/claude_nagger/dist/
