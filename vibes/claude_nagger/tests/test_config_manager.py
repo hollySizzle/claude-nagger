@@ -535,10 +535,497 @@ class TestEmptyYAMLHandling:
         """空のdict {}の場合の処理"""
         empty_dict_yaml = temp_dir / "empty_dict.yaml"
         empty_dict_yaml.write_text("{}", encoding="utf-8")
-        
+
         manager = ConfigManager(config_path=empty_dict_yaml)
-        
+
         # 空のdictなのでデフォルト設定にフォールバック
         # または空dictとして読み込まれる（実装依存）
         # この場合、キーアクセス時にKeyErrorを避けるためデフォルトにフォールバックすべき
         assert manager.config["system"]["version"] == "1.0.0"
+
+
+class TestResolvePath:
+    """resolve_pathメソッドのテスト"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def valid_config(self):
+        """有効な設定データ"""
+        return {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "../../",
+                "doc_root": "../docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            }
+        }
+
+    def test_resolve_absolute_path(self, temp_dir, valid_config):
+        """絶対パスはそのまま返される"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        result = manager.resolve_path("/absolute/path/to/file")
+        assert result == Path("/absolute/path/to/file")
+
+    def test_resolve_relative_path(self, temp_dir, valid_config):
+        """相対パスはbase_dirからの相対として解決"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        result = manager.resolve_path("./relative/path")
+        # base_dir / "./relative/path" が解決される
+        assert result.is_absolute()
+
+
+class TestGetPathMethods:
+    """パス取得メソッドのテスト"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def valid_config(self):
+        """有効な設定データ"""
+        return {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "../../",
+                "doc_root": "../docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {
+                    "rules": "../docs/rules",
+                    "specs": "../docs/specs"
+                }
+            }
+        }
+
+    def test_get_rails_root(self, temp_dir, valid_config):
+        """Railsルート取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_rails_root()
+
+        assert result.is_absolute()
+
+    def test_get_doc_root(self, temp_dir, valid_config):
+        """ドキュメントルート取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_doc_root()
+
+        assert result.is_absolute()
+
+    def test_get_scripts_root(self, temp_dir, valid_config):
+        """スクリプトルート取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_scripts_root()
+
+        assert result.is_absolute()
+
+    def test_get_templates_dir(self, temp_dir, valid_config):
+        """テンプレートディレクトリ取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_templates_dir()
+
+        assert result.is_absolute()
+
+    def test_get_output_dir(self, temp_dir, valid_config):
+        """出力ディレクトリ取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_output_dir()
+
+        assert result.is_absolute()
+
+    def test_get_target_dir_valid_category(self, temp_dir, valid_config):
+        """有効なカテゴリのターゲットディレクトリ取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_target_dir("rules")
+
+        assert result is not None
+        assert result.is_absolute()
+
+    def test_get_target_dir_invalid_category(self, temp_dir, valid_config):
+        """無効なカテゴリはNoneを返す"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_target_dir("nonexistent")
+
+        assert result is None
+
+    def test_get_all_target_dirs(self, temp_dir, valid_config):
+        """全ターゲットディレクトリ取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_all_target_dirs()
+
+        assert "rules" in result
+        assert "specs" in result
+        assert result["rules"].is_absolute()
+
+
+class TestGetSettings:
+    """設定取得メソッドのテスト"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def full_config(self):
+        """完全な設定データ"""
+        return {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            },
+            "hooks": {
+                "enabled": True,
+                "timeout": 30
+            },
+            "convention_hooks": {
+                "enabled": True,
+                "context_management": {
+                    "thresholds": {
+                        "light_warning": 25000,
+                        "medium_warning": 50000
+                    },
+                    "marker_management": {
+                        "enabled": True,
+                        "cleanup_on_exit": True
+                    }
+                },
+                "display_levels": {
+                    "verbose": {
+                        "show_details": True
+                    }
+                }
+            }
+        }
+
+    def test_get_hook_settings(self, temp_dir, full_config):
+        """フック設定取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(full_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_hook_settings()
+
+        assert result["enabled"] is True
+        assert result["timeout"] == 30
+
+    def test_get_convention_hook_settings(self, temp_dir, full_config):
+        """規約Hook設定取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(full_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_convention_hook_settings()
+
+        assert result["enabled"] is True
+
+    def test_get_context_thresholds(self, temp_dir, full_config):
+        """コンテキスト閾値設定取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(full_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_context_thresholds()
+
+        assert result["light_warning"] == 25000
+        assert result["medium_warning"] == 50000
+
+    def test_get_context_thresholds_default(self, temp_dir):
+        """コンテキスト閾値のデフォルト値"""
+        # 最小限の設定
+        minimal_config = {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            }
+        }
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(minimal_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_context_thresholds()
+
+        # デフォルト値が返される
+        assert "light_warning" in result
+        assert result["light_warning"] == 30000
+
+    def test_get_marker_settings(self, temp_dir, full_config):
+        """マーカー設定取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(full_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_marker_settings()
+
+        assert result["enabled"] is True
+        assert result["cleanup_on_exit"] is True
+
+    def test_get_display_level_config(self, temp_dir, full_config):
+        """表示レベル設定取得"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(full_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_display_level_config("verbose")
+
+        assert result["show_details"] is True
+
+
+class TestResolveValue:
+    """_resolve_valueメソッドのテスト（環境変数展開）"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def valid_config(self):
+        """有効な設定データ"""
+        return {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            },
+            "notifications": {
+                "discord": {
+                    "webhook_url": "${DISCORD_WEBHOOK_URL}",
+                    "thread_id": "${DISCORD_THREAD_ID}"
+                }
+            }
+        }
+
+    def test_resolve_env_variable(self, temp_dir, valid_config):
+        """環境変数が解決される"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        # 環境変数を設定
+        with patch.dict(os.environ, {"TEST_VAR": "test_value"}):
+            result = manager._resolve_value("${TEST_VAR}")
+            assert result == "test_value"
+
+    def test_resolve_missing_env_variable(self, temp_dir, valid_config):
+        """存在しない環境変数は空文字列になる"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        result = manager._resolve_value("${NONEXISTENT_VAR}")
+        assert result == ""
+
+    def test_resolve_dict_recursively(self, temp_dir, valid_config):
+        """辞書内の値が再帰的に解決される"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        with patch.dict(os.environ, {"MY_KEY": "my_value"}):
+            result = manager._resolve_value({"key": "${MY_KEY}"})
+            assert result["key"] == "my_value"
+
+    def test_resolve_list_recursively(self, temp_dir, valid_config):
+        """リスト内の値が再帰的に解決される"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        with patch.dict(os.environ, {"ITEM1": "value1", "ITEM2": "value2"}):
+            result = manager._resolve_value(["${ITEM1}", "${ITEM2}"])
+            assert result == ["value1", "value2"]
+
+    def test_resolve_plain_value_unchanged(self, temp_dir, valid_config):
+        """プレーンな値はそのまま返される"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        result = manager._resolve_value("plain_value")
+        assert result == "plain_value"
+
+    def test_get_notification_settings(self, temp_dir, valid_config):
+        """通知設定取得（環境変数展開済み）"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        with patch.dict(os.environ, {
+            "DISCORD_WEBHOOK_URL": "https://webhook.url",
+            "DISCORD_THREAD_ID": "12345"
+        }):
+            result = manager.get_notification_settings()
+            assert result["discord"]["webhook_url"] == "https://webhook.url"
+            assert result["discord"]["thread_id"] == "12345"
+
+
+class TestLoadSecrets:
+    """_load_secretsメソッドのテスト"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def valid_config(self):
+        """有効な設定データ"""
+        return {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            }
+        }
+
+    def test_load_secrets_nonexistent(self, temp_dir, valid_config):
+        """secrets.json5が存在しない場合は空辞書を返す"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        # secrets_pathを存在しないパスに設定
+        manager.secrets_path = temp_dir / "nonexistent_secrets.json5"
+        result = manager._load_secrets()
+
+        assert result == {}
+
+
+class TestGetClaudeDir:
+    """get_claude_dirメソッドのテスト"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_get_claude_dir_configured(self, temp_dir):
+        """claude_dirが設定されている場合"""
+        config_with_claude_dir = {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./",
+                "claude_dir": "/path/to/.claude"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            }
+        }
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(config_with_claude_dir), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_claude_dir()
+
+        assert result == Path("/path/to/.claude")
+
+    def test_get_claude_dir_not_configured(self, temp_dir):
+        """claude_dirが設定されていない場合はValueError"""
+        config_without_claude_dir = {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            }
+        }
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(config_without_claude_dir), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+
+        with pytest.raises(ValueError, match="claude_dirが設定されていません"):
+            manager.get_claude_dir()
