@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
-    {name = "Vibes Team"}
+    {name = "HollySizzle"}
 ]
 keywords = ["claude", "claude-code", "hooks", "conventions"]
 classifiers = [
@@ -46,8 +46,8 @@ dev = [
 claude-nagger = "application.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/hollySizzle/claude-code-vibes/tree/main/claude_nagger"
-Repository = "https://github.com/hollySizzle/claude-code-vibes"
+Homepage = "https://github.com/HollySizzle/claude-nagger"
+Repository = "https://github.com/HollySizzle/claude-nagger"
 
 [tool.setuptools.packages.find]
 where = ["src"]
