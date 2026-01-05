@@ -32,19 +32,16 @@ CLAUDE.mdでは実現できない「PreToolUseフックによる条件付き規�
 ### 1. インストール
 
 ```bash
-# uvx（推奨・インストール不要で実行）
-uvx claude-nagger install-hooks
+# uv tool（推奨）
+uv tool install claude-nagger
+claude-nagger install-hooks
 
 # または pip
 pip install claude-nagger
 claude-nagger install-hooks
-
-# ソースから直接インストール（開発用）
-git clone https://github.com/HollySizzle/claude-nagger.git
-cd claude-nagger
-./scripts/install-dev.sh  # インストール＆フック設定
-uv tool update-shell      # PATHに追加（初回のみ、シェル再起動要）
 ```
+
+> **注意**: `uvx claude-nagger install-hooks`は非推奨。uvxは一時実行のためフックが動作しません。
 
 ### 2. 動作確認
 
@@ -288,6 +285,16 @@ claude-nagger diagnose
 |-----------|-----------------|-----------|--------|
 | 全規約をCLAUDE.mdに記載 | 高 (常時) | 低 (忘却) | 低 |
 | claude-nagger | 低 (必要時のみ) | 高 | 高 |
+
+---
+
+## 開発者向け
+
+```bash
+git clone https://github.com/HollySizzle/claude-nagger.git
+cd claude-nagger
+./scripts/install-dev.sh  # インストール＆フック設定
+```
 
 ---
 
