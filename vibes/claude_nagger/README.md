@@ -38,6 +38,13 @@ uvx claude-nagger install-hooks
 # または pip
 pip install claude-nagger
 claude-nagger install-hooks
+
+# ソースから直接インストール（開発用）
+git clone https://github.com/HollySizzle/claude-nagger.git
+cd claude-nagger
+uv tool install -e .
+uv tool update-shell  # PATHに追加（初回のみ、シェル再起動要）
+claude-nagger install-hooks
 ```
 
 ### 2. 動作確認
