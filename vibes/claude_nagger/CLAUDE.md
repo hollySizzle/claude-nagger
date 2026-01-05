@@ -5,11 +5,15 @@
 ## コマンド
 
 ```bash
-# テスト
-pytest tests/ -v
+# テスト実行
+python3 -m pytest tests/ -v
+
+# 特定テスト
+python3 -m pytest tests/test_xxx.py -v          # ファイル指定
+python3 -m pytest tests/ -k "keyword" -v        # キーワード指定
 
 # カバレッジ
-pytest --cov=src --cov-report=term-missing
+python3 -m pytest --cov=src --cov-report=term-missing
 
 # ローカルテスト環境
 ./scripts/setup_test_env.sh --help
