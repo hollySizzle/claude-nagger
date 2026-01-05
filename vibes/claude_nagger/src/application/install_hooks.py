@@ -137,6 +137,14 @@ discord:
         }
     ]
 
+    # デフォルトのNotificationフック設定
+    # 通知発生時（複数API呼び出し間等）に実行される
+    DEFAULT_NOTIFICATION_HOOKS: list = []
+
+    # デフォルトのStopフック設定
+    # タスク完了・停止時に実行される
+    DEFAULT_STOP_HOOKS: list = []
+
     def __init__(self, force: bool = False, dry_run: bool = False):
         """
         Args:
@@ -226,7 +234,7 @@ discord:
             print(f"  {action}: {path.name}")
 
     def _update_settings_json(self):
-        """`.claude/settings.json` にPreToolUseフック設定を追加"""
+        """`.claude/settings.json` にフック設定を追加"""
         claude_dir = self.project_root / ".claude"
         settings_path = claude_dir / "settings.json"
 
@@ -243,10 +251,20 @@ discord:
         # 既存設定の読み込み
         settings = self._load_settings(settings_path)
 
-        # PreToolUseフック設定のマージ
-        updated = self._merge_pretooluse_hooks(settings)
+        # 各フック設定のマージ
+        hook_configs = [
+            ("PreToolUse", self.DEFAULT_PRETOOLUSE_HOOKS),
+            ("Notification", self.DEFAULT_NOTIFICATION_HOOKS),
+            ("Stop", self.DEFAULT_STOP_HOOKS),
+        ]
 
-        if not updated:
+        any_updated = False
+        for hook_type, default_hooks in hook_configs:
+            if default_hooks:  # 空リストはスキップ
+                updated = self._merge_hook_entries(settings, hook_type, default_hooks)
+                any_updated = any_updated or updated
+
+        if not any_updated:
             print("  フック設定は既に存在します（変更なし）")
             return
 
@@ -270,7 +288,25 @@ discord:
             return {}
 
     def _merge_pretooluse_hooks(self, settings: dict[str, Any]) -> bool:
-        """PreToolUseフックをマージ（スマートマージ）
+        """PreToolUseフックをマージ（後方互換性のためのラッパー）
+
+        Returns:
+            bool: 変更があった場合True
+        """
+        return self._merge_hook_entries(settings, "PreToolUse", self.DEFAULT_PRETOOLUSE_HOOKS)
+
+    def _merge_hook_entries(
+        self,
+        settings: dict[str, Any],
+        hook_type: str,
+        default_hooks: list[dict[str, Any]]
+    ) -> bool:
+        """指定タイプのフックをマージ（汎用）
+
+        Args:
+            settings: 設定dict
+            hook_type: フックタイプ (PreToolUse/Notification/Stop)
+            default_hooks: 追加するデフォルトフック
 
         Returns:
             bool: 変更があった場合True
@@ -280,14 +316,14 @@ discord:
 
         hooks = settings["hooks"]
 
-        if "PreToolUse" not in hooks:
-            hooks["PreToolUse"] = []
+        if hook_type not in hooks:
+            hooks[hook_type] = []
 
-        pretooluse = hooks["PreToolUse"]
+        hook_list = hooks[hook_type]
 
         # 既存の(matcher, command)ペアを収集
         existing_entries = set()
-        for hook_entry in pretooluse:
+        for hook_entry in hook_list:
             matcher = hook_entry.get("matcher", "")
             for hook in hook_entry.get("hooks", []):
                 if "command" in hook:
@@ -295,17 +331,17 @@ discord:
 
         # 新規フックを追加（matcher+commandの組み合わせで重複回避）
         added = False
-        for new_entry in self.DEFAULT_PRETOOLUSE_HOOKS:
+        for new_entry in default_hooks:
             matcher = new_entry.get("matcher", "")
             for hook in new_entry.get("hooks", []):
                 cmd = hook.get("command", "")
                 if cmd and (matcher, cmd) not in existing_entries:
-                    pretooluse.append(new_entry)
+                    hook_list.append(new_entry)
                     existing_entries.add((matcher, cmd))
                     added = True
-                    print(f"  追加: {cmd}")
+                    print(f"  追加 [{hook_type}]: {cmd}")
                 elif cmd:
-                    print(f"  スキップ（既存）: {cmd}")
+                    print(f"  スキップ（既存）[{hook_type}]: {cmd}")
 
         return added
 
