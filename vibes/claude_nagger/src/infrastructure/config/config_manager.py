@@ -41,9 +41,38 @@ class ConfigManager:
             config_path = self._find_config_file()
         
         self.config_path = config_path
-        self.secrets_path = self.base_dir / "secrets.json5"
+        self.secrets_path = self._find_secrets_file()
         self._config: Optional[Dict[str, Any]] = None
         self._secrets: Optional[Dict[str, Any]] = None
+
+    def _find_secrets_file(self) -> Path:
+        """secretsファイルを探索
+        
+        探索順序（優先度高い順）:
+        1. .claude-nagger/vault/secrets.yaml
+        2. .claude-nagger/vault/secrets.yml
+        3. secrets.json5（後方互換）
+        
+        Returns:
+            見つかった機密ファイルパス（見つからない場合はデフォルト）
+        """
+        # 探索対象の拡張子（優先度順）
+        extensions = ['.yaml', '.yml']
+        
+        # プロジェクト固有設定を優先（.claude-nagger/vault/）
+        project_vault_dir = Path.cwd() / ".claude-nagger" / "vault"
+        for ext in extensions:
+            secrets_file = project_vault_dir / f"secrets{ext}"
+            if secrets_file.exists():
+                return secrets_file
+        
+        # 後方互換: secrets.json5
+        legacy_secrets = self.base_dir / "secrets.json5"
+        if legacy_secrets.exists():
+            return legacy_secrets
+        
+        # デフォルトは新しいパス
+        return project_vault_dir / "secrets.yaml"
 
     def _find_config_file(self) -> Path:
         """設定ファイルを探索
@@ -238,13 +267,26 @@ class ConfigManager:
         return self.config.get("convention_hooks", {}).get("display_levels", {}).get(level, {})
 
     def _load_secrets(self) -> Dict[str, Any]:
-        """機密情報ファイル（secrets.json5）を読み込み"""
+        """機密情報ファイルを読み込み
+        
+        対応形式: YAML (.yaml, .yml), JSON5 (.json5), JSON (.json)
+        """
         if self.secrets_path.exists():
             try:
                 with open(self.secrets_path, 'r', encoding='utf-8') as f:
                     content = f.read()
-                    if self.secrets_path.suffix == '.json5' and json5:
+                    suffix = self.secrets_path.suffix.lower()
+                    
+                    # YAML形式
+                    if suffix in ('.yaml', '.yml'):
+                        if yaml:
+                            return yaml.safe_load(content) or {}
+                        else:
+                            raise ImportError("PyYAMLがインストールされていません")
+                    # JSON5形式
+                    elif suffix == '.json5' and json5:
                         return json5.loads(content)
+                    # JSON形式（フォールバック）
                     else:
                         return json.loads(content)
             except Exception:
