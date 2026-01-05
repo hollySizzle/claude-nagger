@@ -1,0 +1,38 @@
+# CLAUDE.md
+
+詳細は README.md 参照
+
+## コマンド
+
+```bash
+# テスト
+pytest tests/ -v
+
+# カバレッジ
+pytest --cov=src --cov-report=term-missing
+
+# ローカルテスト環境
+./scripts/setup_test_env.sh --help
+
+# フィクスチャキャプチャ
+python3 scripts/capture_fixture.py --sanitize -n 10
+```
+
+## ディレクトリ構成
+
+```
+src/
+  application/   # CLI・エントリーポイント
+  domain/        # フック・マッチャー
+  infrastructure/ # 外部連携
+  shared/        # 共通ユーティリティ
+tests/           # pytest
+scripts/         # 開発用スクリプト
+.claude-nagger/  # 設定ファイル雛形
+```
+
+## 規約
+
+- テスト必須: 新機能は必ずテスト実装
+- Redmine追跡: 作業前にチケット起票
+- コミット: issue_{id} を含める
