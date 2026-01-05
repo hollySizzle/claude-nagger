@@ -3,6 +3,7 @@ __pycache__/
 
 # 機密情報を含む設定ファイル
 secrets.json5
+.env
 
 # ログ
 *.log
