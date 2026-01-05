@@ -292,7 +292,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": 'python3 "$CLAUDE_PROJECT_DIR"/src/domain/hooks/session_startup_hook.py'
+                                "command": "python3 -m domain.hooks.session_startup_hook"
                             }
                         ]
                     },
@@ -301,7 +301,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": 'python3 "$CLAUDE_PROJECT_DIR"/src/domain/hooks/implementation_design_hook.py'
+                                "command": "python3 -m domain.hooks.implementation_design_hook"
                             }
                         ]
                     },
@@ -310,7 +310,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": 'python3 "$CLAUDE_PROJECT_DIR"/src/domain/hooks/implementation_design_hook.py'
+                                "command": "python3 -m domain.hooks.implementation_design_hook"
                             }
                         ]
                     },
@@ -319,7 +319,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": 'python3 "$CLAUDE_PROJECT_DIR"/src/domain/hooks/implementation_design_hook.py'
+                                "command": "python3 -m domain.hooks.implementation_design_hook"
                             }
                         ]
                     }
@@ -332,6 +332,22 @@ class TestMergePreToolUseHooks:
         # 重複があるため追加されない
         assert result is False
         assert len(settings["hooks"]["PreToolUse"]) == 4
+
+    def test_hook_commands_use_module_format(self):
+        """フック呼び出しがモジュール形式(python3 -m)を使用していることを検証 (issue_3998)"""
+        cmd = InstallHooksCommand()
+
+        for hook_entry in cmd.DEFAULT_PRETOOLUSE_HOOKS:
+            for hook in hook_entry.get("hooks", []):
+                command = hook.get("command", "")
+                # python3 -m 形式であること
+                assert command.startswith("python3 -m "), \
+                    f"コマンドはモジュール形式であるべき: {command}"
+                # ファイルパス形式でないこと
+                assert ".py" not in command, \
+                    f"コマンドに.pyが含まれるべきでない: {command}"
+                assert "$CLAUDE_PROJECT_DIR" not in command, \
+                    f"コマンドに$CLAUDE_PROJECT_DIRが含まれるべきでない: {command}"
 
 
 class TestDryRunMode:
