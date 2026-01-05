@@ -1,0 +1,13 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/-workspace-vibes-claude-nagger/00000000-0000-0000-0000-000000000000.jsonl",
+  "cwd": "/workspace/vibes/claude_nagger",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "mcp__redmine_epic_grid__add_issue_comment_tool",
+  "tool_input": {
+    "issue_id": "3958",
+    "comment": "## 実装完了 (commit: bd37aa7)\n\n### 成果物\n- `scripts/setup_test_env.sh` - テスト環境構築スクリプト\n- `tests/fixtures/claude_code/` - キャプチャ済みフィクスチャ21件\n\n### 使い方\n```bash\n./scripts/setup_test_env.sh          # テスト環境構築\n./scripts/setup_test_env.sh --run    # install-hooks実行\n./scripts/setup_test_env.sh --capture # フィクスチャキャプチャ\n./scripts/setup_test_env.sh --test   # スキーマ検証テスト\n./scripts/setup_test_env.sh --all    # 全て実行\n./scripts/setup_test_env.sh --clean  # クリーンアップ\n```\n\n### テスト結果\n- スキーマ検証テスト: 13件パス"
+  },
+  "tool_use_id": "toolu_01VEVxbVjAVXPmVipxoSQArL"
+}

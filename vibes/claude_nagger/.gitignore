@@ -13,4 +13,5 @@ log/
 build/
 dist/
 *.egg-info/
+.coverage.claude/settings.local.json
 .coverage
