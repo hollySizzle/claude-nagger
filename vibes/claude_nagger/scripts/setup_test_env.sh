@@ -1,11 +1,42 @@
 #!/bin/bash
 # claude-nagger ローカルテスト環境セットアップ
 #
-# 使い方:
+# ============================================================================
+# 目的
+# ============================================================================
+# このスクリプトは以下をテストします:
+#   ✅ install-hooks コマンドのファイル生成が正しいか
+#   ✅ 生成される settings.json の構造が正しいか
+#   ✅ 生成される .claude-nagger/ 設定ファイルが正しいか
+#
+# このスクリプトではテストできないこと:
+#   ❌ フックが実際に発火するか（別セッションでのE2Eテストが必要）
+#   ❌ フック発火時のメッセージ表示が正しいか
+#
+# ============================================================================
+# E2Eテスト手順（フック発火の確認）
+# ============================================================================
+# 1. このスクリプトでテスト環境を作成:
+#      ./scripts/setup_test_env.sh --run
+#
+# 2. 別ターミナルでテスト環境に移動し、Claude Codeを起動:
+#      cd /tmp/claude-nagger-test
+#      claude
+#
+# 3. Claude Codeで何かファイル編集操作をしてフック発火を確認
+#
+# 4. フィクスチャをキャプチャ（元のターミナルで）:
+#      ./scripts/setup_test_env.sh --capture
+#
+# ============================================================================
+# 使い方
+# ============================================================================
 #   ./scripts/setup_test_env.sh          # テスト環境構築
-#   ./scripts/setup_test_env.sh --run    # セットアップ後にinstall-hooks実行
-#   ./scripts/setup_test_env.sh --clean  # クリーンアップ
+#   ./scripts/setup_test_env.sh --run    # install-hooks実行・結果確認
 #   ./scripts/setup_test_env.sh --capture # フィクスチャキャプチャ
+#   ./scripts/setup_test_env.sh --test   # スキーマ検証テスト
+#   ./scripts/setup_test_env.sh --clean  # クリーンアップ
+#   ./scripts/setup_test_env.sh --e2e    # E2Eテスト手順を表示
 
 set -e
 
@@ -139,6 +170,39 @@ run_tests() {
     log_success "テスト完了"
 }
 
+# E2Eテスト手順表示
+show_e2e_guide() {
+    echo ""
+    echo "=============================================="
+    echo "  E2Eテスト手順（フック発火の確認）"
+    echo "=============================================="
+    echo ""
+    echo "【このスクリプトでテストできること】"
+    echo "  ✅ install-hooks のファイル生成"
+    echo "  ✅ settings.json の構造"
+    echo ""
+    echo "【E2Eテストが必要なこと】"
+    echo "  ❌ フックが実際に発火するか"
+    echo "  ❌ フック発火時のメッセージ表示"
+    echo ""
+    echo "【手順】"
+    echo ""
+    echo "  1. テスト環境を作成（このターミナル）:"
+    echo "     ./scripts/setup_test_env.sh --run"
+    echo ""
+    echo "  2. 別ターミナルでClaude Codeを起動:"
+    echo "     cd /tmp/claude-nagger-test"
+    echo "     claude"
+    echo ""
+    echo "  3. Claude Codeでファイル編集操作を実行"
+    echo "     → フックが発火してメッセージが表示されるか確認"
+    echo ""
+    echo "  4. フィクスチャをキャプチャ（このターミナル）:"
+    echo "     ./scripts/setup_test_env.sh --capture"
+    echo ""
+    echo "=============================================="
+}
+
 # メイン処理
 case "${1:-}" in
     --clean)
@@ -156,23 +220,39 @@ case "${1:-}" in
     --test)
         run_tests
         ;;
+    --e2e)
+        show_e2e_guide
+        ;;
     --all)
         cleanup
         setup
         run_install
+        # Note: capture/test は現在のセッションのフィクスチャを対象とする
+        # E2Eテストは別セッションで手動実行が必要
         capture
         run_tests
         ;;
     --help|-h)
         echo "claude-nagger ローカルテスト環境"
         echo ""
-        echo "使い方:"
+        echo "=============================================="
+        echo "  テスト範囲"
+        echo "=============================================="
+        echo "  ✅ install-hooks ファイル生成テスト"
+        echo "  ❌ フック発火テスト（別セッションで手動確認）"
+        echo ""
+        echo "=============================================="
+        echo "  コマンド"
+        echo "=============================================="
         echo "  $0              テスト環境セットアップ"
-        echo "  $0 --run        install-hooks実行"
+        echo "  $0 --run        install-hooks実行・結果確認"
         echo "  $0 --capture    フィクスチャキャプチャ"
         echo "  $0 --test       スキーマ検証テスト実行"
         echo "  $0 --clean      クリーンアップ"
-        echo "  $0 --all        全て実行"
+        echo "  $0 --e2e        E2Eテスト手順を表示"
+        echo "  $0 --all        自動テスト全実行"
+        echo ""
+        echo "E2Eテスト手順は --e2e で確認してください"
         ;;
     *)
         setup
