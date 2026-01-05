@@ -42,9 +42,8 @@ claude-nagger install-hooks
 # ソースから直接インストール（開発用）
 git clone https://github.com/HollySizzle/claude-nagger.git
 cd claude-nagger
-uv tool install -e .
-uv tool update-shell  # PATHに追加（初回のみ、シェル再起動要）
-claude-nagger install-hooks
+./scripts/install-dev.sh  # インストール＆フック設定
+uv tool update-shell      # PATHに追加（初回のみ、シェル再起動要）
 ```
 
 ### 2. 動作確認
