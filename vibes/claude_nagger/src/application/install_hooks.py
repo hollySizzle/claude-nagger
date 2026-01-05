@@ -304,6 +304,8 @@ discord:
                     existing_entries.add((matcher, cmd))
                     added = True
                     print(f"  追加: {cmd}")
+                elif cmd:
+                    print(f"  スキップ（既存）: {cmd}")
 
         return added
 
