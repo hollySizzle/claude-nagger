@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/src/domain/hooks/session_startup_hook.py"
+            "command": "python3 -m domain.hooks.session_startup_hook"
           }
         ]
       },
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/src/domain/hooks/implementation_design_hook.py"
+            "command": "python3 -m domain.hooks.implementation_design_hook"
           }
         ]
       },
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/src/domain/hooks/implementation_design_hook.py"
+            "command": "python3 -m domain.hooks.implementation_design_hook"
           }
         ]
       },
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/src/domain/hooks/implementation_design_hook.py"
+            "command": "python3 -m domain.hooks.implementation_design_hook"
           }
         ]
       }
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/src/infrastructure/notifiers/discord_notifier.py \"📢 Claude Code から通知があります\""
+            "command": "python3 -m infrastructure.notifiers.discord_notifier \"📢 Claude Code から通知があります\""
           }
         ]
       }
@@ -59,7 +59,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/src/infrastructure/notifiers/discord_notifier.py \"🛑 Claude Code セッションが停止されました\""
+            "command": "python3 -m infrastructure.notifiers.discord_notifier \"🛑 Claude Code セッションが停止されました\""
           }
         ]
       }
