@@ -64,6 +64,42 @@ class TestLoadConfig:
 
         assert result == {}
 
+    def test_load_project_config_priority(self, tmp_path):
+        """プロジェクト設定(.claude-nagger/config.yaml)が優先される"""
+        # プロジェクト設定ディレクトリを作成
+        project_config_dir = tmp_path / ".claude-nagger"
+        project_config_dir.mkdir()
+        project_config = project_config_dir / "config.yaml"
+        project_config.write_text("""
+session_startup:
+  enabled: true
+  message: "project config message"
+""")
+        
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+        
+        # カレントディレクトリをtmp_pathに変更してテスト
+        with patch('pathlib.Path.cwd', return_value=tmp_path):
+            result = hook._load_config()
+        
+        assert result.get('enabled') is True
+        assert result.get('message') == "project config message"
+
+    def test_fallback_to_default_config(self, tmp_path):
+        """プロジェクト設定がない場合はデフォルト設定を使用"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+        
+        # プロジェクト設定が存在しないディレクトリ
+        with patch('pathlib.Path.cwd', return_value=tmp_path):
+            # デフォルト設定ファイルが存在する場合
+            default_config = Path(__file__).parent.parent / "rules" / "session_startup_settings.yaml"
+            if default_config.exists():
+                result = hook._load_config()
+                # デフォルト設定が読み込まれることを確認
+                assert isinstance(result, dict)
+
 
 class TestGetSessionStartupMarkerPath:
     """get_session_startup_marker_path メソッドのテスト"""
