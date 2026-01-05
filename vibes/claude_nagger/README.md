@@ -269,6 +269,9 @@ claude-nagger install-hooks --force
 
 # バージョン表示
 claude-nagger --version
+
+# 環境診断（トラブルシュート用）
+claude-nagger diagnose
 ```
 
 ---

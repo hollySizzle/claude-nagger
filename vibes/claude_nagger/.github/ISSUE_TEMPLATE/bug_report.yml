@@ -1,0 +1,114 @@
+name: Bug Report / 不具合報告
+description: Report a bug or unexpected behavior / バグや予期しない動作を報告
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 報告前チェック
+        - [ ] 最新版を使用していますか？ (`pip install --upgrade claude-nagger`)
+        - [ ] 既存のissueを検索しましたか？
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 問題の説明 / Description
+      description: 何が起きているか簡潔に説明してください
+      placeholder: |
+        例: フックが実行されず、規約メッセージが表示されない
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順 / Steps to Reproduce
+      description: 問題を再現する手順を記載してください
+      placeholder: |
+        1. `claude-nagger install-hooks` を実行
+        2. Claude Codeで `Edit` ツールを使用
+        3. 規約メッセージが表示されない
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する動作 / Expected Behavior
+      description: 本来どう動作すべきか
+      placeholder: |
+        例: file_conventions.yaml で定義した規約メッセージが表示される
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の動作 / Actual Behavior
+      description: 実際にどう動作したか
+      placeholder: |
+        例: 何も表示されずツールが実行された
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境情報 / Environment
+      description: |
+        `claude-nagger diagnose` の出力を貼り付けてください。
+        コマンドがない場合は手動で記入してください。
+      placeholder: |
+        OS: macOS 14.2 / Ubuntu 22.04 / Windows 11
+        Python: 3.11.5
+        claude-nagger: 1.0.0
+        Claude Code: x.x.x
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: 設定ファイル / Configuration
+      description: |
+        問題に関連する設定ファイルの内容（機密情報は除去してください）
+      placeholder: |
+        # .claude-nagger/config.yaml
+        session_startup:
+          enabled: true
+        ...
+      render: yaml
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: ログ / Logs
+      description: |
+        `/tmp/claude/` 内のフック実行ログがあれば添付してください
+      render: text
+
+  - type: textarea
+    id: settings
+    attributes:
+      label: settings.json
+      description: |
+        `.claude/settings.json` の hooks 部分を貼り付けてください
+      placeholder: |
+        {
+          "hooks": {
+            "PreToolUse": [...]
+          }
+        }
+      render: json
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: 確認事項
+      options:
+        - label: この問題は最新版でも発生します
+          required: false
+        - label: 診断スクリプトを実行しました（ある場合）
+          required: false

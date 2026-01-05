@@ -1,0 +1,44 @@
+name: Feature Request / 機能リクエスト
+description: Suggest a new feature or enhancement / 新機能や改善を提案
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 機能リクエストについて
+        新しい機能や改善提案をお待ちしています。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい課題 / Problem Statement
+      description: どのような課題を解決したいですか？
+      placeholder: |
+        例: 複数プロジェクトで同じ規約を共有したいが、毎回コピーする必要がある
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: 提案する解決策 / Proposed Solution
+      description: どのような機能があれば解決できますか？
+      placeholder: |
+        例: グローバル設定ファイル (~/.claude-nagger/global_rules.yaml) を読み込む機能
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 代替案 / Alternatives Considered
+      description: 他に検討した方法があれば記載してください
+      placeholder: |
+        例: シンボリックリンクで共有することも考えたが、管理が煩雑
+
+  - type: textarea
+    id: context
+    attributes:
+      label: 追加情報 / Additional Context
+      description: 参考になる情報（スクリーンショット、関連issue等）
