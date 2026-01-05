@@ -1,0 +1,13 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/-workspace-vibes-claude-nagger/00000000-0000-0000-0000-000000000000.jsonl",
+  "cwd": "/workspace/vibes/claude_nagger",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "ls -la /tmp/claude/ 2>/dev/null || echo \"/tmp/claude/ が存在しない\"",
+    "description": "Check if /tmp/claude exists"
+  },
+  "tool_use_id": "toolu_01CziZ44pYEkW9B3NvEHiPdj"
+}
