@@ -156,3 +156,94 @@ class TestFileConventionMatcher:
         matcher = FileConventionMatcher(Path('/nonexistent/file.yaml'))
         assert len(matcher.rules) == 0
         assert matcher.check_file('any/file.txt') is None
+
+
+class TestGlobstarPatterns:
+    """GLOBSTARパターン(**/)の詳細テスト"""
+
+    @pytest.fixture
+    def matcher(self):
+        """テスト用マッチャーを作成"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump({'rules': []}, f)
+            temp_path = Path(f.name)
+        m = FileConventionMatcher(temp_path)
+        temp_path.unlink()
+        return m
+
+    def test_double_globstar_directory_all_files(self, matcher):
+        """**/test/** - どこにあるtest/でもその中の全ファイル"""
+        pattern = ["**/test/**"]
+        # test直下
+        assert matcher.matches_pattern('test/file.py', pattern)
+        # testサブディレクトリ
+        assert matcher.matches_pattern('test/subdir/file.py', pattern)
+        assert matcher.matches_pattern('test/subdir/deep/file.py', pattern)
+        # src/test以下
+        assert matcher.matches_pattern('src/test/file.py', pattern)
+        assert matcher.matches_pattern('src/test/utils/helper.py', pattern)
+        # マッチしないケース
+        assert not matcher.matches_pattern('tests/file.py', pattern)  # testsはtestと異なる
+        assert not matcher.matches_pattern('src/testing/file.py', pattern)
+
+    def test_globstar_directory_specific_extension(self, matcher):
+        """**/apps/**/*.scss - どこにあるapps/でも全階層の.scssファイル"""
+        pattern = ["**/apps/**/*.scss"]
+        # ルート直下apps
+        assert matcher.matches_pattern('apps/style.scss', pattern)
+        assert matcher.matches_pattern('apps/components/button.scss', pattern)
+        # src/apps
+        assert matcher.matches_pattern('src/apps/theme.scss', pattern)
+        assert matcher.matches_pattern('packages/ui/apps/styles/main.scss', pattern)
+        # 拡張子が異なる
+        assert not matcher.matches_pattern('apps/style.css', pattern)
+        assert not matcher.matches_pattern('apps/style.sass', pattern)
+
+    def test_single_level_only(self, matcher):
+        """src/*.ts - src直下のみ（サブディレクトリ除外）"""
+        pattern = ["src/*.ts"]
+        # 直下のみマッチ
+        assert matcher.matches_pattern('src/index.ts', pattern)
+        assert matcher.matches_pattern('src/utils.ts', pattern)
+        # サブディレクトリはマッチしない
+        assert not matcher.matches_pattern('src/lib/helper.ts', pattern)
+        assert not matcher.matches_pattern('src/components/Button.ts', pattern)
+
+    def test_globstar_with_prefix_pattern(self, matcher):
+        """**/test_*.py - 全階層のtest_で始まるpyファイル"""
+        pattern = ["**/test_*.py"]
+        assert matcher.matches_pattern('test_main.py', pattern)
+        assert matcher.matches_pattern('tests/test_utils.py', pattern)
+        assert matcher.matches_pattern('src/tests/unit/test_handler.py', pattern)
+        # マッチしない
+        assert not matcher.matches_pattern('tests/utils.py', pattern)
+        assert not matcher.matches_pattern('test_main.js', pattern)
+
+    def test_globstar_with_suffix_pattern(self, matcher):
+        """**/*_test.go - 全階層の_testで終わるgoファイル"""
+        pattern = ["**/*_test.go"]
+        assert matcher.matches_pattern('main_test.go', pattern)
+        assert matcher.matches_pattern('pkg/handler_test.go', pattern)
+        assert matcher.matches_pattern('internal/service/user_test.go', pattern)
+        # マッチしない
+        assert not matcher.matches_pattern('pkg/handler.go', pattern)
+        assert not matcher.matches_pattern('main_test.rs', pattern)
+
+    def test_root_directory_globstar(self, matcher):
+        """apps/**/*.tsx - ルート直下apps以下の全階層"""
+        pattern = ["apps/**/*.tsx"]
+        # ルート直下のapps
+        assert matcher.matches_pattern('apps/App.tsx', pattern)
+        assert matcher.matches_pattern('apps/components/Button.tsx', pattern)
+        assert matcher.matches_pattern('apps/pages/home/index.tsx', pattern)
+        # src/appsはマッチしない（ルート直下のappsのみ）
+        assert not matcher.matches_pattern('src/apps/App.tsx', pattern)
+
+    def test_all_files_with_extension(self, matcher):
+        """**/*.scss - 全階層の.scssファイル"""
+        pattern = ["**/*.scss"]
+        assert matcher.matches_pattern('style.scss', pattern)
+        assert matcher.matches_pattern('src/style.scss', pattern)
+        assert matcher.matches_pattern('src/components/button/style.scss', pattern)
+        # 拡張子が異なる
+        assert not matcher.matches_pattern('style.css', pattern)
