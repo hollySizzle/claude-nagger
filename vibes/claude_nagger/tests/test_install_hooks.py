@@ -331,6 +331,33 @@ class TestMergePreToolUseHooks:
                                 "command": "claude-nagger hook implementation-design"
                             }
                         ]
+                    },
+                    {
+                        "matcher": "Edit",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook implementation-design"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "Write",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook implementation-design"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "MultiEdit",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook implementation-design"
+                            }
+                        ]
                     }
                 ]
             }
@@ -340,13 +367,21 @@ class TestMergePreToolUseHooks:
 
         # 重複があるため追加されない
         assert result is False
-        assert len(settings["hooks"]["PreToolUse"]) == 5
+        assert len(settings["hooks"]["PreToolUse"]) == 8
 
     def test_bash_matcher_included_in_default_hooks(self):
         """Bashマッチャーがデフォルトフックに含まれる (issue_4032)"""
         cmd = InstallHooksCommand()
         matchers = [h["matcher"] for h in cmd.DEFAULT_PRETOOLUSE_HOOKS]
         assert "Bash" in matchers, "Bashマッチャーがデフォルトに含まれていない"
+
+    def test_edit_write_matchers_included_in_default_hooks(self):
+        """Edit/Write/MultiEditマッチャーがデフォルトフックに含まれる"""
+        cmd = InstallHooksCommand()
+        matchers = [h["matcher"] for h in cmd.DEFAULT_PRETOOLUSE_HOOKS]
+        assert "Edit" in matchers, "Editマッチャーがデフォルトに含まれていない"
+        assert "Write" in matchers, "Writeマッチャーがデフォルトに含まれていない"
+        assert "MultiEdit" in matchers, "MultiEditマッチャーがデフォルトに含まれていない"
 
     def test_hook_commands_use_subcommand_format(self):
         """フック呼び出しがサブコマンド形式(claude-nagger hook)を使用していることを検証 (issue_4020)"""
