@@ -38,6 +38,24 @@ def main():
         help="環境診断・設定確認"
     )
 
+    # test-hook サブコマンド
+    test_hook_parser = subparsers.add_parser(
+        "test-hook",
+        help="フック発火をテスト"
+    )
+    test_hook_parser.add_argument(
+        "--tool", "-t", required=True,
+        help="テスト対象のツール名（Bash, Edit, Write等）"
+    )
+    test_hook_parser.add_argument(
+        "--cmd", "-c", dest="test_cmd",
+        help="テスト対象のコマンド（Bashツール用）"
+    )
+    test_hook_parser.add_argument(
+        "--file", dest="test_file",
+        help="テスト対象のファイルパス（Edit/Writeツール用）"
+    )
+
     # hook サブコマンド（フック実行用）
     hook_parser = subparsers.add_parser(
         "hook",
@@ -75,6 +93,15 @@ def main():
     if args.command == "diagnose":
         from application.diagnose import DiagnoseCommand
         cmd = DiagnoseCommand()
+        return cmd.execute()
+
+    if args.command == "test-hook":
+        from application.test_hook import TestHookCommand
+        cmd = TestHookCommand(
+            tool=args.tool,
+            command=args.test_cmd,
+            file_path=args.test_file
+        )
         return cmd.execute()
 
     if args.command == "hook":

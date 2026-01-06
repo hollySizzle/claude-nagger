@@ -140,10 +140,45 @@ class TestDiagnoseCommand:
         """問題がない場合は「問題なし」を表示する"""
         monkeypatch.chdir(tmp_path)
 
-        # 全設定を作成
+        # 全設定を作成（正しいmatcher設定を含む）
         claude_dir = tmp_path / ".claude"
         claude_dir.mkdir()
-        (claude_dir / "settings.json").write_text('{"hooks": {"PreToolUse": [{"command": "test"}]}}')
+        settings_json = {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "",
+                        "hooks": [{"type": "command", "command": "claude-nagger hook session-startup"}]
+                    },
+                    {
+                        "matcher": "Edit",
+                        "hooks": [{"type": "command", "command": "claude-nagger hook implementation-design"}]
+                    },
+                    {
+                        "matcher": "Write",
+                        "hooks": [{"type": "command", "command": "claude-nagger hook implementation-design"}]
+                    },
+                    {
+                        "matcher": "Bash",
+                        "hooks": [{"type": "command", "command": "claude-nagger hook implementation-design"}]
+                    },
+                    {
+                        "matcher": "mcp__.*__write.*",
+                        "hooks": [{"type": "command", "command": "claude-nagger hook implementation-design"}]
+                    },
+                    {
+                        "matcher": "mcp__.*replace.*",
+                        "hooks": [{"type": "command", "command": "claude-nagger hook implementation-design"}]
+                    },
+                    {
+                        "matcher": "mcp__.*insert.*",
+                        "hooks": [{"type": "command", "command": "claude-nagger hook implementation-design"}]
+                    }
+                ]
+            }
+        }
+        import json
+        (claude_dir / "settings.json").write_text(json.dumps(settings_json))
 
         nagger_dir = tmp_path / ".claude-nagger"
         nagger_dir.mkdir()
