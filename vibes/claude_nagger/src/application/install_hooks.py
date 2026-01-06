@@ -61,6 +61,12 @@ session_startup:
       main_text: |
         プロジェクトの規約を確認してください
       severity: "block"
+    # 継続セッション用（token_threshold超過時に表示）
+    # repeated:
+    #   title: "規約再確認"
+    #   main_text: |
+    #     規約を再確認してください
+    #   severity: "block"
 
 # コンテキスト管理設定
 context_management:
