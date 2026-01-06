@@ -56,6 +56,24 @@ def main():
         help="テスト対象のファイルパス（Edit/Writeツール用）"
     )
 
+    # match-test サブコマンド（パターンマッチングdry-run）
+    match_test_parser = subparsers.add_parser(
+        "match-test",
+        help="パターンマッチングをテスト（dry-run）"
+    )
+    match_test_parser.add_argument(
+        "--file", "-f", dest="match_file",
+        help="テスト対象のファイルパス"
+    )
+    match_test_parser.add_argument(
+        "--command", "-c", dest="match_command",
+        help="テスト対象のコマンド"
+    )
+    match_test_parser.add_argument(
+        "--pattern", "-p", required=True,
+        help="マッチングパターン"
+    )
+
     # hook サブコマンド（フック実行用）
     hook_parser = subparsers.add_parser(
         "hook",
@@ -113,6 +131,15 @@ def main():
             tool=args.tool,
             command=args.test_cmd,
             file_path=args.test_file
+        )
+        return cmd.execute()
+
+    if args.command == "match-test":
+        from application.match_test import MatchTestCommand
+        cmd = MatchTestCommand(
+            file_path=args.match_file,
+            command=args.match_command,
+            pattern=args.pattern
         )
         return cmd.execute()
 
