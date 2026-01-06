@@ -140,6 +140,15 @@ discord:
                     "command": "claude-nagger hook implementation-design"
                 }
             ]
+        },
+        {
+            "matcher": "Bash",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook implementation-design"
+                }
+            ]
         }
     ]
 
