@@ -96,15 +96,15 @@ discord:
 """
 
     # デフォルトのPreToolUseフック設定
-    # モジュール呼び出し形式（python3 -m）を使用
-    # パッケージインストール後は domain.hooks.* でアクセス可能
+    # サブコマンド形式（claude-nagger hook <name>）を使用
+    # uv tool install / pip install 両環境で動作
     DEFAULT_PRETOOLUSE_HOOKS = [
         {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "python3 -m domain.hooks.session_startup_hook"
+                    "command": "claude-nagger hook session-startup"
                 }
             ]
         },
@@ -113,7 +113,7 @@ discord:
             "hooks": [
                 {
                     "type": "command",
-                    "command": "python3 -m domain.hooks.implementation_design_hook"
+                    "command": "claude-nagger hook implementation-design"
                 }
             ]
         },
@@ -122,7 +122,7 @@ discord:
             "hooks": [
                 {
                     "type": "command",
-                    "command": "python3 -m domain.hooks.implementation_design_hook"
+                    "command": "claude-nagger hook implementation-design"
                 }
             ]
         },
@@ -131,7 +131,7 @@ discord:
             "hooks": [
                 {
                     "type": "command",
-                    "command": "python3 -m domain.hooks.implementation_design_hook"
+                    "command": "claude-nagger hook implementation-design"
                 }
             ]
         }

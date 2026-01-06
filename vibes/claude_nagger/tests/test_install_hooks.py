@@ -250,7 +250,7 @@ class TestUpdateSettingsJson:
 
             assert "echo existing" in commands
             # 新規フックも追加されていることを確認
-            assert any("session_startup_hook" in cmd for cmd in commands)
+            assert any("session-startup" in cmd for cmd in commands)
         finally:
             os.chdir(original_cwd)
 
@@ -292,7 +292,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python3 -m domain.hooks.session_startup_hook"
+                                "command": "claude-nagger hook session-startup"
                             }
                         ]
                     },
@@ -301,7 +301,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python3 -m domain.hooks.implementation_design_hook"
+                                "command": "claude-nagger hook implementation-design"
                             }
                         ]
                     },
@@ -310,7 +310,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python3 -m domain.hooks.implementation_design_hook"
+                                "command": "claude-nagger hook implementation-design"
                             }
                         ]
                     },
@@ -319,7 +319,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python3 -m domain.hooks.implementation_design_hook"
+                                "command": "claude-nagger hook implementation-design"
                             }
                         ]
                     }
@@ -333,26 +333,29 @@ class TestMergePreToolUseHooks:
         assert result is False
         assert len(settings["hooks"]["PreToolUse"]) == 4
 
-    def test_hook_commands_use_module_format(self):
-        """フック呼び出しがモジュール形式(python3 -m)を使用していることを検証 (issue_3998)"""
+    def test_hook_commands_use_subcommand_format(self):
+        """フック呼び出しがサブコマンド形式(claude-nagger hook)を使用していることを検証 (issue_4020)"""
         cmd = InstallHooksCommand()
 
         for hook_entry in cmd.DEFAULT_PRETOOLUSE_HOOKS:
             for hook in hook_entry.get("hooks", []):
                 command = hook.get("command", "")
-                # python3 -m 形式であること
-                assert command.startswith("python3 -m "), \
-                    f"コマンドはモジュール形式であるべき: {command}"
+                # claude-nagger hook 形式であること
+                assert command.startswith("claude-nagger hook "), \
+                    f"コマンドはサブコマンド形式であるべき: {command}"
                 # ファイルパス形式でないこと
                 assert ".py" not in command, \
                     f"コマンドに.pyが含まれるべきでない: {command}"
                 assert "$CLAUDE_PROJECT_DIR" not in command, \
                     f"コマンドに$CLAUDE_PROJECT_DIRが含まれるべきでない: {command}"
+                # python3 -m 形式でないこと（issue_4020）
+                assert "python3 -m" not in command, \
+                    f"コマンドにpython3 -mが含まれるべきでない: {command}"
 
     def test_prints_skip_message_for_existing_hooks(self, capsys):
         """既存フックがスキップされた場合に通知を表示する (issue_4001)"""
         cmd = InstallHooksCommand()
-        # session_startup_hookのみ既存
+        # session-startupのみ既存
         settings = {
             "hooks": {
                 "PreToolUse": [
@@ -361,7 +364,7 @@ class TestMergePreToolUseHooks:
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": "python3 -m domain.hooks.session_startup_hook"
+                                "command": "claude-nagger hook session-startup"
                             }
                         ]
                     }
@@ -373,9 +376,9 @@ class TestMergePreToolUseHooks:
         captured = capsys.readouterr()
 
         # 既存フックのスキップ通知（フックタイプ付き）
-        assert "スキップ（既存）[PreToolUse]: python3 -m domain.hooks.session_startup_hook" in captured.out
+        assert "スキップ（既存）[PreToolUse]: claude-nagger hook session-startup" in captured.out
         # 新規フックの追加通知（フックタイプ付き）
-        assert "追加 [PreToolUse]: python3 -m domain.hooks.implementation_design_hook" in captured.out
+        assert "追加 [PreToolUse]: claude-nagger hook implementation-design" in captured.out
 
 
 class TestDryRunMode:

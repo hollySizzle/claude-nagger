@@ -38,6 +38,25 @@ def main():
         help="環境診断・設定確認"
     )
 
+    # hook サブコマンド（フック実行用）
+    hook_parser = subparsers.add_parser(
+        "hook",
+        help="フックを実行（Claude Code PreToolUse用）"
+    )
+    hook_subparsers = hook_parser.add_subparsers(dest="hook_name", help="フック名")
+
+    # hook session-startup
+    hook_subparsers.add_parser(
+        "session-startup",
+        help="セッション開始時フック"
+    )
+
+    # hook implementation-design
+    hook_subparsers.add_parser(
+        "implementation-design",
+        help="実装設計確認フック"
+    )
+
     args = parser.parse_args()
 
     if args.version:
@@ -57,6 +76,21 @@ def main():
         from application.diagnose import DiagnoseCommand
         cmd = DiagnoseCommand()
         return cmd.execute()
+
+    if args.command == "hook":
+        if args.hook_name == "session-startup":
+            from domain.hooks.session_startup_hook import SessionStartupHook
+            hook = SessionStartupHook()
+            return hook.run()
+
+        if args.hook_name == "implementation-design":
+            from domain.hooks.implementation_design_hook import ImplementationDesignHook
+            hook = ImplementationDesignHook()
+            return hook.run()
+
+        # hook名未指定時はhookヘルプ表示
+        hook_parser.print_help()
+        return 0
 
     # コマンド未指定時はヘルプ表示
     parser.print_help()

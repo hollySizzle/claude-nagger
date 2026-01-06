@@ -275,6 +275,10 @@ claude-nagger --version
 
 # 環境診断（トラブルシュート用）
 claude-nagger diagnose
+
+# フック直接実行（内部用・トラブルシュート用）
+claude-nagger hook session-startup
+claude-nagger hook implementation-design
 ```
 
 ---
