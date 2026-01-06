@@ -43,6 +43,16 @@ claude-nagger install-hooks
 
 > **注意**: `uvx claude-nagger install-hooks`は非推奨。uvxは一時実行のためフックが動作しません。
 
+### アップデート
+
+```bash
+# uv tool
+uv tool upgrade claude-nagger
+
+# pip
+pip install --upgrade claude-nagger
+```
+
 ### 2. 動作確認
 
 ```bash
