@@ -247,3 +247,55 @@ class TestGlobstarPatterns:
         assert matcher.matches_pattern('src/components/button/style.scss', pattern)
         # 拡張子が異なる
         assert not matcher.matches_pattern('style.css', pattern)
+
+
+class TestAbsolutePathConversion:
+    """絶対パス→相対パス変換のテスト（#4074対応）"""
+
+    @pytest.fixture
+    def matcher(self):
+        """テスト用マッチャーを作成"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump({'rules': []}, f)
+            temp_path = Path(f.name)
+        m = FileConventionMatcher(temp_path)
+        temp_path.unlink()
+        return m
+
+    def test_absolute_path_under_cwd(self, matcher, monkeypatch):
+        """CWD配下の絶対パスが相対パスに変換されてマッチする"""
+        # CWDを/myapp/Source/railsに設定
+        monkeypatch.chdir('/tmp')
+        
+        # /tmp配下のパスをテスト
+        pattern = ["app/views/**/*.erb"]
+        
+        # 一時的にディレクトリ構造を作成
+        test_dir = Path('/tmp/app/views/shared')
+        test_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # 絶対パスが相対パスに変換されてマッチする
+            assert matcher.matches_pattern('/tmp/app/views/shared/test.erb', pattern)
+            # 相対パスも引き続きマッチする
+            assert matcher.matches_pattern('app/views/shared/test.erb', pattern)
+        finally:
+            # クリーンアップ
+            import shutil
+            shutil.rmtree('/tmp/app', ignore_errors=True)
+
+    def test_absolute_path_not_under_cwd(self, matcher, monkeypatch):
+        """CWD外の絶対パスはそのまま使用される（マッチしない）"""
+        monkeypatch.chdir('/tmp')
+        pattern = ["app/**/*.rb"]
+        
+        # /other/pathはCWD(/tmp)の配下ではないのでマッチしない
+        assert not matcher.matches_pattern('/other/path/app/models/user.rb', pattern)
+
+    def test_relative_path_unchanged(self, matcher):
+        """相対パスはそのまま処理される"""
+        pattern = ["src/**/*.py"]
+        
+        assert matcher.matches_pattern('src/main.py', pattern)
+        assert matcher.matches_pattern('src/lib/utils.py', pattern)
+        assert not matcher.matches_pattern('other/main.py', pattern)

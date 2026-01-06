@@ -124,8 +124,18 @@ class FileConventionMatcher:
         Returns:
             マッチする場合True
         """
-        # 正規化されたパスに変換
-        normalized_path = str(Path(file_path).as_posix())
+        path = Path(file_path)
+        
+        # 絶対パスの場合、CWDからの相対パスに変換を試みる
+        if path.is_absolute():
+            try:
+                path = path.relative_to(Path.cwd())
+                self.logger.info(f"🔄 Converted absolute path to relative: {path}")
+            except ValueError:
+                # CWD配下にない場合はそのまま使う
+                self.logger.info(f"⚠️ Path not under CWD, using as-is: {path}")
+        
+        normalized_path = str(path.as_posix())
         self.logger.info(f"🔍 PATTERN MATCH DEBUG: Checking file path: {normalized_path}")
 
         for pattern in patterns:
