@@ -309,6 +309,16 @@ cd claude-nagger
 
 ---
 
+## 問題報告・機能リクエスト
+
+- **バグ報告**: [GitHub Issues](https://github.com/HollySizzle/claude-nagger/issues/new?template=bug_report.yml)
+- **機能リクエスト**: [GitHub Issues](https://github.com/HollySizzle/claude-nagger/issues/new?template=feature_request.yml)
+- **質問・議論**: [GitHub Discussions](https://github.com/HollySizzle/claude-nagger/discussions)
+
+バグ報告時は `claude-nagger diagnose` の出力を添付してください。
+
+---
+
 ## ライセンス
 
 MIT License - 詳細は [LICENSE](LICENSE) を参照
