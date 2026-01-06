@@ -149,6 +149,33 @@ discord:
                     "command": "claude-nagger hook implementation-design"
                 }
             ]
+        },
+        {
+            "matcher": "Edit",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook implementation-design"
+                }
+            ]
+        },
+        {
+            "matcher": "Write",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook implementation-design"
+                }
+            ]
+        },
+        {
+            "matcher": "MultiEdit",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook implementation-design"
+                }
+            ]
         }
     ]
 
