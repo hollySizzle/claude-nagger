@@ -23,7 +23,8 @@
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
         "eamodio.gitlens",
-        "hollySizzle.redmine-epic-ladder"
+        "hollySizzle.redmine-epic-ladder",
+        "mhutchie.git-graph"
       ],
       "settings": {
         "editor.formatOnSave": true,
