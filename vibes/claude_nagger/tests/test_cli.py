@@ -146,3 +146,79 @@ class TestCLI:
             result = main()
 
         assert result == 1
+
+
+class TestNotifyCommand:
+    """notifyコマンドのテスト"""
+
+    def test_notify_command_success(self, monkeypatch, capsys):
+        """notify コマンドが正しく実行される（成功時）"""
+        mock_notifier = MagicMock()
+        mock_notifier.send_sync.return_value = {
+            'success': True,
+            'agent_name': 'test-agent',
+            'message': 'test message'
+        }
+        mock_class = MagicMock(return_value=mock_notifier)
+
+        mock_module = MagicMock()
+        mock_module.DiscordNotifier = mock_class
+        monkeypatch.setitem(sys.modules, 'infrastructure.notifiers.discord_notifier', mock_module)
+
+        with patch.object(sys, 'argv', ['claude-nagger', 'notify', 'test message']):
+            result = main()
+
+        assert result == 0
+        mock_notifier.send_sync.assert_called_once_with('test message')
+        captured = capsys.readouterr()
+        assert "Message sent to Discord" in captured.err
+
+    def test_notify_command_failure(self, monkeypatch, capsys):
+        """notify コマンドが正しく実行される（失敗時）"""
+        mock_notifier = MagicMock()
+        mock_notifier.send_sync.return_value = {
+            'success': False,
+            'error': 'Connection failed'
+        }
+        mock_class = MagicMock(return_value=mock_notifier)
+
+        mock_module = MagicMock()
+        mock_module.DiscordNotifier = mock_class
+        monkeypatch.setitem(sys.modules, 'infrastructure.notifiers.discord_notifier', mock_module)
+
+        with patch.object(sys, 'argv', ['claude-nagger', 'notify', 'test message']):
+            result = main()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Failed to send Discord message" in captured.err
+
+    def test_notify_command_default_message(self, monkeypatch, capsys):
+        """notify コマンドでメッセージ省略時はデフォルト値が使用される"""
+        mock_notifier = MagicMock()
+        mock_notifier.send_sync.return_value = {
+            'success': True,
+            'agent_name': 'test-agent',
+            'message': 'hello'
+        }
+        mock_class = MagicMock(return_value=mock_notifier)
+
+        mock_module = MagicMock()
+        mock_module.DiscordNotifier = mock_class
+        monkeypatch.setitem(sys.modules, 'infrastructure.notifiers.discord_notifier', mock_module)
+
+        with patch.object(sys, 'argv', ['claude-nagger', 'notify']):
+            result = main()
+
+        assert result == 0
+        mock_notifier.send_sync.assert_called_once_with('hello')
+
+    def test_notify_help(self, capsys):
+        """notify --help でサブコマンドヘルプが表示される"""
+        with patch.object(sys, 'argv', ['claude-nagger', 'notify', '--help']):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "message" in captured.out

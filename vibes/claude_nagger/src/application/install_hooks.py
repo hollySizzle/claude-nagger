@@ -181,13 +181,14 @@ discord:
 
     # デフォルトのNotificationフック設定
     # 通知発生時（複数API呼び出し間等）に実行される
+    # claude-nagger notify コマンドを使用（uv/pip両環境対応）
     DEFAULT_NOTIFICATION_HOOKS: list = [
         {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "python3 -m infrastructure.notifiers.discord_notifier \"📢 Claude Code から通知があります\""
+                    "command": "claude-nagger notify \"📢 Claude Code から通知があります\""
                 }
             ]
         }
@@ -195,13 +196,14 @@ discord:
 
     # デフォルトのStopフック設定
     # タスク完了・停止時に実行される
+    # claude-nagger notify コマンドを使用（uv/pip両環境対応）
     DEFAULT_STOP_HOOKS: list = [
         {
             "matcher": "",
             "hooks": [
                 {
                     "type": "command",
-                    "command": "python3 -m infrastructure.notifiers.discord_notifier \"🛑 Claude Code セッションが停止されました\""
+                    "command": "claude-nagger notify \"🛑 Claude Code セッションが停止されました\""
                 }
             ]
         }
