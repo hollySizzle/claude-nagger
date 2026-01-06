@@ -100,7 +100,7 @@ class BaseHook(ABC):
 
     def output_response(self, decision: str, reason: str = "") -> bool:
         """
-        JSON形式でレスポンスを出力（Claude Code v2対応）
+        JSON形式でレスポンスを出力（Claude Code公式スキーマ対応）
         
         Args:
             decision: 'approve', 'block' のいずれか
@@ -110,13 +110,14 @@ class BaseHook(ABC):
             出力成功の場合True
         """
         try:
-            # Claude Code v2の新しいスキーマに対応
+            # Claude Code 公式スキーマに対応
+            # hookSpecificOutput 形式で出力
             response = {
-                'decision': decision,
-                'reason': reason,
-                'hookEventName': 'PreToolUse',
-                'permissionDecision': 'allow' if decision == 'approve' else 'deny',
-                'permissionDecisionReason': reason
+                'hookSpecificOutput': {
+                    'hookEventName': 'PreToolUse',
+                    'permissionDecision': 'allow' if decision == 'approve' else 'deny',
+                    'permissionDecisionReason': reason
+                }
             }
             
             json_output = json.dumps(response, ensure_ascii=False)
