@@ -43,6 +43,21 @@ claude-nagger install-hooks
 
 > **注意**: `uvx claude-nagger install-hooks`は非推奨。uvxは一時実行のためフックが動作しません。
 
+<details>
+<summary><b>コマンドが見つからない場合（PATH設定）</b></summary>
+
+`uv tool install` 後に `command not found` が出る場合、PATHを設定してください：
+
+```bash
+# PATHを通す（bash/zsh共通）
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+
+# zshの場合は ~/.zshrc に追加
+```
+
+</details>
+
 ### アップデート
 
 ```bash
