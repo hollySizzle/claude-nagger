@@ -75,6 +75,18 @@ def main():
         help="実装設計確認フック"
     )
 
+    # notify サブコマンド（Discord通知）
+    notify_parser = subparsers.add_parser(
+        "notify",
+        help="Discord通知を送信"
+    )
+    notify_parser.add_argument(
+        "message",
+        nargs="?",
+        default="hello",
+        help="送信するメッセージ"
+    )
+
     args = parser.parse_args()
 
     if args.version:
@@ -103,6 +115,16 @@ def main():
             file_path=args.test_file
         )
         return cmd.execute()
+
+    if args.command == "notify":
+        from infrastructure.notifiers.discord_notifier import DiscordNotifier
+        notifier = DiscordNotifier()
+        result = notifier.send_sync(args.message)
+        if result['success']:
+            print(f"Message sent to Discord [{result['agent_name']}]: {result['message']}", file=sys.stderr)
+        else:
+            print(f"Failed to send Discord message: {result['error']}", file=sys.stderr)
+        return 0
 
     if args.command == "hook":
         if args.hook_name == "session-startup":
