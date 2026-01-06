@@ -322,6 +322,15 @@ class TestMergePreToolUseHooks:
                                 "command": "claude-nagger hook implementation-design"
                             }
                         ]
+                    },
+                    {
+                        "matcher": "Bash",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook implementation-design"
+                            }
+                        ]
                     }
                 ]
             }
@@ -331,7 +340,13 @@ class TestMergePreToolUseHooks:
 
         # 重複があるため追加されない
         assert result is False
-        assert len(settings["hooks"]["PreToolUse"]) == 4
+        assert len(settings["hooks"]["PreToolUse"]) == 5
+
+    def test_bash_matcher_included_in_default_hooks(self):
+        """Bashマッチャーがデフォルトフックに含まれる (issue_4032)"""
+        cmd = InstallHooksCommand()
+        matchers = [h["matcher"] for h in cmd.DEFAULT_PRETOOLUSE_HOOKS]
+        assert "Bash" in matchers, "Bashマッチャーがデフォルトに含まれていない"
 
     def test_hook_commands_use_subcommand_format(self):
         """フック呼び出しがサブコマンド形式(claude-nagger hook)を使用していることを検証 (issue_4020)"""
