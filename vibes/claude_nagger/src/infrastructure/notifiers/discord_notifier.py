@@ -8,29 +8,9 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 import aiohttp
 
-# モジュールインポートを動的に処理
-def setup_import_path():
-    """インポートパスを動的に設定"""
-    # このファイルから claude_nagger/ ディレクトリを探す
-    current = Path(__file__).resolve()
-    for parent in current.parents:
-        if parent.name == 'claude_nagger' and (parent / 'src').exists():
-            sys.path.insert(0, str(parent))
-            return parent
-    # フォールバック: src/まで遡る（notifiers -> infrastructure -> src -> claude_nagger）
-    fallback = Path(__file__).resolve().parent.parent.parent.parent
-    sys.path.insert(0, str(fallback))
-    return fallback
-
-try:
-    # パッケージとしてインポート
-    from ..config.config_manager import ConfigManager
-    from ...shared.utils import get_session_manager
-except ImportError:
-    # スクリプトとして実行された場合
-    setup_import_path()
-    from src.infrastructure.config.config_manager import ConfigManager
-    from src.shared.utils import get_session_manager
+# 絶対インポートを使用（uv tool install / pip install 両環境対応）
+from infrastructure.config.config_manager import ConfigManager
+from shared.utils import get_session_manager
 
 
 class DiscordNotifier:
