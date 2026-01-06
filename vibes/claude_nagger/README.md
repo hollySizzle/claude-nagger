@@ -304,6 +304,10 @@ claude-nagger diagnose
 # フック直接実行（内部用・トラブルシュート用）
 claude-nagger hook session-startup
 claude-nagger hook implementation-design
+
+# パターンマッチングのテスト（設定確認用）
+claude-nagger match-test --file "app/views/test.erb" --pattern "app/views/**/*.erb"
+claude-nagger match-test --command "git push" --pattern "git push*"
 ```
 
 ---
