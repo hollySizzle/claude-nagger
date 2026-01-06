@@ -128,29 +128,37 @@ class TestReadInput:
 
 
 class TestOutputResponse:
-    """output_response メソッドのテスト"""
+    """output_response メソッドのテスト（Claude Code公式スキーマ対応）"""
 
     def test_output_approve(self, capsys):
-        """approveレスポンス出力"""
+        """approveレスポンス出力（hookSpecificOutput形式）"""
         hook = ConcreteHook()
         result = hook.output_response('approve', 'test reason')
 
         assert result is True
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
-        assert output['decision'] == 'approve'
-        assert output['permissionDecision'] == 'allow'
+        # 新形式: hookSpecificOutput を使用
+        assert 'hookSpecificOutput' in output
+        hook_output = output['hookSpecificOutput']
+        assert hook_output['hookEventName'] == 'PreToolUse'
+        assert hook_output['permissionDecision'] == 'allow'
+        assert hook_output['permissionDecisionReason'] == 'test reason'
 
     def test_output_block(self, capsys):
-        """blockレスポンス出力"""
+        """blockレスポンス出力（hookSpecificOutput形式）"""
         hook = ConcreteHook()
         result = hook.output_response('block', 'blocked reason')
 
         assert result is True
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
-        assert output['decision'] == 'block'
-        assert output['permissionDecision'] == 'deny'
+        # 新形式: hookSpecificOutput を使用
+        assert 'hookSpecificOutput' in output
+        hook_output = output['hookSpecificOutput']
+        assert hook_output['hookEventName'] == 'PreToolUse'
+        assert hook_output['permissionDecision'] == 'deny'
+        assert hook_output['permissionDecisionReason'] == 'blocked reason'
 
     def test_output_exception(self):
         """出力例外時はFalse"""

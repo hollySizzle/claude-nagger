@@ -187,8 +187,11 @@ class TestImplementationDesignHook:
                 output = mock_print.call_args[0][0]
                 output_data = json.loads(output)
 
-                assert output_data['decision'] == 'block'
-                assert 'Blocked for testing' in output_data['reason']
+                # 新形式: hookSpecificOutput を確認
+                assert 'hookSpecificOutput' in output_data
+                hook_output = output_data['hookSpecificOutput']
+                assert hook_output['permissionDecision'] == 'deny'
+                assert 'Blocked for testing' in hook_output['permissionDecisionReason']
 
     @patch('sys.stdin')
     def test_run_with_invalid_json(self, mock_stdin, hook):

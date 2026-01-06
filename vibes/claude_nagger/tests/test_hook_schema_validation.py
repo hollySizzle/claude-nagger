@@ -17,28 +17,20 @@ PROJECT_ROOT = Path(__file__).parent.parent
 
 
 class HookSchemaValidator:
-    """フック出力スキーマバリデータ"""
-    
-    # Claude Code v2 フック出力スキーマ
-    REQUIRED_FIELDS = ['decision']
-    
-    OPTIONAL_FIELDS = [
-        'reason', 
-        'hookEventName', 
-        'permissionDecision', 
-        'permissionDecisionReason'
-    ]
-    
-    VALID_DECISIONS = ['approve', 'block', 'allow', 'warn']
+    """フック出力スキーマバリデータ（Claude Code公式スキーマ対応）"""
+
+    # Claude Code 公式フック出力スキーマ
+    # 新形式: hookSpecificOutput を使用
     VALID_PERMISSION_DECISIONS = ['allow', 'deny']
-    
+    VALID_HOOK_EVENT_NAMES = ['PreToolUse', 'PostToolUse', 'Notification', 'Stop']
+
     def validate(self, output: str) -> Dict[str, Any]:
         """
-        フック出力を検証
-        
+        フック出力を検証（公式スキーマ対応）
+
         Args:
             output: フックの標準出力
-            
+
         Returns:
             検証結果辞書
         """
@@ -48,13 +40,13 @@ class HookSchemaValidator:
             'warnings': [],
             'data': None
         }
-        
+
         # 空出力は許可（処理対象外の場合）
         if not output.strip():
             result['valid'] = True
             result['warnings'].append('Empty output (hook skipped)')
             return result
-        
+
         # JSON パース
         try:
             data = json.loads(output.strip())
@@ -62,45 +54,38 @@ class HookSchemaValidator:
         except json.JSONDecodeError as e:
             result['errors'].append(f'Invalid JSON: {e}')
             return result
-        
-        # 必須フィールド検証
-        for field in self.REQUIRED_FIELDS:
-            if field not in data:
-                result['errors'].append(f'Missing required field: {field}')
-        
-        # decision値の検証
-        if 'decision' in data:
-            if data['decision'] not in self.VALID_DECISIONS:
-                result['errors'].append(
-                    f"Invalid decision value: {data['decision']}. "
-                    f"Expected one of: {self.VALID_DECISIONS}"
-                )
-        
-        # permissionDecision値の検証（存在する場合）
-        if 'permissionDecision' in data:
-            if data['permissionDecision'] not in self.VALID_PERMISSION_DECISIONS:
-                result['errors'].append(
-                    f"Invalid permissionDecision: {data['permissionDecision']}. "
-                    f"Expected one of: {self.VALID_PERMISSION_DECISIONS}"
-                )
-        
-        # decision と permissionDecision の整合性
-        if 'decision' in data and 'permissionDecision' in data:
-            decision = data['decision']
-            perm_decision = data['permissionDecision']
-            
-            # approve/allow と allow, block と deny の対応をチェック
-            if decision in ['approve', 'allow'] and perm_decision != 'allow':
+
+        # hookSpecificOutput の存在確認
+        if 'hookSpecificOutput' not in data:
+            result['errors'].append('Missing required field: hookSpecificOutput')
+            return result
+
+        hook_output = data['hookSpecificOutput']
+
+        # hookEventName の検証
+        if 'hookEventName' not in hook_output:
+            result['errors'].append('Missing hookSpecificOutput.hookEventName')
+        elif hook_output['hookEventName'] not in self.VALID_HOOK_EVENT_NAMES:
+            result['warnings'].append(
+                f"Unknown hookEventName: {hook_output['hookEventName']}"
+            )
+
+        # permissionDecision の検証
+        if 'permissionDecision' not in hook_output:
+            result['errors'].append('Missing hookSpecificOutput.permissionDecision')
+        elif hook_output['permissionDecision'] not in self.VALID_PERMISSION_DECISIONS:
+            result['errors'].append(
+                f"Invalid permissionDecision: {hook_output['permissionDecision']}. "
+                f"Expected one of: {self.VALID_PERMISSION_DECISIONS}"
+            )
+
+        # permissionDecisionReason の検証（オプション）
+        if 'permissionDecisionReason' in hook_output:
+            if not isinstance(hook_output['permissionDecisionReason'], str):
                 result['warnings'].append(
-                    f"Inconsistent decisions: decision={decision}, "
-                    f"permissionDecision={perm_decision}"
+                    'permissionDecisionReason should be a string'
                 )
-            elif decision == 'block' and perm_decision != 'deny':
-                result['warnings'].append(
-                    f"Inconsistent decisions: decision={decision}, "
-                    f"permissionDecision={perm_decision}"
-                )
-        
+
         result['valid'] = len(result['errors']) == 0
         return result
 
@@ -219,88 +204,112 @@ class HookRunner:
 # === pytest テストケース ===
 
 class TestHookSchemaValidator:
-    """HookSchemaValidator のユニットテスト"""
-    
+    """HookSchemaValidator のユニットテスト（公式スキーマ対応）"""
+
     @pytest.fixture
     def validator(self):
         return HookSchemaValidator()
-    
-    def test_valid_approve_output(self, validator):
-        """正常な approve 出力の検証"""
+
+    def test_valid_allow_output(self, validator):
+        """正常な allow 出力の検証（hookSpecificOutput形式）"""
         output = json.dumps({
-            'decision': 'approve',
-            'reason': 'Test approved',
-            'hookEventName': 'PreToolUse',
-            'permissionDecision': 'allow',
-            'permissionDecisionReason': 'Test approved'
+            'hookSpecificOutput': {
+                'hookEventName': 'PreToolUse',
+                'permissionDecision': 'allow',
+                'permissionDecisionReason': 'Test approved'
+            }
         })
-        
+
         result = validator.validate(output)
         assert result['valid'] is True
         assert len(result['errors']) == 0
-    
-    def test_valid_block_output(self, validator):
-        """正常な block 出力の検証"""
+
+    def test_valid_deny_output(self, validator):
+        """正常な deny 出力の検証（hookSpecificOutput形式）"""
         output = json.dumps({
-            'decision': 'block',
-            'reason': 'Test blocked',
-            'hookEventName': 'PreToolUse',
-            'permissionDecision': 'deny',
-            'permissionDecisionReason': 'Test blocked'
+            'hookSpecificOutput': {
+                'hookEventName': 'PreToolUse',
+                'permissionDecision': 'deny',
+                'permissionDecisionReason': 'Test blocked'
+            }
         })
-        
+
         result = validator.validate(output)
         assert result['valid'] is True
         assert len(result['errors']) == 0
-    
+
     def test_minimal_valid_output(self, validator):
         """最小限の有効な出力の検証"""
-        output = json.dumps({'decision': 'approve'})
-        
+        output = json.dumps({
+            'hookSpecificOutput': {
+                'hookEventName': 'PreToolUse',
+                'permissionDecision': 'allow'
+            }
+        })
+
         result = validator.validate(output)
         assert result['valid'] is True
-    
-    def test_missing_decision(self, validator):
-        """decision フィールド欠落の検証"""
+
+    def test_missing_hook_specific_output(self, validator):
+        """hookSpecificOutput フィールド欠落の検証"""
         output = json.dumps({'reason': 'Test'})
-        
+
         result = validator.validate(output)
         assert result['valid'] is False
-        assert any('Missing required field: decision' in e for e in result['errors'])
-    
-    def test_invalid_decision_value(self, validator):
-        """無効な decision 値の検証"""
-        output = json.dumps({'decision': 'invalid_value'})
-        
+        assert any('Missing required field: hookSpecificOutput' in e for e in result['errors'])
+
+    def test_missing_permission_decision(self, validator):
+        """permissionDecision フィールド欠落の検証"""
+        output = json.dumps({
+            'hookSpecificOutput': {
+                'hookEventName': 'PreToolUse'
+            }
+        })
+
         result = validator.validate(output)
         assert result['valid'] is False
-        assert any('Invalid decision value' in e for e in result['errors'])
-    
+        assert any('Missing hookSpecificOutput.permissionDecision' in e for e in result['errors'])
+
+    def test_invalid_permission_decision_value(self, validator):
+        """無効な permissionDecision 値の検証"""
+        output = json.dumps({
+            'hookSpecificOutput': {
+                'hookEventName': 'PreToolUse',
+                'permissionDecision': 'invalid_value'
+            }
+        })
+
+        result = validator.validate(output)
+        assert result['valid'] is False
+        assert any('Invalid permissionDecision' in e for e in result['errors'])
+
     def test_empty_output(self, validator):
         """空出力の検証（スキップケース）"""
         result = validator.validate('')
-        
+
         assert result['valid'] is True
         assert any('Empty output' in w for w in result['warnings'])
-    
+
     def test_invalid_json(self, validator):
         """不正なJSONの検証"""
         result = validator.validate('not a json')
-        
+
         assert result['valid'] is False
         assert any('Invalid JSON' in e for e in result['errors'])
-    
-    def test_inconsistent_decisions_warning(self, validator):
-        """decision と permissionDecision の不整合警告"""
+
+    def test_unknown_hook_event_name_warning(self, validator):
+        """未知の hookEventName での警告"""
         output = json.dumps({
-            'decision': 'approve',
-            'permissionDecision': 'deny'  # 不整合
+            'hookSpecificOutput': {
+                'hookEventName': 'UnknownEvent',
+                'permissionDecision': 'allow'
+            }
         })
-        
+
         result = validator.validate(output)
         # エラーではなく警告
         assert result['valid'] is True
-        assert any('Inconsistent' in w for w in result['warnings'])
+        assert any('Unknown hookEventName' in w for w in result['warnings'])
 
 
 class TestImplementationDesignHookIntegration:
