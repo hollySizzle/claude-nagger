@@ -39,6 +39,9 @@ claude-nagger install-hooks
 # または pip
 pip install claude-nagger
 claude-nagger install-hooks
+
+# dockerfileなどコンテナ向け
+RUN pip install claude-nagger --break-system-packages 
 ```
 
 > **注意**: `uvx claude-nagger install-hooks`は非推奨。uvxは一時実行のためフックが動作しません。
