@@ -20,4 +20,4 @@
 **効果**: [TODO: 期待される改善]
 
 ## 関連文書
-- @vibes/specs/architecture.md
+- @docs/specs/architecture.md

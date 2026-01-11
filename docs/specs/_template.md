@@ -23,5 +23,5 @@
 **保守**: [TODO: 定期作業]
 
 ## 関連文書
-- @vibes/specs/architecture.md
-- @vibes/rules/coding_standards.md
+- @docs/specs/architecture.md
+- @docs/rules/coding_standards.md

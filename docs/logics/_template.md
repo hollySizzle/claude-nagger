@@ -22,4 +22,4 @@
 **連携**: [TODO: 外部システム・バッチ処理]
 
 ## 関連文書
-- @vibes/specs/architecture.md
+- @docs/specs/architecture.md

@@ -7,8 +7,6 @@ rules:
     - 簡潔かつ端的な記述
     - 「何を」「なぜ」「どのように」に集中
     - 1文完結（伝わる内容は1文で）
-    - 新規作成時は npm run generate-document 使用
-    - 目次更新は npm run update-toc 実行
 
   must_not:
     - 冗長な前置き・後置き・説明文
@@ -64,7 +62,7 @@ directory_structure:
 
 temp_document:
   naming: "{目的}_{内容種別}_checklist.md"
-  location: "vibes/docs/temps/"
+  location: "docs/temps/"
 
   required_sections:
     - "📋 目的: ドキュメントの目的と背景"
@@ -82,12 +80,6 @@ temp_document:
     completed: "[x]"
     in_progress: "[ ] 📝"
     on_hold: "[ ] ⏸️ {理由}"
-
-commands:
-  create: "cd vibes/scripts && npm run generate-document"
-  update_toc: "cd vibes/scripts && npm run update-toc"
-  check_refs: "cd vibes/scripts && npm run check-references"
-  help: "cd vibes/scripts && npm run doc-help"
 
 yaml_template: |
   # {規約名}
@@ -111,9 +103,9 @@ yaml_template: |
         # コード例
 
   related_files:
-    key: "@vibes/path/to/file"
+    key: "@docs/path/to/file"
 
 related_files:
-  coding_standards: "@vibes/rules/coding_standards.md"
-  architecture: "@vibes/specs/architecture.md"
-  index: "@vibes/INDEX.md"
+  coding_standards: "@docs/rules/coding_standards.md"
+  architecture: "@docs/specs/architecture.md"
+  index: "@docs/INDEX.md"
