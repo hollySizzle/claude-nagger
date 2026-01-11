@@ -85,6 +85,6 @@ completion_checklist:
   - 設計書準拠性確認
 
 related_files:
-  documentation: "@vibes/rules/documentation_standards.yaml"
-  hook_testing: "@vibes/rules/claude_code_hook_testing.yaml"
-  architecture: "@vibes/specs/architecture.md"
+  documentation: "@docs/rules/documentation_standards.yaml"
+  hook_testing: "@docs/rules/claude_code_hook_testing.yaml"
+  architecture: "@docs/specs/architecture.md"

@@ -164,5 +164,5 @@ echo "=== config.yaml ===" && cat .claude-nagger/config.yaml
 
 ## サポート
 
-- [GitHub Issues](https://github.com/vibes/claude_nagger/issues) - バグ報告
-- [GitHub Discussions](https://github.com/vibes/claude_nagger/discussions) - 質問・議論
+- [GitHub Issues](https://github.com/HollySizzle/claude-nagger/issues) - バグ報告
+- [GitHub Discussions](https://github.com/HollySizzle/claude-nagger/discussions) - 質問・議論

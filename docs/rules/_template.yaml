@@ -37,5 +37,5 @@ examples:
       bad_example()
 
 related_files:
-  coding_standards: "@vibes/rules/coding_standards.yaml"
-  documentation: "@vibes/rules/documentation_standards.yaml"
+  coding_standards: "@docs/rules/coding_standards.yaml"
+  documentation: "@docs/rules/documentation_standards.yaml"

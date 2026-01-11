@@ -14,5 +14,5 @@
 - **[TODO: エラー]**: [TODO: 原因] → [TODO: 対処法]
 
 ## 関連文書
-- @vibes/specs/architecture.md
-- @vibes/rules/coding_standards.md
+- @docs/specs/architecture.md
+- @docs/rules/coding_standards.md

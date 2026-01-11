@@ -20,7 +20,14 @@
       "mcp__redmine_epic_grid__get_project_structure_tool",
       "mcp__redmine_epic_grid__list_versions_tool",
       "mcp__redmine_epic_grid__create_user_story_tool",
-      "mcp__redmine_epic_grid__create_task_tool"
+      "mcp__redmine_epic_grid__create_task_tool",
+      "Bash(git mv:*)",
+      "Bash(grep:*)",
+      "mcp__redmine_epic_grid__create_version_tool",
+      "Bash(uv sync:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv pip install:*)",
+      "Bash(git add:*)"
     ]
   },
   "enableAllProjectMcpServers": true,

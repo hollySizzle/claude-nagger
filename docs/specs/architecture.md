@@ -53,4 +53,4 @@
 
 ## 関連ドキュメント
 
-- @vibes/rules/coding_standards.md
+- @docs/rules/coding_standards.md

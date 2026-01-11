@@ -9,7 +9,7 @@ rules:
     severity: "block" # block: 完全ブロック, warn: 警告のみ
     token_threshold: 25000
     message: |
-      Git操作を実行する場合は、@vibes/docs/rules/git_operation_standards.md をよく確認し従うこと
+      Git操作を実行する場合は、@docs/rules/git_operation_standards.md をよく確認し従うこと
       作業を続けるためには､上記ドキュメントを確認したことを示してください
 
   - name: "Docker操作規約"
