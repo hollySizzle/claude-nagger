@@ -49,10 +49,11 @@ if [ "$RELEASE_ONLY" = false ]; then
     # 1. バージョン更新
     echo "Updating version to $VERSION..."
     sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
+    sed -i "s/^__version__ = \".*\"/__version__ = \"$VERSION\"/" src/shared/version.py
 
     # 2. コミット
     echo "Committing..."
-    git add pyproject.toml
+    git add pyproject.toml src/shared/version.py
     git commit -m "Bump version to $VERSION"
 
     # 3. Push
