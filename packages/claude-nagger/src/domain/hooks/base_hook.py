@@ -10,6 +10,19 @@ from pathlib import Path
 from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
 
+try:
+    from shared.permission_mode import (
+        PermissionMode,
+        PermissionModeBehavior,
+        DEFAULT_MODE_BEHAVIORS,
+    )
+except ImportError:
+    from src.shared.permission_mode import (
+        PermissionMode,
+        PermissionModeBehavior,
+        DEFAULT_MODE_BEHAVIORS,
+    )
+
 if TYPE_CHECKING:
     from .hook_response import HookResponse
 
@@ -70,6 +83,70 @@ class BaseHook(ABC):
         環境変数が"true"の場合のみTrueを返す。
         """
         return os.environ.get('CLAUDE_CODE_REMOTE', '').lower() == 'true'
+
+    def get_permission_mode(self, input_data: Dict[str, Any]) -> PermissionMode:
+        """入力データからpermission_modeを取得
+
+        Args:
+            input_data: 入力データ
+
+        Returns:
+            PermissionMode（不明な場合はUNKNOWN）
+        """
+        mode_str = input_data.get('permission_mode', '')
+        mode = PermissionMode.from_string(mode_str)
+        self.log_debug(f"Permission mode: {mode_str} -> {mode}")
+        return mode
+
+    def get_permission_mode_behavior(
+        self,
+        mode: PermissionMode,
+        config_behaviors: Optional[Dict[str, str]] = None
+    ) -> PermissionModeBehavior:
+        """permission_modeに対応する挙動を取得
+
+        設定ファイルからカスタム挙動を取得し、なければデフォルトを使用。
+
+        Args:
+            mode: PermissionMode
+            config_behaviors: 設定ファイルのモード別挙動（オプション）
+
+        Returns:
+            PermissionModeBehavior
+        """
+        # 設定ファイルのカスタム挙動を優先
+        if config_behaviors and mode.value in config_behaviors:
+            behavior_str = config_behaviors[mode.value]
+            try:
+                return PermissionModeBehavior(behavior_str)
+            except ValueError:
+                self.log_debug(f"Invalid behavior config: {behavior_str}, using default")
+
+        # デフォルト挙動
+        return DEFAULT_MODE_BEHAVIORS.get(mode, PermissionModeBehavior.NORMAL)
+
+    def should_skip_by_permission_mode(
+        self,
+        input_data: Dict[str, Any],
+        config_behaviors: Optional[Dict[str, str]] = None
+    ) -> tuple[bool, PermissionModeBehavior]:
+        """permission_modeによりスキップすべきか判定
+
+        Args:
+            input_data: 入力データ
+            config_behaviors: 設定ファイルのモード別挙動
+
+        Returns:
+            (スキップすべきか, 挙動)
+        """
+        mode = self.get_permission_mode(input_data)
+        behavior = self.get_permission_mode_behavior(mode, config_behaviors)
+
+        if behavior == PermissionModeBehavior.SKIP:
+            self.log_info(f"Skipping due to permission_mode={mode.value}")
+            return True, behavior
+
+        return False, behavior
 
     def log_debug(self, message: str):
         """デバッグログ出力"""
@@ -170,10 +247,19 @@ class BaseHook(ABC):
 
         処理をブロックし、reasonをClaudeにフィードバックする。
         Claude Code Hooks APIの仕様に従い、stderrに出力して終了コード2で終了。
+        WARN_ONLYモード（dontAsk）の場合はブロックを許可に変換。
 
         Args:
             reason: ブロック理由（Claudeに表示される）
         """
+        # WARN_ONLYモードの場合はブロックを許可に変換
+        if (hasattr(self, '_current_permission_mode_behavior') and
+            self._current_permission_mode_behavior == PermissionModeBehavior.WARN_ONLY):
+            self.log_info(f"Converting block to allow due to WARN_ONLY mode: {reason}")
+            warn_reason = f"[WARN_ONLY] {reason}" if reason else "[WARN_ONLY]"
+            self.exit_allow(reason=warn_reason)
+            return  # exit_allowで終了するのでここには到達しない
+
         self.log_info(f"BLOCK: {reason}")
         print(reason, file=sys.stderr)
         sys.exit(ExitCode.BLOCK)
@@ -294,13 +380,23 @@ class BaseHook(ABC):
         """拒否して終了（終了コード0 + stdout JSON出力）
 
         denyはブロックと異なり、stderrではなくJSON形式でClaudeにフィードバック。
+        WARN_ONLYモード（dontAsk）の場合は拒否を許可に変換。
 
         Args:
             reason: 拒否理由（Claudeに表示）
             hook_event_name: イベント名
         """
         from .hook_response import HookResponse
-        response = HookResponse.deny(reason=reason, hook_event_name=hook_event_name)  # type: ignore
+
+        # WARN_ONLYモードの場合はdenyをallowに変換
+        if (hasattr(self, '_current_permission_mode_behavior') and
+            self._current_permission_mode_behavior == PermissionModeBehavior.WARN_ONLY):
+            self.log_info(f"Converting deny to allow due to WARN_ONLY mode")
+            warn_reason = f"[WARN_ONLY] {reason}" if reason else "[WARN_ONLY]"
+            response = HookResponse.allow(reason=warn_reason, hook_event_name=hook_event_name)  # type: ignore
+        else:
+            response = HookResponse.deny(reason=reason, hook_event_name=hook_event_name)  # type: ignore
+
         self.exit_with_response(response)
 
     def exit_ask(
@@ -679,12 +775,24 @@ class BaseHook(ABC):
 
         self.log_info(f"{'='*10} {self.__class__.__name__} Started {'='*10}")
 
+        # 現在のpermission_mode挙動を保持（process内で参照可能）
+        self._current_permission_mode_behavior: Optional[PermissionModeBehavior] = None
+
         try:
             # 入力を読み取る
             input_data = self.read_input()
 
             if not input_data:
                 self.log_debug("No input data, exiting")
+                return ExitCode.SUCCESS
+
+            # permission_modeによるスキップ判定
+            should_skip, behavior = self.should_skip_by_permission_mode(input_data)
+            self._current_permission_mode_behavior = behavior
+
+            if should_skip:
+                # bypassPermissions: 全処理スキップ
+                self.log_info(f"Skipping all processing due to permission_mode behavior: {behavior}")
                 return ExitCode.SUCCESS
 
             # セッションIDを取得
@@ -715,8 +823,17 @@ class BaseHook(ABC):
                 self.mark_session_processed(session_id, current_tokens or 0)
                 self.log_debug(f"Created session marker after successful processing with {current_tokens or 0} tokens")
 
-            if self.output_response(result['decision'], result.get('reason', '')):
-                self.log_info(f"Successfully processed with decision: {result['decision']}")
+            # dontAskモード: ブロック(deny)を警告(allow)に変換
+            decision = result['decision']
+            if behavior == PermissionModeBehavior.WARN_ONLY and decision == 'block':
+                self.log_info(f"Converting block to allow due to WARN_ONLY mode (dontAsk)")
+                decision = 'approve'
+                # 理由に警告を追加
+                original_reason = result.get('reason', '')
+                result['reason'] = f"[WARN_ONLY] {original_reason}" if original_reason else "[WARN_ONLY]"
+
+            if self.output_response(decision, result.get('reason', '')):
+                self.log_info(f"Successfully processed with decision: {decision}")
                 return ExitCode.SUCCESS
             else:
                 return ExitCode.ERROR
