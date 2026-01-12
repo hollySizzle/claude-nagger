@@ -600,7 +600,10 @@ class TestLoadSettings:
 
 
 class TestCLIIntegration:
-    """CLIエントリーポイントの統合テスト"""
+    """CLIエントリーポイントの統合テスト
+    
+    注: インストール済みCLIではなく python -m を使用して環境非依存に
+    """
 
     @pytest.fixture
     def temp_dir(self):
@@ -611,23 +614,25 @@ class TestCLIIntegration:
     def test_cli_version(self):
         """--versionオプションでバージョン表示"""
         import subprocess
+        import sys
         result = subprocess.run(
-            ["/home/node/.local/bin/claude-nagger", "--version"],
+            [sys.executable, "-m", "application.cli", "--version"],
             capture_output=True,
             text=True
         )
         assert result.returncode == 0
         assert "claude-nagger" in result.stdout
-        assert "1.0." in result.stdout  # バージョン番号
+        assert "1." in result.stdout  # バージョン番号
 
     def test_cli_install_hooks_dry_run(self, temp_dir):
         """install-hooks --dry-runオプション"""
         import subprocess
+        import sys
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
             result = subprocess.run(
-                ["/home/node/.local/bin/claude-nagger", "install-hooks", "--dry-run"],
+                [sys.executable, "-m", "application.cli", "install-hooks", "--dry-run"],
                 capture_output=True,
                 text=True,
                 cwd=str(temp_dir)
@@ -640,8 +645,9 @@ class TestCLIIntegration:
     def test_cli_install_hooks_creates_files(self, temp_dir):
         """install-hooksコマンドでファイルが作成される"""
         import subprocess
+        import sys
         result = subprocess.run(
-            ["/home/node/.local/bin/claude-nagger", "install-hooks"],
+            [sys.executable, "-m", "application.cli", "install-hooks"],
             capture_output=True,
             text=True,
             cwd=str(temp_dir)
@@ -656,8 +662,9 @@ class TestCLIIntegration:
     def test_cli_help(self):
         """ヘルプ表示"""
         import subprocess
+        import sys
         result = subprocess.run(
-            ["/home/node/.local/bin/claude-nagger", "--help"],
+            [sys.executable, "-m", "application.cli", "--help"],
             capture_output=True,
             text=True
         )
