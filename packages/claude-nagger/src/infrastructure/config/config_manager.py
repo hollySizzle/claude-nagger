@@ -266,6 +266,24 @@ class ConfigManager:
         """表示レベル設定を取得"""
         return self.config.get("convention_hooks", {}).get("display_levels", {}).get(level, {})
 
+    def get_permission_mode_behaviors(self) -> Dict[str, str]:
+        """permission_mode別の挙動設定を取得
+
+        設定例:
+        ```yaml
+        permission_mode_behaviors:
+          bypassPermissions: skip      # 全スキップ
+          dontAsk: warn_only           # 警告のみ（ブロックしない）
+          default: normal              # 通常処理
+          plan: normal                 # 通常処理
+          acceptEdits: normal          # 通常処理
+        ```
+
+        Returns:
+            モード名 -> 挙動名のマッピング
+        """
+        return self.config.get("permission_mode_behaviors", {})
+
     def _load_secrets(self) -> Dict[str, Any]:
         """機密情報ファイルを読み込み
         
