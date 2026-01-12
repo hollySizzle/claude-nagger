@@ -7,8 +7,11 @@ import logging
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 from datetime import datetime
+
+if TYPE_CHECKING:
+    from .hook_response import HookResponse
 
 
 class ExitCode(IntEnum):
@@ -218,6 +221,110 @@ class BaseHook(ABC):
         """
         self.log_debug("Skipping - not a target")
         sys.exit(ExitCode.SUCCESS)
+
+    def exit_with_response(self, response: "HookResponse") -> None:
+        """HookResponseで終了（終了コード0 + stdout JSON出力）
+
+        HookResponseオブジェクトを使った構造化された応答出力。
+        updated_input, additional_context, suppress_output等に対応。
+
+        Args:
+            response: HookResponseオブジェクト
+
+        Examples:
+            # 許可
+            self.exit_with_response(HookResponse.allow())
+
+            # 入力修正して許可
+            self.exit_with_response(HookResponse.allow(
+                updated_input={"command": "safe_command"}
+            ))
+
+            # コンテキスト注入
+            self.exit_with_response(HookResponse.allow(
+                additional_context="このプロジェクトでは..."
+            ))
+
+            # ユーザー確認要求
+            self.exit_with_response(HookResponse.ask(
+                reason="rmコマンドの確認"
+            ))
+        """
+        response_dict = response.to_dict()
+        json_output = json.dumps(response_dict, ensure_ascii=False)
+        self.log_debug(f"Output JSON: {json_output}")
+        print(json_output)
+        sys.exit(ExitCode.SUCCESS)
+
+    def exit_allow(
+        self,
+        reason: str = "",
+        updated_input: Optional[Dict[str, Any]] = None,
+        additional_context: Optional[str] = None,
+        hook_event_name: str = "PreToolUse",
+        suppress_output: Optional[bool] = None,
+    ) -> None:
+        """許可して終了（終了コード0 + stdout JSON出力）
+
+        updated_input, additional_context, suppress_outputに対応。
+
+        Args:
+            reason: 許可理由（ユーザーに表示）
+            updated_input: ツール入力の修正
+            additional_context: Claudeへの追加コンテキスト
+            hook_event_name: イベント名
+            suppress_output: verboseモードでの出力抑制
+        """
+        from .hook_response import HookResponse
+        response = HookResponse(
+            hook_event_name=hook_event_name,  # type: ignore
+            permission_decision="allow",
+            permission_decision_reason=reason if reason else None,
+            updated_input=updated_input,
+            additional_context=additional_context,
+            suppress_output=suppress_output,
+        )
+        self.exit_with_response(response)
+
+    def exit_deny(
+        self,
+        reason: str,
+        hook_event_name: str = "PreToolUse",
+    ) -> None:
+        """拒否して終了（終了コード0 + stdout JSON出力）
+
+        denyはブロックと異なり、stderrではなくJSON形式でClaudeにフィードバック。
+
+        Args:
+            reason: 拒否理由（Claudeに表示）
+            hook_event_name: イベント名
+        """
+        from .hook_response import HookResponse
+        response = HookResponse.deny(reason=reason, hook_event_name=hook_event_name)  # type: ignore
+        self.exit_with_response(response)
+
+    def exit_ask(
+        self,
+        reason: str,
+        updated_input: Optional[Dict[str, Any]] = None,
+        hook_event_name: str = "PreToolUse",
+    ) -> None:
+        """ユーザー確認要求して終了（終了コード0 + stdout JSON出力）
+
+        UIでツール呼び出しを確認するようユーザーに求める。
+
+        Args:
+            reason: 確認要求理由（ユーザーに表示）
+            updated_input: 入力修正（確認画面に反映）
+            hook_event_name: イベント名
+        """
+        from .hook_response import HookResponse
+        response = HookResponse.ask(
+            reason=reason,
+            updated_input=updated_input,
+            hook_event_name=hook_event_name,  # type: ignore
+        )
+        self.exit_with_response(response)
 
     def get_session_marker_path(self, session_id: str) -> Path:
         """
