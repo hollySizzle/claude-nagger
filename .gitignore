@@ -4,3 +4,4 @@ vibes/scripts/hooks/log
 .DS_Store
 .mcp.json
 .devcontainer/.env
+docs/.claude/settings.local.json
