@@ -21,6 +21,9 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Copy README from root
+        run: cp ../../README.md ./README.md
+
       - name: Install build tools
         run: pip install build
 
