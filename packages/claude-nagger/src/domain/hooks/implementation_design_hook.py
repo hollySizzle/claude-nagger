@@ -63,26 +63,31 @@ class ImplementationDesignHook(BaseHook):
         self.impl_logger.info(f"Context thresholds: {self.thresholds}")
         self.impl_logger.info(f"Marker settings: {self.marker_settings}")
 
-    def normalize_file_path(self, file_path: str, cwd: str) -> str:
+    def normalize_file_path(self, file_path: str, cwd: str = '') -> str:
         """
         ファイルパスを正規化して絶対パスに変換
-        
+
         Args:
             file_path: 元のファイルパス（相対/絶対両対応）
-            cwd: 現在の作業ディレクトリ
-            
+            cwd: 現在の作業ディレクトリ（project_dirが未設定の場合のフォールバック）
+
         Returns:
             正規化された絶対パス
+
+        Note:
+            CLAUDE_PROJECT_DIR環境変数を優先的に使用。
+            未設定の場合はcwd引数にフォールバック。
         """
         if os.path.isabs(file_path):
             normalized = os.path.normpath(file_path)
             self.log_debug(f"File path is already absolute: {normalized}")
             return normalized
-        
-        # 相対パスの場合、cwdと結合
-        absolute_path = os.path.join(cwd, file_path)
+
+        # project_dir（CLAUDE_PROJECT_DIR）を優先、未設定ならcwdにフォールバック
+        base_dir = self.project_dir or cwd or os.getcwd()
+        absolute_path = os.path.join(base_dir, file_path)
         normalized = os.path.normpath(absolute_path)
-        self.log_debug(f"Converted relative path '{file_path}' to absolute: '{normalized}'")
+        self.log_debug(f"Converted relative path '{file_path}' to absolute: '{normalized}' (base_dir={base_dir})")
         return normalized
 
     def should_process(self, input_data: Dict[str, Any]) -> bool:

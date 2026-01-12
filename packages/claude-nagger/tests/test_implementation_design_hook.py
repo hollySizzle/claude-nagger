@@ -1,5 +1,6 @@
 """ImplementationDesignHookのテスト"""
 
+import os
 import pytest
 import json
 import tempfile
@@ -230,6 +231,19 @@ class TestNormalizeFilePath:
         """パスが正規化される"""
         result = hook.normalize_file_path('../test/../file.txt', '/project/src')
         assert result == '/project/file.txt'
+
+    def test_project_dir_takes_priority(self, hook):
+        """CLAUDE_PROJECT_DIRが設定されていれば優先"""
+        with patch.dict(os.environ, {'CLAUDE_PROJECT_DIR': '/workspace/myproject'}):
+            result = hook.normalize_file_path('src/file.py', '/other/dir')
+            assert result == '/workspace/myproject/src/file.py'
+
+    def test_cwd_fallback_when_project_dir_not_set(self, hook):
+        """CLAUDE_PROJECT_DIR未設定時はcwdにフォールバック"""
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop('CLAUDE_PROJECT_DIR', None)
+            result = hook.normalize_file_path('src/file.py', '/fallback/cwd')
+            assert result == '/fallback/cwd/src/file.py'
 
 
 class TestCommandToolDetection:

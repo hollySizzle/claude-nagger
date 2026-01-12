@@ -1,12 +1,27 @@
 """フック処理の基底クラス"""
 
 import json
+import os
 import sys
 import logging
 from abc import ABC, abstractmethod
+from enum import IntEnum
 from pathlib import Path
 from typing import Dict, Any, Optional
 from datetime import datetime
+
+
+class ExitCode(IntEnum):
+    """Claude Code Hooks API 終了コード
+
+    終了コードの意味:
+    - SUCCESS (0): 成功。stdoutのJSON出力が処理される
+    - ERROR (1): ノンブロッキングエラー。stderr表示後も処理続行
+    - BLOCK (2): ブロッキングエラー。stderrをClaudeへ表示し処理ブロック
+    """
+    SUCCESS = 0
+    ERROR = 1
+    BLOCK = 2
 
 
 class BaseHook(ABC):
@@ -32,8 +47,26 @@ class BaseHook(ABC):
             format='[%(asctime)s] %(levelname)s: %(message)s',
             handlers=[logging.FileHandler(self.log_file)]
         )
-        
+
         self.logger = logging.getLogger(self.__class__.__name__)
+
+    @property
+    def project_dir(self) -> Optional[str]:
+        """CLAUDE_PROJECT_DIR環境変数からプロジェクトルートを取得
+
+        Claude Codeが開始されたプロジェクトルートディレクトリへの絶対パス。
+        設定されていない場合はNoneを返す。
+        """
+        return os.environ.get('CLAUDE_PROJECT_DIR')
+
+    @property
+    def is_remote(self) -> bool:
+        """CLAUDE_CODE_REMOTE環境変数からリモート環境かどうかを判定
+
+        リモート（web）環境の場合True、ローカルCLI環境の場合False。
+        環境変数が"true"の場合のみTrueを返す。
+        """
+        return os.environ.get('CLAUDE_CODE_REMOTE', '').lower() == 'true'
 
     def log_debug(self, message: str):
         """デバッグログ出力"""
@@ -122,12 +155,69 @@ class BaseHook(ABC):
             
             json_output = json.dumps(response, ensure_ascii=False)
             print(json_output)
-            
+
             self.log_debug(f"Output response: {json_output}")
             return True
         except Exception as e:
             self.log_error(f"Failed to output response: {e}")
             return False
+
+    def exit_block(self, reason: str) -> None:
+        """ブロッキングエラーで終了（終了コード2 + stderr）
+
+        処理をブロックし、reasonをClaudeにフィードバックする。
+        Claude Code Hooks APIの仕様に従い、stderrに出力して終了コード2で終了。
+
+        Args:
+            reason: ブロック理由（Claudeに表示される）
+        """
+        self.log_info(f"BLOCK: {reason}")
+        print(reason, file=sys.stderr)
+        sys.exit(ExitCode.BLOCK)
+
+    def exit_success(
+        self,
+        hook_event_name: str = 'PreToolUse',
+        permission_decision: str = 'allow',
+        reason: str = '',
+        extra_fields: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """成功終了（終了コード0 + stdout JSON出力）
+
+        JSON形式でhookSpecificOutputを出力し、正常終了する。
+
+        Args:
+            hook_event_name: イベント名（PreToolUse, PostToolUse等）
+            permission_decision: 許可決定（allow, deny, ask）
+            reason: 理由メッセージ
+            extra_fields: 追加フィールド（continueなど）
+        """
+        response: Dict[str, Any] = {
+            'hookSpecificOutput': {
+                'hookEventName': hook_event_name,
+                'permissionDecision': permission_decision,
+            }
+        }
+
+        if reason:
+            response['hookSpecificOutput']['permissionDecisionReason'] = reason
+
+        # 追加フィールドをマージ
+        if extra_fields:
+            response.update(extra_fields)
+
+        json_output = json.dumps(response, ensure_ascii=False)
+        self.log_debug(f"Output JSON: {json_output}")
+        print(json_output)
+        sys.exit(ExitCode.SUCCESS)
+
+    def exit_skip(self) -> None:
+        """処理スキップで終了（終了コード0、出力なし）
+
+        処理対象外の場合に使用。出力なしで正常終了。
+        """
+        self.log_debug("Skipping - not a target")
+        sys.exit(ExitCode.SUCCESS)
 
     def get_session_marker_path(self, session_id: str) -> Path:
         """
@@ -472,44 +562,44 @@ class BaseHook(ABC):
     def run(self) -> int:
         """
         フックのメインエントリーポイント
-        
+
         Returns:
-            終了コード（0: 成功、1: エラー）
+            ExitCode（SUCCESS=0, ERROR=1, BLOCK=2）
         """
         # 設定ファイル存在保証（自動生成）
         from application.install_hooks import ensure_config_exists
         ensure_config_exists()
-        
+
         self.log_info(f"{'='*10} {self.__class__.__name__} Started {'='*10}")
-        
+
         try:
             # 入力を読み取る
             input_data = self.read_input()
-            
+
             if not input_data:
                 self.log_debug("No input data, exiting")
-                return 0
-            
+                return ExitCode.SUCCESS
+
             # セッションIDを取得
             session_id = input_data.get('session_id', '')
             if session_id:
                 self.log_debug(f"Session ID: {session_id}")
-                
+
                 # 既に処理済みかをコンテキストベースで確認
                 if self.is_session_processed_context_aware(session_id, input_data):
                     self.log_debug("Session already processed and within context threshold, skipping")
-                    return 0
-            
+                    return ExitCode.SUCCESS
+
             # 処理対象かチェック
             if not self.should_process(input_data):
                 self.log_debug("Not a target for processing, skipping")
-                return 0
-            
-            # フック処理を実行（終了コード方式）
-            # 注意: process() メソッドは sys.exit() で終了するため、
-            # 通常はここに到達しない
+                return ExitCode.SUCCESS
+
+            # フック処理を実行
+            # process()メソッドはexit_block/exit_success/exit_skipで終了する
+            # ここに戻ってきた場合は従来形式（後方互換性）
             result = self.process(input_data)
-            
+
             # ここに到達した場合は従来の形式（後方互換性）
             # 処理が正常終了した場合のみマーカーを作成
             if session_id:
@@ -517,15 +607,15 @@ class BaseHook(ABC):
                 current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
                 self.mark_session_processed(session_id, current_tokens or 0)
                 self.log_debug(f"Created session marker after successful processing with {current_tokens or 0} tokens")
-            
+
             if self.output_response(result['decision'], result.get('reason', '')):
                 self.log_info(f"Successfully processed with decision: {result['decision']}")
-                return 0
+                return ExitCode.SUCCESS
             else:
-                return 1
-                
+                return ExitCode.ERROR
+
         except Exception as e:
             self.log_error(f"Unexpected error in run: {e}")
-            return 1
+            return ExitCode.ERROR
         finally:
             self.log_info(f"{'='*10} {self.__class__.__name__} Ended {'='*10}")
