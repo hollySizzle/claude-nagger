@@ -206,4 +206,6 @@ class TestCLIDiagnose:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "claude-nagger 診断レポート" in captured.out
+        # バージョン付きフォーマット: "claude-nagger v{version} 診断レポート"
+        assert "claude-nagger v" in captured.out
+        assert "診断レポート" in captured.out
