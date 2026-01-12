@@ -1,0 +1,13 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/test/session.jsonl",
+  "cwd": "/workspace/test",
+  "permission_mode": "default",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/workspace/vibes/docs/specs/test.pu",
+    "old_string": "test",
+    "new_string": "updated"
+  }
+}

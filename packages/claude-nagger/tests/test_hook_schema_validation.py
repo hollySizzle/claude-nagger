@@ -21,8 +21,21 @@ class HookSchemaValidator:
 
     # Claude Code 公式フック出力スキーマ
     # 新形式: hookSpecificOutput を使用
-    VALID_PERMISSION_DECISIONS = ['allow', 'deny']
-    VALID_HOOK_EVENT_NAMES = ['PreToolUse', 'PostToolUse', 'Notification', 'Stop']
+    # ask: UIでツール呼び出しを確認するようユーザーに求める
+    VALID_PERMISSION_DECISIONS = ['allow', 'deny', 'ask']
+    # 全イベント名（ClaudeCodeHooks.md より）
+    VALID_HOOK_EVENT_NAMES = [
+        'PreToolUse',       # ツール実行前
+        'PostToolUse',      # ツール実行後
+        'PermissionRequest',# 許可リクエスト
+        'Notification',     # 通知
+        'Stop',             # 停止
+        'SubagentStop',     # サブエージェント停止
+        'UserPromptSubmit', # ユーザープロンプト送信
+        'PreCompact',       # コンパクト前
+        'SessionStart',     # セッション開始
+        'SessionEnd',       # セッション終了
+    ]
 
     def validate(self, output: str) -> Dict[str, Any]:
         """
@@ -591,6 +604,244 @@ class TestHooksWithCapturedFixtures:
         # 全て有効であることを確認
         assert schema_stats['valid'] == schema_stats['total'], \
             f"Some outputs are invalid: {schema_stats['valid']}/{schema_stats['total']}"
+
+
+class TestHookSchemaValidatorAskDecision:
+    """ask decision のテスト"""
+
+    @pytest.fixture
+    def validator(self):
+        return HookSchemaValidator()
+
+    def test_valid_ask_output(self, validator):
+        """正常な ask 出力の検証（ユーザー確認要求）"""
+        output = json.dumps({
+            'hookSpecificOutput': {
+                'hookEventName': 'PreToolUse',
+                'permissionDecision': 'ask',
+                'permissionDecisionReason': 'ユーザー確認が必要です'
+            }
+        })
+
+        result = validator.validate(output)
+        assert result['valid'] is True
+        assert len(result['errors']) == 0
+
+
+class TestExitCodeBehavior:
+    """終了コードの挙動テスト
+
+    Claude Code Hooks APIの終了コード仕様:
+    - 終了コード0: 成功（stdoutはJSON出力として解析）
+    - 終了コード2: ブロッキングエラー（stderrがClaudeへ表示）
+    - その他（1等）: ノンブロッキングエラー（stderr表示後も続行）
+    """
+
+    @pytest.fixture
+    def hook_runner(self):
+        hook_path = PROJECT_ROOT / 'src' / 'domain' / 'hooks' / 'implementation_design_hook.py'
+        return HookRunner(hook_path)
+
+    def test_exit_code_0_success(self, hook_runner):
+        """終了コード0: 正常終了
+
+        処理対象外の入力で空出力・終了コード0を確認
+        """
+        input_data = {
+            'session_id': '00000000-0000-0000-0000-000000000000',
+            'tool_input': {
+                'file_path': '/some/unrelated/file.txt'
+            }
+        }
+
+        result = hook_runner.run_with_data(input_data)
+
+        assert result['return_code'] == 0, f"Expected exit code 0, got {result['return_code']}"
+        assert result['success'] is True
+
+    def test_exit_code_0_with_valid_json(self, hook_runner):
+        """終了コード0でJSON出力がある場合のスキーマ検証"""
+        input_data = {
+            'session_id': '00000000-0000-0000-0000-000000000000',
+            'tool_name': 'Edit',
+            'tool_input': {
+                'file_path': '/workspace/vibes/docs/specs/実装設計書.pu',
+                'old_string': 'test',
+                'new_string': 'updated'
+            }
+        }
+
+        result = hook_runner.run_with_data(input_data)
+
+        # 終了コード0の場合、出力があればJSON検証
+        if result['return_code'] == 0 and result['stdout'].strip():
+            assert result['validation']['valid'] is True, \
+                f"Schema validation failed: {result['validation']['errors']}"
+
+    def test_exit_code_interpretation(self):
+        """終了コードの解釈テスト（仕様確認）
+
+        終了コードの意味:
+        - 0: 成功（success=True）
+        - 2: ブロッキングエラー（特別扱い）
+        - 1,その他: ノンブロッキングエラー
+        """
+        # 仕様の文書化テスト
+        exit_code_meanings = {
+            0: 'success',      # stdoutのJSON解析、処理続行
+            2: 'blocking',     # stderrをClaudeへ、処理ブロック
+            1: 'non_blocking', # stderrを表示、処理続行
+        }
+
+        assert exit_code_meanings[0] == 'success'
+        assert exit_code_meanings[2] == 'blocking'
+        assert exit_code_meanings[1] == 'non_blocking'
+
+
+class TestAllHookEventNames:
+    """全イベント名対応テスト"""
+
+    @pytest.fixture
+    def validator(self):
+        return HookSchemaValidator()
+
+    @pytest.mark.parametrize("event_name", [
+        'PreToolUse',
+        'PostToolUse',
+        'PermissionRequest',
+        'Notification',
+        'Stop',
+        'SubagentStop',
+        'UserPromptSubmit',
+        'PreCompact',
+        'SessionStart',
+        'SessionEnd',
+    ])
+    def test_valid_event_names(self, validator, event_name):
+        """各イベント名が有効として認識される"""
+        output = json.dumps({
+            'hookSpecificOutput': {
+                'hookEventName': event_name,
+                'permissionDecision': 'allow'
+            }
+        })
+
+        result = validator.validate(output)
+        assert result['valid'] is True
+        # 既知のイベント名なので警告なし
+        assert not any('Unknown hookEventName' in w for w in result['warnings'])
+
+    def test_all_event_names_in_validator(self, validator):
+        """バリデータに全イベント名が含まれている"""
+        expected_events = [
+            'PreToolUse', 'PostToolUse', 'PermissionRequest',
+            'Notification', 'Stop', 'SubagentStop',
+            'UserPromptSubmit', 'PreCompact', 'SessionStart', 'SessionEnd'
+        ]
+
+        for event in expected_events:
+            assert event in validator.VALID_HOOK_EVENT_NAMES, \
+                f"Missing event name: {event}"
+
+
+class TestPermissionModeFixtures:
+    """permission_mode フィクスチャのテスト
+
+    Claude Code Hooks API の permission_mode:
+    - default: 標準モード（ユーザー確認あり）
+    - plan: プランモード
+    - acceptEdits: 編集自動承認
+    - dontAsk: 確認なし
+    - bypassPermissions: 許可バイパス
+    """
+
+    @pytest.fixture
+    def fixture_dir(self):
+        return PROJECT_ROOT / 'tests' / 'fixtures' / 'claude_code' / 'permission_mode'
+
+    @pytest.fixture
+    def hook_runner(self):
+        hook_path = PROJECT_ROOT / 'src' / 'domain' / 'hooks' / 'implementation_design_hook.py'
+        return HookRunner(hook_path)
+
+    VALID_PERMISSION_MODES = [
+        'default',
+        'plan',
+        'acceptEdits',
+        'dontAsk',
+        'bypassPermissions',
+    ]
+
+    def test_permission_mode_fixtures_exist(self, fixture_dir):
+        """permission_mode フィクスチャディレクトリが存在する"""
+        assert fixture_dir.exists(), f"Fixture directory not found: {fixture_dir}"
+
+    def test_all_permission_modes_have_fixtures(self, fixture_dir):
+        """全 permission_mode のフィクスチャが存在する"""
+        fixtures = list(fixture_dir.glob('*.json'))
+        assert len(fixtures) >= 5, \
+            f"Expected at least 5 permission_mode fixtures, found {len(fixtures)}"
+
+    @pytest.mark.parametrize("mode", VALID_PERMISSION_MODES)
+    def test_permission_mode_fixture_content(self, fixture_dir, mode):
+        """各 permission_mode フィクスチャの内容検証"""
+        # モード名に対応するフィクスチャを検索
+        fixtures = list(fixture_dir.glob('*.json'))
+
+        # いずれかのフィクスチャに該当モードが含まれているか確認
+        found = False
+        for fixture in fixtures:
+            with open(fixture, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            if data.get('permission_mode') == mode:
+                found = True
+                # 基本フィールドの存在確認
+                assert 'session_id' in data
+                assert 'hook_event_name' in data
+                break
+
+        assert found, f"No fixture found for permission_mode: {mode}"
+
+    def test_permission_mode_fixtures_run_successfully(self, hook_runner, fixture_dir):
+        """permission_mode フィクスチャでフック実行が成功する"""
+        fixtures = list(fixture_dir.glob('*.json'))
+
+        for fixture in fixtures:
+            result = hook_runner.run_with_fixture(fixture)
+
+            # 実行成功（終了コード0）
+            assert result['success'] is True, \
+                f"Hook execution failed for {fixture.name}: {result['stderr']}"
+
+
+class TestPermissionDecisions:
+    """許可決定（permissionDecision）のテスト"""
+
+    @pytest.fixture
+    def validator(self):
+        return HookSchemaValidator()
+
+    @pytest.mark.parametrize("decision", ['allow', 'deny', 'ask'])
+    def test_valid_permission_decisions(self, validator, decision):
+        """各許可決定が有効として認識される"""
+        output = json.dumps({
+            'hookSpecificOutput': {
+                'hookEventName': 'PreToolUse',
+                'permissionDecision': decision
+            }
+        })
+
+        result = validator.validate(output)
+        assert result['valid'] is True
+        assert len(result['errors']) == 0
+
+    def test_all_decisions_in_validator(self, validator):
+        """バリデータに全許可決定が含まれている"""
+        expected_decisions = ['allow', 'deny', 'ask']
+
+        for decision in expected_decisions:
+            assert decision in validator.VALID_PERMISSION_DECISIONS, \
+                f"Missing permission decision: {decision}"
 
 
 if __name__ == '__main__':
