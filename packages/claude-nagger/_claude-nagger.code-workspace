@@ -1,18 +1,18 @@
 {
   "folders": [
     {
-      "path": "../../docs"
+      "path": "/workspace/docs/"
     },
     {
-      "path": "./"
+      "path": "/workspace/packages/claude-nagger/"
     },
     {
-      "path": "../../"
+      "path": "/workspace/"
     }
   ],
   "settings": {
     "terminal.integrated.scrollback": 10000,
-    "terminal.integrated.cwd": "./",
+    "terminal.integrated.cwd": "/workspace/packages/claude-nagger/",
     "editor.tabSize": 2,
     "redmine.apiKey": "${REDMINE_API_KEY}",
     "redmine.url": "${READMINE_PROJECT_URL}",
