@@ -15,7 +15,8 @@
       "Bash(git add:*)",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nTestCLIIntegration: python -m実行に変更し環境非依存化 issue_4548\n\n- /home/node/.local/bin/claude-nagger → sys.executable -m application.cli\n- CLIインストール不要でテスト実行可能に\n- 全573テスト成功確認\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "mcp__redmine_epic_grid__add_issue_comment_tool",
-      "mcp__serena__think_about_whether_you_are_done"
+      "mcp__serena__think_about_whether_you_are_done",
+      "mcp__redmine_epic_grid__update_issue_status_tool"
     ]
   },
   "enabledMcpjsonServers": [
