@@ -28,8 +28,9 @@ class DiagnoseCommand:
 
     def execute(self) -> int:
         """診断を実行"""
+        from shared.version import __version__
         print("=" * 60)
-        print("claude-nagger 診断レポート")
+        print(f"claude-nagger v{__version__} 診断レポート")
         print("=" * 60)
         print()
 
