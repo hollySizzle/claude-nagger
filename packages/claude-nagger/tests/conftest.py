@@ -3,12 +3,16 @@
 import sys
 from pathlib import Path
 
-# プロジェクトルートをPYTHONPATHに追加（from src.xxx形式のインポート用）
+# プロジェクトルートとsrcディレクトリのパス
 project_root = Path(__file__).parent.parent
-if str(project_root) not in sys.path:
-    sys.path.insert(0, str(project_root))
-
-# srcディレクトリもPYTHONPATHに追加（from infrastructure.xxx形式のインポート用）
 src_dir = project_root / "src"
-if str(src_dir) not in sys.path:
-    sys.path.insert(0, str(src_dir))
+
+# 古いeditable installなど不正なパスを除去
+# （/tmp/claude_nagger等、別ディレクトリのsrcが混入する問題への対策）
+sys.path = [p for p in sys.path if "claude_nagger" not in p or str(project_root) in p]
+
+# 正しいパスを先頭に追加（既存の場合は一度削除してから先頭へ）
+for path in [str(src_dir), str(project_root)]:
+    if path in sys.path:
+        sys.path.remove(path)
+    sys.path.insert(0, path)

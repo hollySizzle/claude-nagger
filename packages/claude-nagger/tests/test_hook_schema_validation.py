@@ -105,25 +105,29 @@ class HookSchemaValidator:
 
 class HookRunner:
     """フック実行ヘルパー"""
-    
+
     def __init__(self, hook_script: Path):
         """
         初期化
-        
+
         Args:
             hook_script: 実行するフックスクリプトのパス
         """
         self.hook_script = hook_script
         self.validator = HookSchemaValidator()
-    
+        # subprocess用の環境変数（PYTHONPATHを明示設定）
+        import os
+        self._env = os.environ.copy()
+        self._env["PYTHONPATH"] = str(PROJECT_ROOT / "src")
+
     def run_with_fixture(self, fixture_path: Path, timeout: int = 10) -> Dict[str, Any]:
         """
         フィクスチャを入力としてフックを実行
-        
+
         Args:
             fixture_path: フィクスチャJSONファイルのパス
             timeout: タイムアウト秒数
-            
+
         Returns:
             実行結果辞書
         """
@@ -134,45 +138,46 @@ class HookRunner:
             'return_code': None,
             'validation': None
         }
-        
+
         try:
             with open(fixture_path, 'r', encoding='utf-8') as f:
                 input_data = f.read()
-            
+
             process = subprocess.run(
                 [sys.executable, str(self.hook_script)],
                 input=input_data,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=PROJECT_ROOT
+                cwd=PROJECT_ROOT,
+                env=self._env
             )
-            
+
             result['stdout'] = process.stdout
             result['stderr'] = process.stderr
             result['return_code'] = process.returncode
             result['success'] = process.returncode == 0
-            
+
             # 出力スキーマ検証
             result['validation'] = self.validator.validate(process.stdout)
-            
+
         except subprocess.TimeoutExpired:
             result['success'] = False
             result['stderr'] = f'Timeout after {timeout} seconds'
         except Exception as e:
             result['success'] = False
             result['stderr'] = str(e)
-        
+
         return result
-    
+
     def run_with_data(self, input_data: Dict[str, Any], timeout: int = 10) -> Dict[str, Any]:
         """
         辞書データを入力としてフックを実行
-        
+
         Args:
             input_data: 入力データ辞書
             timeout: タイムアウト秒数
-            
+
         Returns:
             実行結果辞書
         """
@@ -183,34 +188,35 @@ class HookRunner:
             'return_code': None,
             'validation': None
         }
-        
+
         try:
             input_json = json.dumps(input_data, ensure_ascii=False)
-            
+
             process = subprocess.run(
                 [sys.executable, str(self.hook_script)],
                 input=input_json,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
-                cwd=PROJECT_ROOT
+                cwd=PROJECT_ROOT,
+                env=self._env
             )
-            
+
             result['stdout'] = process.stdout
             result['stderr'] = process.stderr
             result['return_code'] = process.returncode
             result['success'] = process.returncode == 0
-            
+
             # 出力スキーマ検証
             result['validation'] = self.validator.validate(process.stdout)
-            
+
         except subprocess.TimeoutExpired:
             result['success'] = False
             result['stderr'] = f'Timeout after {timeout} seconds'
         except Exception as e:
             result['success'] = False
             result['stderr'] = str(e)
-        
+
         return result
 
 
