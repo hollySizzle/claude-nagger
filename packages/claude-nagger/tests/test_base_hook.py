@@ -1,5 +1,6 @@
 """base_hook.py のテスト"""
 
+import os
 import pytest
 import json
 import sys
@@ -7,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 from io import StringIO
 
-from src.domain.hooks.base_hook import BaseHook
+from src.domain.hooks.base_hook import BaseHook, ExitCode
 
 
 class ConcreteHook(BaseHook):
@@ -551,3 +552,173 @@ class TestAbstractMethods:
         """BaseHookは直接インスタンス化できない"""
         with pytest.raises(TypeError):
             BaseHook()
+
+
+class TestExitCode:
+    """ExitCode enum のテスト"""
+
+    def test_exit_code_values(self):
+        """終了コードの値が正しい"""
+        assert ExitCode.SUCCESS == 0
+        assert ExitCode.ERROR == 1
+        assert ExitCode.BLOCK == 2
+
+    def test_exit_code_is_int(self):
+        """終了コードはint互換"""
+        assert int(ExitCode.SUCCESS) == 0
+        assert int(ExitCode.BLOCK) == 2
+
+
+class TestProjectDir:
+    """project_dir プロパティのテスト"""
+
+    def test_project_dir_from_env(self):
+        """CLAUDE_PROJECT_DIR環境変数から取得"""
+        hook = ConcreteHook()
+        with patch.dict(os.environ, {'CLAUDE_PROJECT_DIR': '/workspace/myproject'}):
+            assert hook.project_dir == '/workspace/myproject'
+
+    def test_project_dir_not_set(self):
+        """環境変数未設定時はNone"""
+        hook = ConcreteHook()
+        with patch.dict(os.environ, {}, clear=True):
+            # CLAUDE_PROJECT_DIRを削除
+            os.environ.pop('CLAUDE_PROJECT_DIR', None)
+            assert hook.project_dir is None
+
+
+class TestIsRemote:
+    """is_remote プロパティのテスト"""
+
+    def test_is_remote_true(self):
+        """CLAUDE_CODE_REMOTE=trueの場合True"""
+        hook = ConcreteHook()
+        with patch.dict(os.environ, {'CLAUDE_CODE_REMOTE': 'true'}):
+            assert hook.is_remote is True
+
+    def test_is_remote_true_uppercase(self):
+        """CLAUDE_CODE_REMOTE=TRUEでもTrue"""
+        hook = ConcreteHook()
+        with patch.dict(os.environ, {'CLAUDE_CODE_REMOTE': 'TRUE'}):
+            assert hook.is_remote is True
+
+    def test_is_remote_false(self):
+        """CLAUDE_CODE_REMOTE=falseの場合False"""
+        hook = ConcreteHook()
+        with patch.dict(os.environ, {'CLAUDE_CODE_REMOTE': 'false'}):
+            assert hook.is_remote is False
+
+    def test_is_remote_not_set(self):
+        """環境変数未設定時はFalse"""
+        hook = ConcreteHook()
+        with patch.dict(os.environ, {}, clear=True):
+            os.environ.pop('CLAUDE_CODE_REMOTE', None)
+            assert hook.is_remote is False
+
+    def test_is_remote_empty(self):
+        """空文字の場合False"""
+        hook = ConcreteHook()
+        with patch.dict(os.environ, {'CLAUDE_CODE_REMOTE': ''}):
+            assert hook.is_remote is False
+
+
+class TestExitBlock:
+    """exit_block メソッドのテスト"""
+
+    def test_exit_block_writes_to_stderr(self, capsys):
+        """stderrに理由を出力"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit) as exc_info:
+            hook.exit_block("ブロックの理由")
+
+        assert exc_info.value.code == ExitCode.BLOCK
+        captured = capsys.readouterr()
+        assert "ブロックの理由" in captured.err
+
+    def test_exit_block_exits_with_code_2(self):
+        """終了コード2で終了"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit) as exc_info:
+            hook.exit_block("test")
+
+        assert exc_info.value.code == 2
+
+
+class TestExitSuccess:
+    """exit_success メソッドのテスト"""
+
+    def test_exit_success_writes_json_to_stdout(self, capsys):
+        """stdoutにJSON出力"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit) as exc_info:
+            hook.exit_success(
+                hook_event_name='PreToolUse',
+                permission_decision='allow',
+                reason='テスト理由'
+            )
+
+        assert exc_info.value.code == ExitCode.SUCCESS
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output['hookSpecificOutput']['hookEventName'] == 'PreToolUse'
+        assert output['hookSpecificOutput']['permissionDecision'] == 'allow'
+        assert output['hookSpecificOutput']['permissionDecisionReason'] == 'テスト理由'
+
+    def test_exit_success_without_reason(self, capsys):
+        """理由なしでも動作"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit):
+            hook.exit_success()
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert 'permissionDecisionReason' not in output['hookSpecificOutput']
+
+    def test_exit_success_with_extra_fields(self, capsys):
+        """追加フィールドを含む"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit):
+            hook.exit_success(extra_fields={'continue': False, 'stopReason': '停止'})
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output['continue'] is False
+        assert output['stopReason'] == '停止'
+
+
+class TestExitSkip:
+    """exit_skip メソッドのテスト"""
+
+    def test_exit_skip_no_output(self, capsys):
+        """出力なしで終了"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit) as exc_info:
+            hook.exit_skip()
+
+        assert exc_info.value.code == ExitCode.SUCCESS
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+
+class TestRunWithExitCode:
+    """run メソッドの ExitCode テスト"""
+
+    def test_run_returns_exit_code_success(self):
+        """正常終了時はExitCode.SUCCESSを返す"""
+        hook = ConcreteHook()
+
+        with patch.object(hook, 'read_input', return_value={}):
+            with patch('application.install_hooks.ensure_config_exists'):
+                result = hook.run()
+
+        assert result == ExitCode.SUCCESS
+
+    def test_run_returns_exit_code_error_on_exception(self):
+        """例外時はExitCode.ERRORを返す"""
+        hook = ConcreteHook()
+
+        with patch.object(hook, 'read_input', side_effect=Exception('error')):
+            with patch('application.install_hooks.ensure_config_exists'):
+                result = hook.run()
+
+        assert result == ExitCode.ERROR
