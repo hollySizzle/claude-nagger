@@ -601,7 +601,7 @@ class TestLoadSettings:
 
 class TestCLIIntegration:
     """CLIエントリーポイントの統合テスト
-    
+
     注: インストール済みCLIではなく python -m を使用して環境非依存に
     """
 
@@ -611,38 +611,44 @@ class TestCLIIntegration:
         with tempfile.TemporaryDirectory() as tmpdir:
             yield Path(tmpdir)
 
-    def test_cli_version(self):
+    @pytest.fixture
+    def cli_env(self):
+        """CLI実行用の環境変数（PYTHONPATHを明示設定）"""
+        import sys
+        src_dir = Path(__file__).parent.parent / "src"
+        env = os.environ.copy()
+        env["PYTHONPATH"] = str(src_dir)
+        return env
+
+    def test_cli_version(self, cli_env):
         """--versionオプションでバージョン表示"""
         import subprocess
         import sys
         result = subprocess.run(
             [sys.executable, "-m", "application.cli", "--version"],
             capture_output=True,
-            text=True
+            text=True,
+            env=cli_env
         )
         assert result.returncode == 0
         assert "claude-nagger" in result.stdout
         assert "1." in result.stdout  # バージョン番号
 
-    def test_cli_install_hooks_dry_run(self, temp_dir):
+    def test_cli_install_hooks_dry_run(self, temp_dir, cli_env):
         """install-hooks --dry-runオプション"""
         import subprocess
         import sys
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(temp_dir)
-            result = subprocess.run(
-                [sys.executable, "-m", "application.cli", "install-hooks", "--dry-run"],
-                capture_output=True,
-                text=True,
-                cwd=str(temp_dir)
-            )
-            assert result.returncode == 0
-            assert "dry-run" in result.stdout
-        finally:
-            os.chdir(original_cwd)
+        result = subprocess.run(
+            [sys.executable, "-m", "application.cli", "install-hooks", "--dry-run"],
+            capture_output=True,
+            text=True,
+            cwd=str(temp_dir),
+            env=cli_env
+        )
+        assert result.returncode == 0
+        assert "dry-run" in result.stdout
 
-    def test_cli_install_hooks_creates_files(self, temp_dir):
+    def test_cli_install_hooks_creates_files(self, temp_dir, cli_env):
         """install-hooksコマンドでファイルが作成される"""
         import subprocess
         import sys
@@ -650,7 +656,8 @@ class TestCLIIntegration:
             [sys.executable, "-m", "application.cli", "install-hooks"],
             capture_output=True,
             text=True,
-            cwd=str(temp_dir)
+            cwd=str(temp_dir),
+            env=cli_env
         )
         assert result.returncode == 0
         assert "インストール完了" in result.stdout
@@ -659,14 +666,15 @@ class TestCLIIntegration:
         assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
         assert (temp_dir / ".claude" / "settings.json").exists()
 
-    def test_cli_help(self):
+    def test_cli_help(self, cli_env):
         """ヘルプ表示"""
         import subprocess
         import sys
         result = subprocess.run(
             [sys.executable, "-m", "application.cli", "--help"],
             capture_output=True,
-            text=True
+            text=True,
+            env=cli_env
         )
         assert result.returncode == 0
         assert "install-hooks" in result.stdout
