@@ -24,21 +24,27 @@ class ConcreteHook(BaseHook):
 class TestBaseHookInit:
     """BaseHook初期化のテスト"""
 
-    def test_init_default_log_file(self):
-        """デフォルトのログファイルパス"""
+    def test_init_default_log_dir(self):
+        """デフォルトのログディレクトリ"""
         hook = ConcreteHook()
-        assert hook.log_file == Path("/tmp/claude_hooks_debug.log")
+        assert hook.log_dir == Path("/tmp/claude-nagger")
 
-    def test_init_custom_log_file(self, tmp_path):
-        """カスタムログファイルパス"""
-        log_file = tmp_path / "custom.log"
-        hook = ConcreteHook(log_file=log_file)
-        assert hook.log_file == log_file
+    def test_init_custom_log_dir(self, tmp_path):
+        """カスタムログディレクトリ"""
+        log_dir = tmp_path / "custom_logs"
+        hook = ConcreteHook(log_dir=log_dir)
+        assert hook.log_dir == log_dir
 
-    def test_init_debug_flag(self):
-        """デバッグフラグ"""
+    def test_init_debug_flag_explicit(self):
+        """明示的なデバッグフラグ"""
         hook = ConcreteHook(debug=True)
         assert hook.debug is True
+
+    def test_init_debug_flag_from_env(self):
+        """環境変数からのデバッグフラグ検出"""
+        with patch.dict(os.environ, {'CLAUDE_CODE_DEBUG': 'true'}):
+            hook = ConcreteHook()
+            assert hook.debug is True
 
 
 class TestLogging:
@@ -47,42 +53,54 @@ class TestLogging:
     def test_log_debug(self):
         """log_debugの呼び出し"""
         hook = ConcreteHook()
-        with patch.object(hook.logger, 'debug') as mock_debug:
-            hook.log_debug("test message")
-            mock_debug.assert_called_once_with("test message")
+        with patch.object(hook._structured_logger, 'debug') as mock_debug:
+            hook.log_debug("test message", extra_key="value")
+            mock_debug.assert_called_once_with("test message", extra_key="value")
 
     def test_log_info(self):
         """log_infoの呼び出し"""
         hook = ConcreteHook()
-        with patch.object(hook.logger, 'info') as mock_info:
+        with patch.object(hook._structured_logger, 'info') as mock_info:
             hook.log_info("test message")
             mock_info.assert_called_once_with("test message")
 
     def test_log_error(self):
         """log_errorの呼び出し"""
         hook = ConcreteHook()
-        with patch.object(hook.logger, 'error') as mock_error:
+        with patch.object(hook._structured_logger, 'error') as mock_error:
             hook.log_error("test message")
             mock_error.assert_called_once_with("test message")
+
+    def test_log_warning(self):
+        """log_warningの呼び出し"""
+        hook = ConcreteHook()
+        with patch.object(hook._structured_logger, 'warning') as mock_warning:
+            hook.log_warning("test message")
+            mock_warning.assert_called_once_with("test message")
 
 
 class TestSaveRawJson:
     """_save_raw_json メソッドのテスト"""
 
     def test_save_raw_json_success(self, tmp_path):
-        """JSONを保存"""
-        hook = ConcreteHook()
-        with patch('os.makedirs'):
-            with patch('builtins.open', mock_open()):
-                hook._save_raw_json('{"test": "data"}')
+        """JSONを保存（構造化ロガー経由）"""
+        hook = ConcreteHook(log_dir=tmp_path)
+        result = hook._save_raw_json('{"test": "data"}')
+        assert result is not None
+        assert result.exists()
 
-    def test_save_raw_json_exception(self):
-        """保存失敗時のエラーログ"""
-        hook = ConcreteHook()
-        with patch('os.makedirs', side_effect=Exception('error')):
-            with patch.object(hook, 'log_error') as mock_log:
-                hook._save_raw_json('{"test": "data"}')
-                mock_log.assert_called()
+    def test_save_raw_json_returns_path(self, tmp_path):
+        """保存成功時はパスを返す"""
+        hook = ConcreteHook(log_dir=tmp_path)
+        result = hook._save_raw_json('{"test": "data"}')
+        assert isinstance(result, Path)
+
+    def test_save_raw_json_failure(self, tmp_path):
+        """保存失敗時はNoneを返す"""
+        hook = ConcreteHook(log_dir=tmp_path)
+        with patch.object(hook._structured_logger, 'save_input_json', return_value=None):
+            result = hook._save_raw_json('{"test": "data"}')
+            assert result is None
 
 
 class TestReadInput:

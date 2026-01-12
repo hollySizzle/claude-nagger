@@ -3,7 +3,7 @@
 import json
 import os
 import sys
-import logging
+import time
 from abc import ABC, abstractmethod
 from enum import IntEnum
 from pathlib import Path
@@ -16,11 +16,21 @@ try:
         PermissionModeBehavior,
         DEFAULT_MODE_BEHAVIORS,
     )
+    from shared.structured_logging import (
+        StructuredLogger,
+        is_debug_mode,
+        DEFAULT_LOG_DIR,
+    )
 except ImportError:
     from src.shared.permission_mode import (
         PermissionMode,
         PermissionModeBehavior,
         DEFAULT_MODE_BEHAVIORS,
+    )
+    from src.shared.structured_logging import (
+        StructuredLogger,
+        is_debug_mode,
+        DEFAULT_LOG_DIR,
     )
 
 if TYPE_CHECKING:
@@ -43,28 +53,29 @@ class ExitCode(IntEnum):
 class BaseHook(ABC):
     """Claude Code Hook処理の基底クラス"""
 
-    def __init__(self, log_file: Optional[Path] = None, debug: bool = False):
+    def __init__(self, log_dir: Optional[Path] = None, debug: Optional[bool] = None):
         """
         初期化
-        
+
         Args:
-            log_file: ログファイルのパス（デフォルト: /tmp/claude_hooks_debug.log）
-            debug: デバッグモードフラグ
+            log_dir: ログ出力ディレクトリ（デフォルト: /tmp/claude-nagger）
+            debug: デバッグモードフラグ（Noneの場合は環境変数から自動検出）
         """
-        self.debug = debug
-        self.log_file = log_file or Path("/tmp/claude_hooks_debug.log")
+        # デバッグモード: 明示的指定 > 環境変数検出
+        self.debug = debug if debug is not None else is_debug_mode()
+        self.log_dir = log_dir or DEFAULT_LOG_DIR
+        self._start_time: Optional[float] = None
         self._setup_logging()
 
     def _setup_logging(self):
-        """ロギングの設定"""
-        # ログはファイルのみに出力（デバッグ用に一時的にDEBUGレベル）
-        logging.basicConfig(
-            level=logging.DEBUG,
-            format='[%(asctime)s] %(levelname)s: %(message)s',
-            handlers=[logging.FileHandler(self.log_file)]
+        """構造化ロギングの設定"""
+        # 構造化ロガーを初期化（セッションIDは後で設定）
+        self._structured_logger = StructuredLogger(
+            name=self.__class__.__name__,
+            log_dir=self.log_dir,
         )
-
-        self.logger = logging.getLogger(self.__class__.__name__)
+        # 後方互換性のためlogger属性も維持
+        self.logger = self._structured_logger
 
     @property
     def project_dir(self) -> Optional[str]:
@@ -148,67 +159,61 @@ class BaseHook(ABC):
 
         return False, behavior
 
-    def log_debug(self, message: str):
-        """デバッグログ出力"""
-        self.logger.debug(message)
+    def log_debug(self, message: str, **extra):
+        """デバッグログ出力（構造化対応）"""
+        self._structured_logger.debug(message, **extra)
 
-    def log_info(self, message: str):
-        """情報ログ出力"""
-        self.logger.info(message)
+    def log_info(self, message: str, **extra):
+        """情報ログ出力（構造化対応）"""
+        self._structured_logger.info(message, **extra)
 
-    def log_error(self, message: str):
-        """エラーログ出力"""
-        self.logger.error(message)
+    def log_error(self, message: str, **extra):
+        """エラーログ出力（構造化対応）"""
+        self._structured_logger.error(message, **extra)
 
-    def _save_raw_json(self, raw_json: str):
-        """生のJSONテキストを一時ファイルに保存"""
-        try:
-            import os
-            from datetime import datetime
-            
-            # ディレクトリ作成
-            output_dir = "/tmp/claude"
-            os.makedirs(output_dir, exist_ok=True)
-            
-            # タイムスタンプ付きファイル名
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-            filename = f"base_hook_{timestamp}.json"
-            filepath = os.path.join(output_dir, filename)
-            
-            # 生JSONを保存
-            with open(filepath, 'w', encoding='utf-8') as f:
-                f.write(raw_json)
-            
-            self.log_debug(f"Raw JSON saved to: {filepath}")
-            
-        except Exception as e:
-            self.log_error(f"Failed to save raw JSON: {e}")
+    def log_warning(self, message: str, **extra):
+        """警告ログ出力（構造化対応）"""
+        self._structured_logger.warning(message, **extra)
+
+    def _save_raw_json(self, raw_json: str) -> Optional[Path]:
+        """生のJSONテキストを統一ログディレクトリに保存
+
+        Returns:
+            保存先パス（失敗時None）
+        """
+        return self._structured_logger.save_input_json(raw_json, prefix="hook_input")
 
     def read_input(self) -> Dict[str, Any]:
         """
         標準入力からJSON入力を読み取る
-        
+
         Returns:
             入力データの辞書
         """
         try:
             input_data = sys.stdin.read()
-            self.log_debug(f"Input JSON length: {len(input_data)}")
-            self.log_debug(f"Raw input data: {input_data[:500]}...")
-            
-            # 生のJSONテキストを保存
+            self.log_debug(f"Input JSON received", length=len(input_data))
+
+            # 生のJSONテキストを保存（統一ログディレクトリ）
             self._save_raw_json(input_data)
-            
+
             if not input_data:
                 self.log_error("No input data received")
                 return {}
-            
-            return json.loads(input_data)
+
+            parsed = json.loads(input_data)
+
+            # セッションIDが取得できたらロガーに設定
+            session_id = parsed.get('session_id')
+            if session_id:
+                self._structured_logger.set_session_id(session_id)
+
+            return parsed
         except json.JSONDecodeError as e:
-            self.log_error(f"JSON decode error: {e}")
+            self.log_error(f"JSON decode error", error=str(e))
             return {}
         except Exception as e:
-            self.log_error(f"Unexpected error reading input: {e}")
+            self.log_error(f"Unexpected error reading input", error=str(e))
             return {}
 
     def output_response(self, decision: str, reason: str = "") -> bool:
@@ -769,11 +774,19 @@ class BaseHook(ABC):
         Returns:
             ExitCode（SUCCESS=0, ERROR=1, BLOCK=2）
         """
+        # 処理開始時刻を記録
+        self._start_time = time.time()
+
         # 設定ファイル存在保証（自動生成）
         from application.install_hooks import ensure_config_exists
         ensure_config_exists()
 
-        self.log_info(f"{'='*10} {self.__class__.__name__} Started {'='*10}")
+        # 構造化ログでフック開始を記録
+        self._structured_logger.log_hook_event(
+            event_type="start",
+            hook_name=self.__class__.__name__,
+            debug_mode=self.debug,
+        )
 
         # 現在のpermission_mode挙動を保持（process内で参照可能）
         self._current_permission_mode_behavior: Optional[PermissionModeBehavior] = None
@@ -833,13 +846,27 @@ class BaseHook(ABC):
                 result['reason'] = f"[WARN_ONLY] {original_reason}" if original_reason else "[WARN_ONLY]"
 
             if self.output_response(decision, result.get('reason', '')):
-                self.log_info(f"Successfully processed with decision: {decision}")
+                self._log_hook_end(decision=decision, reason=result.get('reason', ''))
                 return ExitCode.SUCCESS
             else:
+                self._log_hook_end(decision="output_error")
                 return ExitCode.ERROR
 
         except Exception as e:
-            self.log_error(f"Unexpected error in run: {e}")
+            self.log_error(f"Unexpected error in run", error=str(e))
+            self._log_hook_end(decision="error")
             return ExitCode.ERROR
-        finally:
-            self.log_info(f"{'='*10} {self.__class__.__name__} Ended {'='*10}")
+
+    def _log_hook_end(self, decision: Optional[str] = None, reason: Optional[str] = None):
+        """フック終了ログを出力"""
+        duration_ms = None
+        if self._start_time:
+            duration_ms = (time.time() - self._start_time) * 1000
+
+        self._structured_logger.log_hook_event(
+            event_type="end",
+            hook_name=self.__class__.__name__,
+            decision=decision,
+            reason=reason,
+            duration_ms=duration_ms,
+        )
