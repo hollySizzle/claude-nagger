@@ -722,3 +722,285 @@ class TestRunWithExitCode:
                 result = hook.run()
 
         assert result == ExitCode.ERROR
+
+
+class TestHookResponse:
+    """HookResponse型のテスト"""
+
+    def test_hook_response_default_values(self):
+        """デフォルト値の確認"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse()
+        assert response.hook_event_name == "PreToolUse"
+        assert response.permission_decision == "allow"
+        assert response.permission_decision_reason is None
+        assert response.updated_input is None
+        assert response.additional_context is None
+        assert response.continue_processing is None
+        assert response.stop_reason is None
+        assert response.suppress_output is None
+
+    def test_hook_response_to_dict_minimal(self):
+        """最小限のto_dict出力"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse()
+        result = response.to_dict()
+
+        assert result == {
+            "hookSpecificOutput": {
+                "hookEventName": "PreToolUse",
+                "permissionDecision": "allow",
+            }
+        }
+
+    def test_hook_response_to_dict_with_reason(self):
+        """理由付きto_dict出力"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse(
+            permission_decision="deny",
+            permission_decision_reason="危険なコマンド"
+        )
+        result = response.to_dict()
+
+        assert result["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert result["hookSpecificOutput"]["permissionDecisionReason"] == "危険なコマンド"
+
+    def test_hook_response_to_dict_with_updated_input(self):
+        """updatedInput付きto_dict出力"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse(
+            permission_decision="allow",
+            updated_input={"command": "safe_command"}
+        )
+        result = response.to_dict()
+
+        assert result["hookSpecificOutput"]["updatedInput"] == {"command": "safe_command"}
+
+    def test_hook_response_to_dict_with_additional_context(self):
+        """additionalContext付きto_dict出力"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse(
+            permission_decision="allow",
+            additional_context="このプロジェクトでは..."
+        )
+        result = response.to_dict()
+
+        assert result["hookSpecificOutput"]["additionalContext"] == "このプロジェクトでは..."
+
+    def test_hook_response_to_dict_with_continue_false(self):
+        """continue=false付きto_dict出力"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse(continue_processing=False, stop_reason="停止理由")
+        result = response.to_dict()
+
+        assert result["continue"] is False
+        assert result["stopReason"] == "停止理由"
+
+    def test_hook_response_to_dict_with_suppress_output(self):
+        """suppressOutput付きto_dict出力"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse(suppress_output=True)
+        result = response.to_dict()
+
+        assert result["suppressOutput"] is True
+
+    def test_hook_response_allow_factory(self):
+        """allowファクトリメソッド"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse.allow(reason="許可理由")
+
+        assert response.permission_decision == "allow"
+        assert response.permission_decision_reason == "許可理由"
+
+    def test_hook_response_deny_factory(self):
+        """denyファクトリメソッド"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse.deny(reason="拒否理由")
+
+        assert response.permission_decision == "deny"
+        assert response.permission_decision_reason == "拒否理由"
+
+    def test_hook_response_ask_factory(self):
+        """askファクトリメソッド"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse.ask(reason="確認理由")
+
+        assert response.permission_decision == "ask"
+        assert response.permission_decision_reason == "確認理由"
+
+    def test_hook_response_allow_with_updated_input(self):
+        """allowファクトリでupdatedInput"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse.allow(
+            updated_input={"command": "echo safe"}
+        )
+
+        assert response.permission_decision == "allow"
+        assert response.updated_input == {"command": "echo safe"}
+
+    def test_hook_response_ask_with_updated_input(self):
+        """askファクトリでupdatedInput"""
+        from src.domain.hooks.hook_response import HookResponse
+        response = HookResponse.ask(
+            reason="確認",
+            updated_input={"command": "rm file.txt"}
+        )
+
+        assert response.permission_decision == "ask"
+        assert response.updated_input == {"command": "rm file.txt"}
+
+
+class TestExitWithResponse:
+    """exit_with_response メソッドのテスト"""
+
+    def test_exit_with_response_allow(self, capsys):
+        """HookResponseで許可終了"""
+        from src.domain.hooks.hook_response import HookResponse
+        hook = ConcreteHook()
+        response = HookResponse.allow()
+
+        with pytest.raises(SystemExit) as exc_info:
+            hook.exit_with_response(response)
+
+        assert exc_info.value.code == ExitCode.SUCCESS
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+    def test_exit_with_response_deny(self, capsys):
+        """HookResponseで拒否終了"""
+        from src.domain.hooks.hook_response import HookResponse
+        hook = ConcreteHook()
+        response = HookResponse.deny(reason="NG")
+
+        with pytest.raises(SystemExit):
+            hook.exit_with_response(response)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "NG"
+
+    def test_exit_with_response_with_updated_input(self, capsys):
+        """updatedInput付きで終了"""
+        from src.domain.hooks.hook_response import HookResponse
+        hook = ConcreteHook()
+        response = HookResponse.allow(updated_input={"command": "safe"})
+
+        with pytest.raises(SystemExit):
+            hook.exit_with_response(response)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["updatedInput"] == {"command": "safe"}
+
+    def test_exit_with_response_with_additional_context(self, capsys):
+        """additionalContext付きで終了"""
+        from src.domain.hooks.hook_response import HookResponse
+        hook = ConcreteHook()
+        response = HookResponse.allow(additional_context="追加情報")
+
+        with pytest.raises(SystemExit):
+            hook.exit_with_response(response)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["additionalContext"] == "追加情報"
+
+
+class TestExitAllow:
+    """exit_allow メソッドのテスト"""
+
+    def test_exit_allow_minimal(self, capsys):
+        """最小限のexit_allow"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit) as exc_info:
+            hook.exit_allow()
+
+        assert exc_info.value.code == ExitCode.SUCCESS
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+    def test_exit_allow_with_reason(self, capsys):
+        """理由付きexit_allow"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit):
+            hook.exit_allow(reason="許可理由")
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "許可理由"
+
+    def test_exit_allow_with_updated_input(self, capsys):
+        """updatedInput付きexit_allow"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit):
+            hook.exit_allow(updated_input={"command": "safe"})
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["updatedInput"] == {"command": "safe"}
+
+    def test_exit_allow_with_additional_context(self, capsys):
+        """additionalContext付きexit_allow"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit):
+            hook.exit_allow(additional_context="規約情報")
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["additionalContext"] == "規約情報"
+
+    def test_exit_allow_with_suppress_output(self, capsys):
+        """suppressOutput付きexit_allow"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit):
+            hook.exit_allow(suppress_output=True)
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["suppressOutput"] is True
+
+
+class TestExitDeny:
+    """exit_deny メソッドのテスト"""
+
+    def test_exit_deny(self, capsys):
+        """exit_denyの基本動作"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit) as exc_info:
+            hook.exit_deny(reason="拒否理由")
+
+        assert exc_info.value.code == ExitCode.SUCCESS
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "拒否理由"
+
+
+class TestExitAsk:
+    """exit_ask メソッドのテスト"""
+
+    def test_exit_ask_basic(self, capsys):
+        """exit_askの基本動作"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit) as exc_info:
+            hook.exit_ask(reason="確認理由")
+
+        assert exc_info.value.code == ExitCode.SUCCESS
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["permissionDecision"] == "ask"
+        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "確認理由"
+
+    def test_exit_ask_with_updated_input(self, capsys):
+        """updatedInput付きexit_ask"""
+        hook = ConcreteHook()
+        with pytest.raises(SystemExit):
+            hook.exit_ask(reason="確認", updated_input={"command": "rm file.txt"})
+
+        captured = capsys.readouterr()
+        output = json.loads(captured.out.strip())
+        assert output["hookSpecificOutput"]["permissionDecision"] == "ask"
+        assert output["hookSpecificOutput"]["updatedInput"] == {"command": "rm file.txt"}
