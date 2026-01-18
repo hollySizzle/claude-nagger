@@ -865,6 +865,43 @@ class TestMergeHookEntries:
         assert hasattr(cmd, "DEFAULT_STOP_HOOKS")
         assert isinstance(cmd.DEFAULT_STOP_HOOKS, list)
 
+    def test_default_sessionstart_hooks_defined(self):
+        """DEFAULT_SESSIONSTART_HOOKSが定義されている"""
+        cmd = InstallHooksCommand()
+        assert hasattr(cmd, "DEFAULT_SESSIONSTART_HOOKS")
+        assert isinstance(cmd.DEFAULT_SESSIONSTART_HOOKS, list)
+        # compact matcherが含まれている
+        matchers = [h.get("matcher") for h in cmd.DEFAULT_SESSIONSTART_HOOKS]
+        assert "compact" in matchers
+
+    def test_merge_sessionstart_hooks_to_empty(self):
+        """空のsettingsにSessionStartフックをマージ"""
+        cmd = InstallHooksCommand()
+        settings = {}
+        
+        cmd._merge_hook_entries(settings, "SessionStart", cmd.DEFAULT_SESSIONSTART_HOOKS)
+        
+        assert "hooks" in settings
+        assert "SessionStart" in settings["hooks"]
+        assert len(settings["hooks"]["SessionStart"]) > 0
+
+    def test_merge_sessionstart_hooks_prevents_duplicate(self):
+        """SessionStartフックの重複追加を防止"""
+        cmd = InstallHooksCommand()
+        settings = {
+            "hooks": {
+                "SessionStart": [
+                    {"matcher": "compact", "hooks": [{"type": "command", "command": "claude-nagger hook compact-detected"}]}
+                ]
+            }
+        }
+        
+        updated = cmd._merge_hook_entries(settings, "SessionStart", cmd.DEFAULT_SESSIONSTART_HOOKS)
+        
+        # 既存設定があるので追加されない
+        assert updated is False
+        assert len(settings["hooks"]["SessionStart"]) == 1
+
     def test_merge_hook_entries_prints_hook_type(self, capsys):
         """マージ時にフックタイプが表示される"""
         cmd = InstallHooksCommand()
