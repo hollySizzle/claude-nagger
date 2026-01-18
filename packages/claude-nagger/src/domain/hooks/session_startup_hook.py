@@ -101,7 +101,7 @@ class SessionStartupHook(BaseHook):
                     
                     token_increase = current_tokens - last_tokens
                     
-                    if abs(token_increase) >= threshold:
+                    if token_increase >= threshold:
                         self.log_info(f"🚨 Session startup token threshold exceeded: {token_increase} >= {threshold}")
                         # 閾値超過時は履歴ファイルを作成してから削除（ImplementationDesignHookと同様）
                         super()._rename_expired_marker(marker_path)

@@ -299,5 +299,5 @@ class TestDefaultLogDir:
     """DEFAULT_LOG_DIR のテスト"""
 
     def test_default_log_dir_value(self):
-        """デフォルトログディレクトリの値"""
-        assert DEFAULT_LOG_DIR == Path('/tmp/claude-nagger')
+        """デフォルトログディレクトリの値（UID付き）"""
+        assert DEFAULT_LOG_DIR == Path(f'/tmp/claude-nagger-{os.getuid()}')
