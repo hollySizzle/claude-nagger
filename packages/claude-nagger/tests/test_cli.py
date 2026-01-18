@@ -222,3 +222,34 @@ class TestNotifyCommand:
         assert exc_info.value.code == 0
         captured = capsys.readouterr()
         assert "message" in captured.out
+
+
+class TestHookCompactDetectedCommand:
+    """hook compact-detectedコマンドのテスト"""
+
+    def test_hook_compact_detected_help(self, capsys):
+        """hook compact-detected がヘルプに表示される"""
+        with patch.object(sys, 'argv', ['claude-nagger', 'hook', '--help']):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "compact-detected" in captured.out
+
+    def test_hook_compact_detected_runs_hook(self, monkeypatch):
+        """hook compact-detected がCompactDetectedHookを実行する"""
+        mock_hook = MagicMock()
+        mock_hook.run.return_value = 0
+        mock_class = MagicMock(return_value=mock_hook)
+
+        mock_module = MagicMock()
+        mock_module.CompactDetectedHook = mock_class
+        monkeypatch.setitem(sys.modules, 'domain.hooks.compact_detected_hook', mock_module)
+
+        with patch.object(sys, 'argv', ['claude-nagger', 'hook', 'compact-detected']):
+            result = main()
+
+        assert result == 0
+        mock_class.assert_called_once()
+        mock_hook.run.assert_called_once()
