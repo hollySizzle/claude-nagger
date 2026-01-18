@@ -51,13 +51,16 @@ class TestShouldProcess:
         assert hook.should_process(input_data) is False
 
 
-class TestResetMarkerFiles:
-    """_reset_marker_filesメソッドのテスト"""
+class TestRenameMarkersForCompact:
+    """_rename_markers_for_compactメソッドのテスト"""
 
-    def _do_reset(self, tmpdir, session_id):
-        """テスト用のリセット処理"""
+    def _do_rename(self, tmpdir, session_id):
+        """テスト用のリネーム処理"""
+        from datetime import datetime
         temp_dir = Path(tmpdir)
-        reset_count = 0
+        renamed_count = 0
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
         patterns = [
             f"claude_session_startup_*{session_id}*",
             f"claude_rule_*{session_id}*",
@@ -66,12 +69,16 @@ class TestResetMarkerFiles:
         ]
         for pattern in patterns:
             for marker_path in temp_dir.glob(pattern):
-                marker_path.unlink()
-                reset_count += 1
-        return reset_count
+                if ".expired" in marker_path.name:
+                    continue
+                expired_name = f"{marker_path.name}.expired_compact_{timestamp}"
+                expired_path = marker_path.parent / expired_name
+                marker_path.rename(expired_path)
+                renamed_count += 1
+        return renamed_count
 
-    def test_deletes_session_startup_marker(self):
-        """SessionStartupマーカーを削除する"""
+    def test_renames_session_startup_marker(self):
+        """SessionStartupマーカーをリネームする"""
         with tempfile.TemporaryDirectory() as tmpdir:
             session_id = "test-session-123"
             temp_dir = Path(tmpdir)
@@ -81,14 +88,17 @@ class TestResetMarkerFiles:
             marker.touch()
             assert marker.exists()
             
-            # リセット実行
-            count = self._do_reset(tmpdir, session_id)
+            # リネーム実行
+            count = self._do_rename(tmpdir, session_id)
             
             assert count == 1
             assert not marker.exists()
+            # リネーム先が存在
+            expired_files = list(temp_dir.glob("*.expired_compact_*"))
+            assert len(expired_files) == 1
 
-    def test_deletes_multiple_markers(self):
-        """複数のマーカーファイルを削除する"""
+    def test_renames_multiple_markers(self):
+        """複数のマーカーファイルをリネームする"""
         with tempfile.TemporaryDirectory() as tmpdir:
             session_id = "test-session-456"
             temp_dir = Path(tmpdir)
@@ -103,27 +113,50 @@ class TestResetMarkerFiles:
             for m in markers:
                 m.touch()
             
-            # リセット実行
-            count = self._do_reset(tmpdir, session_id)
+            # リネーム実行
+            count = self._do_rename(tmpdir, session_id)
             
             assert count == 4
             for m in markers:
                 assert not m.exists()
+            # リネーム先が存在
+            expired_files = list(temp_dir.glob("*.expired_compact_*"))
+            assert len(expired_files) == 4
 
     def test_returns_zero_when_no_markers(self):
         """マーカーがない場合は0を返す"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            count = self._do_reset(tmpdir, "nonexistent-session")
+            count = self._do_rename(tmpdir, "nonexistent-session")
             assert count == 0
+
+    def test_skips_already_expired_markers(self):
+        """既にexpiredのマーカーはスキップする"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            session_id = "test-session-789"
+            temp_dir = Path(tmpdir)
+            
+            # 通常マーカーと既存expiredマーカーを作成
+            normal_marker = temp_dir / f"claude_session_startup_{session_id}"
+            expired_marker = temp_dir / f"claude_session_startup_{session_id}.expired_20240101_120000"
+            normal_marker.touch()
+            expired_marker.touch()
+            
+            # リネーム実行
+            count = self._do_rename(tmpdir, session_id)
+            
+            # 通常マーカーのみリネーム
+            assert count == 1
+            assert not normal_marker.exists()
+            assert expired_marker.exists()  # 既存expiredは残る
 
 
 class TestProcess:
     """processメソッドのテスト"""
 
-    def test_calls_reset_marker_files(self):
-        """_reset_marker_filesが呼び出される"""
+    def test_calls_rename_markers_for_compact(self):
+        """_rename_markers_for_compactが呼び出される"""
         hook = CompactDetectedHook()
-        hook._reset_marker_files = MagicMock(return_value=3)
+        hook._rename_markers_for_compact = MagicMock(return_value=3)
         
         input_data = {
             "session_id": "test-123",
@@ -131,12 +164,12 @@ class TestProcess:
         
         result = hook.process(input_data)
         
-        hook._reset_marker_files.assert_called_once_with("test-123")
+        hook._rename_markers_for_compact.assert_called_once_with("test-123")
 
     def test_returns_approve_decision(self):
         """approveを返す"""
         hook = CompactDetectedHook()
-        hook._reset_marker_files = MagicMock(return_value=0)
+        hook._rename_markers_for_compact = MagicMock(return_value=0)
         
         input_data = {
             "session_id": "test-123",
