@@ -1,29 +1,24 @@
 """SessionStart[compact]イベント処理フック
 
-compact検知時に履歴保存とClaudeへのリマインダー注入を行う。
+compact検知時にマーカーファイルをリセットし、既存フローを再発火させる。
 """
 
-import json
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
 from .base_hook import BaseHook
-from .hook_response import HookResponse
 
 
 class CompactDetectedHook(BaseHook):
     """compact検知フック
     
-    SessionStart[compact]イベントを処理し:
-    - compact履歴を.claude-nagger/compact_history.jsonlに保存
-    - additionalContextでClaudeにリマインダー注入
+    SessionStart[compact]イベントを処理し、マーカーファイルをリセット。
+    これにより次のPreToolUseで既存フローが再発火する。
     """
 
     def __init__(self):
         """初期化"""
         super().__init__(debug=True)
-        self.history_file = Path.cwd() / ".claude-nagger" / "compact_history.jsonl"
 
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """compact起源のSessionStartイベントのみ処理対象
@@ -48,75 +43,55 @@ class CompactDetectedHook(BaseHook):
         return True
 
     def process(self, input_data: Dict[str, Any]) -> Dict[str, str]:
-        """compact検知時の処理
+        """compact検知時の処理: マーカーファイルをリセット
         
         Args:
             input_data: 入力データ
             
         Returns:
-            処理結果（後方互換性のため辞書形式）
+            処理結果
         """
         session_id = input_data.get("session_id", "")
-        transcript_path = input_data.get("transcript_path", "")
         
         self.log_info(f"🎯 Processing compact for session: {session_id}")
         
-        # compact履歴を保存
-        self._save_compact_history(session_id, transcript_path)
+        # マーカーファイルをリセット
+        reset_count = self._reset_marker_files(session_id)
         
-        # リマインダーメッセージを構築
-        reminder = self._build_reminder_message()
+        self.log_info(f"✅ Reset {reset_count} marker files")
         
-        # HookResponseでadditionalContextを注入
-        response = HookResponse.allow(
-            additional_context=reminder,
-            hook_event_name="SessionStart",
-        )
-        
-        self.log_info(f"✅ Compact processed, injecting reminder")
-        self.exit_with_response(response)
-        
-        # exit_with_responseで終了するので到達しない（後方互換性のため残す）
         return {"decision": "approve", "reason": ""}
 
-    def _save_compact_history(self, session_id: str, transcript_path: str) -> None:
-        """compact履歴をJSONLに保存
+    def _reset_marker_files(self, session_id: str) -> int:
+        """マーカーファイルをリセット（削除）
         
         Args:
             session_id: セッションID
-            transcript_path: transcriptパス
-        """
-        try:
-            # ディレクトリ作成
-            self.history_file.parent.mkdir(parents=True, exist_ok=True)
             
-            # 履歴レコード作成
-            record = {
-                "timestamp": datetime.now().isoformat(),
-                "session_id": session_id,
-                "transcript_path": transcript_path,
-            }
-            
-            # JSONL追記
-            with open(self.history_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(record, ensure_ascii=False) + "\n")
-            
-            self.log_info(f"📝 Saved compact history: {self.history_file}")
-            
-        except Exception as e:
-            self.log_error(f"Failed to save compact history: {e}")
-
-    def _build_reminder_message(self) -> str:
-        """リマインダーメッセージを構築
-        
         Returns:
-            Claudeに注入するリマインダー文字列
+            削除したファイル数
         """
-        return (
-            "[COMPACT DETECTED] 会話がコンパクト化されました。\n"
-            "重要なコンテキストが失われた可能性があります。\n"
-            "必要に応じてユーザーに確認してください。"
-        )
+        temp_dir = Path("/tmp")
+        reset_count = 0
+        
+        # リセット対象のパターン
+        patterns = [
+            f"claude_session_startup_*{session_id}*",  # SessionStartupHook
+            f"claude_rule_*{session_id}*",              # 規約リマインダー
+            f"claude_cmd_{session_id}_*",               # コマンド規約
+            f"claude_hook_*_session_{session_id}",      # BaseHook汎用マーカー
+        ]
+        
+        for pattern in patterns:
+            for marker_path in temp_dir.glob(pattern):
+                try:
+                    marker_path.unlink()
+                    self.log_info(f"🗑️ Deleted marker: {marker_path.name}")
+                    reset_count += 1
+                except Exception as e:
+                    self.log_error(f"Failed to delete {marker_path}: {e}")
+        
+        return reset_count
 
 
 def main():
