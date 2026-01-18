@@ -209,6 +209,20 @@ discord:
         }
     ]
 
+    # デフォルトのSessionStartフック設定
+    # compact発生時にマーカーをリセットし、既存フローを再発火させる
+    DEFAULT_SESSIONSTART_HOOKS: list = [
+        {
+            "matcher": "compact",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook compact-detected"
+                }
+            ]
+        }
+    ]
+
     def __init__(self, force: bool = False, dry_run: bool = False):
         """
         Args:
@@ -320,6 +334,7 @@ discord:
             ("PreToolUse", self.DEFAULT_PRETOOLUSE_HOOKS),
             ("Notification", self.DEFAULT_NOTIFICATION_HOOKS),
             ("Stop", self.DEFAULT_STOP_HOOKS),
+            ("SessionStart", self.DEFAULT_SESSIONSTART_HOOKS),
         ]
 
         any_updated = False
