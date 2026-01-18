@@ -1,8 +1,9 @@
 """SessionStart[compact]イベント処理フック
 
-compact検知時にマーカーファイルをリセットし、既存フローを再発火させる。
+compact検知時にマーカーファイルをリネームし、既存フローを再発火させる。
 """
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
@@ -55,26 +56,27 @@ class CompactDetectedHook(BaseHook):
         
         self.log_info(f"🎯 Processing compact for session: {session_id}")
         
-        # マーカーファイルをリセット
-        reset_count = self._reset_marker_files(session_id)
+        # マーカーファイルをリネーム（履歴保持）
+        renamed_count = self._rename_markers_for_compact(session_id)
         
-        self.log_info(f"✅ Reset {reset_count} marker files")
+        self.log_info(f"✅ Renamed {renamed_count} marker files for compact")
         
         return {"decision": "approve", "reason": ""}
 
-    def _reset_marker_files(self, session_id: str) -> int:
-        """マーカーファイルをリセット（削除）
+    def _rename_markers_for_compact(self, session_id: str) -> int:
+        """マーカーファイルをcompact用にリネーム（履歴保持）
         
         Args:
             session_id: セッションID
             
         Returns:
-            削除したファイル数
+            リネームしたファイル数
         """
         temp_dir = Path("/tmp")
-        reset_count = 0
+        renamed_count = 0
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # リセット対象のパターン
+        # リネーム対象のパターン
         patterns = [
             f"claude_session_startup_*{session_id}*",  # SessionStartupHook
             f"claude_rule_*{session_id}*",              # 規約リマインダー
@@ -84,14 +86,19 @@ class CompactDetectedHook(BaseHook):
         
         for pattern in patterns:
             for marker_path in temp_dir.glob(pattern):
+                # 既にexpiredファイルはスキップ
+                if ".expired" in marker_path.name:
+                    continue
                 try:
-                    marker_path.unlink()
-                    self.log_info(f"🗑️ Deleted marker: {marker_path.name}")
-                    reset_count += 1
+                    expired_name = f"{marker_path.name}.expired_compact_{timestamp}"
+                    expired_path = marker_path.parent / expired_name
+                    marker_path.rename(expired_path)
+                    self.log_info(f"🗃️ Renamed marker: {marker_path.name} -> {expired_name}")
+                    renamed_count += 1
                 except Exception as e:
-                    self.log_error(f"Failed to delete {marker_path}: {e}")
+                    self.log_error(f"Failed to rename {marker_path}: {e}")
         
-        return reset_count
+        return renamed_count
 
 
 def main():
