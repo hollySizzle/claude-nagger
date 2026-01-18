@@ -93,6 +93,12 @@ def main():
         help="実装設計確認フック"
     )
 
+    # hook compact-detected
+    hook_subparsers.add_parser(
+        "compact-detected",
+        help="compact検知フック"
+    )
+
     # notify サブコマンド（Discord通知）
     notify_parser = subparsers.add_parser(
         "notify",
@@ -162,6 +168,11 @@ def main():
         if args.hook_name == "implementation-design":
             from domain.hooks.implementation_design_hook import ImplementationDesignHook
             hook = ImplementationDesignHook()
+            return hook.run()
+
+        if args.hook_name == "compact-detected":
+            from domain.hooks.compact_detected_hook import CompactDetectedHook
+            hook = CompactDetectedHook()
             return hook.run()
 
         # hook名未指定時はhookヘルプ表示
