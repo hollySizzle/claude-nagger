@@ -1,6 +1,5 @@
 """CompactDetectedHookのテスト"""
 
-import json
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -15,20 +14,8 @@ class TestCompactDetectedHookInit:
 
     def test_init_sets_debug_true(self):
         """debug=Trueで初期化される"""
-        with patch.object(CompactDetectedHook, '__init__', lambda self: None):
-            hook = CompactDetectedHook()
-            hook.debug = True
-            hook.history_file = Path.cwd() / ".claude-nagger" / "compact_history.jsonl"
-        
-        # 実際の初期化テスト
         hook = CompactDetectedHook()
         assert hook.debug is True
-
-    def test_init_sets_history_file_path(self):
-        """履歴ファイルパスが正しく設定される"""
-        hook = CompactDetectedHook()
-        expected = Path.cwd() / ".claude-nagger" / "compact_history.jsonl"
-        assert hook.history_file == expected
 
 
 class TestShouldProcess:
@@ -64,123 +51,100 @@ class TestShouldProcess:
         assert hook.should_process(input_data) is False
 
 
-class TestSaveCompactHistory:
-    """_save_compact_historyメソッドのテスト"""
+class TestResetMarkerFiles:
+    """_reset_marker_filesメソッドのテスト"""
 
-    def test_creates_directory_if_not_exists(self):
-        """ディレクトリが存在しない場合作成される"""
+    def _do_reset(self, tmpdir, session_id):
+        """テスト用のリセット処理"""
+        temp_dir = Path(tmpdir)
+        reset_count = 0
+        patterns = [
+            f"claude_session_startup_*{session_id}*",
+            f"claude_rule_*{session_id}*",
+            f"claude_cmd_{session_id}_*",
+            f"claude_hook_*_session_{session_id}",
+        ]
+        for pattern in patterns:
+            for marker_path in temp_dir.glob(pattern):
+                marker_path.unlink()
+                reset_count += 1
+        return reset_count
+
+    def test_deletes_session_startup_marker(self):
+        """SessionStartupマーカーを削除する"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            hook = CompactDetectedHook()
-            hook.history_file = Path(tmpdir) / "subdir" / "history.jsonl"
+            session_id = "test-session-123"
+            temp_dir = Path(tmpdir)
             
-            hook._save_compact_history("session-123", "/path/to/transcript")
+            # マーカーファイルを作成
+            marker = temp_dir / f"claude_session_startup_{session_id}"
+            marker.touch()
+            assert marker.exists()
             
-            assert hook.history_file.parent.exists()
+            # リセット実行
+            count = self._do_reset(tmpdir, session_id)
+            
+            assert count == 1
+            assert not marker.exists()
 
-    def test_appends_record_to_jsonl(self):
-        """レコードがJSONL形式で追記される"""
+    def test_deletes_multiple_markers(self):
+        """複数のマーカーファイルを削除する"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            hook = CompactDetectedHook()
-            hook.history_file = Path(tmpdir) / "history.jsonl"
+            session_id = "test-session-456"
+            temp_dir = Path(tmpdir)
             
-            # 2回保存
-            hook._save_compact_history("session-1", "/path/1")
-            hook._save_compact_history("session-2", "/path/2")
+            # 各種マーカーファイルを作成
+            markers = [
+                temp_dir / f"claude_session_startup_{session_id}",
+                temp_dir / f"claude_rule_TestHook_{session_id}_abc123",
+                temp_dir / f"claude_cmd_{session_id}_def456",
+                temp_dir / f"claude_hook_TestHook_session_{session_id}",
+            ]
+            for m in markers:
+                m.touch()
             
-            # 2行のJSONLが書き込まれている
-            lines = hook.history_file.read_text().strip().split("\n")
-            assert len(lines) == 2
+            # リセット実行
+            count = self._do_reset(tmpdir, session_id)
             
-            # 各行が正しいJSON
-            record1 = json.loads(lines[0])
-            record2 = json.loads(lines[1])
-            
-            assert record1["session_id"] == "session-1"
-            assert record2["session_id"] == "session-2"
+            assert count == 4
+            for m in markers:
+                assert not m.exists()
 
-    def test_record_contains_required_fields(self):
-        """レコードに必須フィールドが含まれる"""
+    def test_returns_zero_when_no_markers(self):
+        """マーカーがない場合は0を返す"""
         with tempfile.TemporaryDirectory() as tmpdir:
-            hook = CompactDetectedHook()
-            hook.history_file = Path(tmpdir) / "history.jsonl"
-            
-            hook._save_compact_history("test-session", "/transcript/path")
-            
-            record = json.loads(hook.history_file.read_text().strip())
-            
-            assert "timestamp" in record
-            assert record["session_id"] == "test-session"
-            assert record["transcript_path"] == "/transcript/path"
-
-
-class TestBuildReminderMessage:
-    """_build_reminder_messageメソッドのテスト"""
-
-    def test_returns_reminder_string(self):
-        """リマインダー文字列を返す"""
-        hook = CompactDetectedHook()
-        message = hook._build_reminder_message()
-        
-        assert isinstance(message, str)
-        assert "COMPACT DETECTED" in message
-        assert len(message) > 0
+            count = self._do_reset(tmpdir, "nonexistent-session")
+            assert count == 0
 
 
 class TestProcess:
     """processメソッドのテスト"""
 
-    def test_calls_save_compact_history(self):
-        """_save_compact_historyが呼び出される"""
+    def test_calls_reset_marker_files(self):
+        """_reset_marker_filesが呼び出される"""
         hook = CompactDetectedHook()
-        hook._save_compact_history = MagicMock()
+        hook._reset_marker_files = MagicMock(return_value=3)
         
         input_data = {
             "session_id": "test-123",
-            "transcript_path": "/path/to/transcript",
         }
         
-        with pytest.raises(SystemExit):
-            hook.process(input_data)
+        result = hook.process(input_data)
         
-        hook._save_compact_history.assert_called_once_with(
-            "test-123", "/path/to/transcript"
-        )
+        hook._reset_marker_files.assert_called_once_with("test-123")
 
-    def test_exits_with_hook_response(self):
-        """HookResponseで終了する"""
+    def test_returns_approve_decision(self):
+        """approveを返す"""
         hook = CompactDetectedHook()
-        hook._save_compact_history = MagicMock()
+        hook._reset_marker_files = MagicMock(return_value=0)
         
         input_data = {
             "session_id": "test-123",
-            "transcript_path": "/path/to/transcript",
         }
         
-        with pytest.raises(SystemExit) as exc_info:
-            hook.process(input_data)
+        result = hook.process(input_data)
         
-        # 正常終了(0)
-        assert exc_info.value.code == 0
-
-    def test_outputs_json_with_additional_context(self, capsys):
-        """additionalContextを含むJSONを出力する"""
-        hook = CompactDetectedHook()
-        hook._save_compact_history = MagicMock()
-        
-        input_data = {
-            "session_id": "test-123",
-            "transcript_path": "/path/to/transcript",
-        }
-        
-        with pytest.raises(SystemExit):
-            hook.process(input_data)
-        
-        captured = capsys.readouterr()
-        output = json.loads(captured.out)
-        
-        assert "hookSpecificOutput" in output
-        assert output["hookSpecificOutput"]["hookEventName"] == "SessionStart"
-        assert "additionalContext" in output["hookSpecificOutput"]
+        assert result["decision"] == "approve"
 
 
 class TestMain:
