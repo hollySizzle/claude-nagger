@@ -1,3 +1,5 @@
+https://code.claude.com/docs/ja/hooks
+
 # Hooksリファレンス
 
 > このページでは、Claude Codeでhooksを実装するためのリファレンスドキュメントを提供します。

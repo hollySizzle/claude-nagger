@@ -27,7 +27,8 @@
       "Bash(uv sync:*)",
       "Bash(uv run pytest:*)",
       "Bash(uv pip install:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(docker build:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
