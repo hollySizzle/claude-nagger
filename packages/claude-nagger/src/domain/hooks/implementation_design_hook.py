@@ -187,7 +187,7 @@ class ImplementationDesignHook(BaseHook):
                             if current_tokens is not None:
                                 token_increase = current_tokens - last_tokens
                                 
-                                if abs(token_increase) < threshold:
+                                if token_increase < threshold:
                                     self.log_info(f"✅ Rule '{rule_name}' within individual token threshold: {token_increase}/{threshold}, skipping")
                                     self.impl_logger.info(f"INDIVIDUAL TOKEN THRESHOLD SKIP: Rule '{rule_name}' increase {token_increase} < threshold {threshold}, skipping processing")
                                     return False
@@ -427,7 +427,7 @@ class ImplementationDesignHook(BaseHook):
                     if current_tokens is not None:
                         token_increase = current_tokens - last_tokens
                         
-                        if abs(token_increase) < command_threshold:
+                        if token_increase < command_threshold:
                             self.log_info(f"✅ Command '{command}' within individual token threshold: {token_increase}/{command_threshold}, skipping")
                             self.impl_logger.info(f"INDIVIDUAL COMMAND TOKEN THRESHOLD SKIP: '{command}' increase {token_increase} < threshold {command_threshold}, skipping processing")
                             return {

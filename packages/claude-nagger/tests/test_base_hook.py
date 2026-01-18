@@ -27,7 +27,7 @@ class TestBaseHookInit:
     def test_init_default_log_dir(self):
         """デフォルトのログディレクトリ"""
         hook = ConcreteHook()
-        assert hook.log_dir == Path("/tmp/claude-nagger")
+        assert hook.log_dir == Path(f"/tmp/claude-nagger-{os.getuid()}")
 
     def test_init_custom_log_dir(self, tmp_path):
         """カスタムログディレクトリ"""

@@ -58,7 +58,7 @@ class BaseHook(ABC):
         初期化
 
         Args:
-            log_dir: ログ出力ディレクトリ（デフォルト: /tmp/claude-nagger）
+            log_dir: ログ出力ディレクトリ（デフォルト: /tmp/claude-nagger-{uid}）
             debug: デバッグモードフラグ（Noneの場合は環境変数から自動検出）
         """
         # デバッグモード: 明示的指定 > 環境変数検出
