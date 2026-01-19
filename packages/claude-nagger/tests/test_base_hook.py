@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock, mock_open
 from io import StringIO
 
-from src.domain.hooks.base_hook import BaseHook, ExitCode
+from src.domain.hooks.base_hook import BaseHook, ExitCode, MarkerPatterns
 
 
 class ConcreteHook(BaseHook):
@@ -1022,3 +1022,90 @@ class TestExitAsk:
         output = json.loads(captured.out.strip())
         assert output["hookSpecificOutput"]["permissionDecision"] == "ask"
         assert output["hookSpecificOutput"]["updatedInput"] == {"command": "rm file.txt"}
+
+
+class TestMarkerPatterns:
+    """MarkerPatternsクラスのテスト"""
+
+    def test_pattern_constants_format(self):
+        """パターン定数が正しい形式であること"""
+        # 各パターンにプレースホルダが含まれていること
+        assert "{session_id}" in MarkerPatterns.SESSION_STARTUP
+        assert "{class_name}" in MarkerPatterns.HOOK_SESSION
+        assert "{session_id}" in MarkerPatterns.HOOK_SESSION
+        assert "{class_name}" in MarkerPatterns.RULE
+        assert "{session_id}" in MarkerPatterns.RULE
+        assert "{rule_hash}" in MarkerPatterns.RULE
+        assert "{session_id}" in MarkerPatterns.COMMAND
+        assert "{command_hash}" in MarkerPatterns.COMMAND
+
+    def test_pattern_prefixes(self):
+        """パターン定数がclaude_で始まること"""
+        assert MarkerPatterns.SESSION_STARTUP.startswith("claude_")
+        assert MarkerPatterns.HOOK_SESSION.startswith("claude_")
+        assert MarkerPatterns.RULE.startswith("claude_")
+        assert MarkerPatterns.COMMAND.startswith("claude_")
+
+    def test_format_session_startup(self):
+        """format_session_startupのテスト"""
+        result = MarkerPatterns.format_session_startup("test-session-123")
+        assert result == "claude_session_startup_test-session-123"
+
+    def test_format_hook_session(self):
+        """format_hook_sessionのテスト"""
+        result = MarkerPatterns.format_hook_session("MyHook", "session-456")
+        assert result == "claude_hook_MyHook_session_session-456"
+
+    def test_format_rule(self):
+        """format_ruleのテスト"""
+        result = MarkerPatterns.format_rule("RuleHook", "session-789", "abc123")
+        assert result == "claude_rule_RuleHook_session-789_abc123"
+
+    def test_format_command(self):
+        """format_commandのテスト"""
+        result = MarkerPatterns.format_command("session-001", "def456")
+        assert result == "claude_cmd_session-001_def456"
+
+    def test_get_glob_patterns_returns_list(self):
+        """get_glob_patternsがリストを返すこと"""
+        patterns = MarkerPatterns.get_glob_patterns("test-session")
+        assert isinstance(patterns, list)
+        assert len(patterns) == 4  # 4種類のパターン
+
+    def test_get_glob_patterns_contains_session_id(self):
+        """get_glob_patternsの各パターンにsession_idが含まれること"""
+        session_id = "unique-session-id"
+        patterns = MarkerPatterns.get_glob_patterns(session_id)
+        for pattern in patterns:
+            assert session_id in pattern
+
+    def test_get_glob_patterns_format(self):
+        """get_glob_patternsのパターン形式が正しいこと"""
+        patterns = MarkerPatterns.get_glob_patterns("test-session")
+        # 各パターンがワイルドカードを含むこと
+        assert any("*" in p and "session_startup" in p for p in patterns)
+        assert any("*" in p and "rule" in p for p in patterns)
+        assert any("*" in p and "cmd" in p for p in patterns)
+        assert any("*" in p and "hook" in p for p in patterns)
+
+    def test_glob_patterns_match_formatted_markers(self, tmp_path):
+        """globパターンがフォーマット済みマーカーにマッチすること"""
+        import fnmatch
+        
+        session_id = "test-session-xyz"
+        
+        # 各フォーマットメソッドで生成されるマーカー名
+        markers = [
+            MarkerPatterns.format_session_startup(session_id),
+            MarkerPatterns.format_hook_session("TestHook", session_id),
+            MarkerPatterns.format_rule("TestHook", session_id, "abc123"),
+            MarkerPatterns.format_command(session_id, "def456"),
+        ]
+        
+        # globパターン
+        patterns = MarkerPatterns.get_glob_patterns(session_id)
+        
+        # 各マーカーが少なくとも1つのパターンにマッチすること
+        for marker in markers:
+            matched = any(fnmatch.fnmatch(marker, pattern) for pattern in patterns)
+            assert matched, f"Marker '{marker}' did not match any pattern"

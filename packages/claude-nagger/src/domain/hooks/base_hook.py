@@ -50,6 +50,57 @@ class ExitCode(IntEnum):
     BLOCK = 2
 
 
+
+class MarkerPatterns:
+    """マーカーパターン定義（一元管理）
+    
+    各フックで使用されるマーカーファイル名のパターンを一元管理。
+    新しいマーカー追加時はここに定義を追加する。
+    """
+    
+    # パターン定数（format文字列）
+    SESSION_STARTUP = "claude_session_startup_{session_id}"
+    HOOK_SESSION = "claude_hook_{class_name}_session_{session_id}"
+    RULE = "claude_rule_{class_name}_{session_id}_{rule_hash}"
+    COMMAND = "claude_cmd_{session_id}_{command_hash}"
+    
+    @classmethod
+    def get_glob_patterns(cls, session_id: str) -> list[str]:
+        """compact時のglob用パターンを取得
+        
+        Args:
+            session_id: セッションID
+            
+        Returns:
+            glob用パターンのリスト
+        """
+        return [
+            f"claude_session_startup_*{session_id}*",   # SessionStartupHook
+            f"claude_rule_*{session_id}*",              # 規約リマインダー
+            f"claude_cmd_{session_id}_*",               # コマンド規約
+            f"claude_hook_*_session_{session_id}",      # BaseHook汎用マーカー
+        ]
+    
+    @classmethod
+    def format_session_startup(cls, session_id: str) -> str:
+        """SESSION_STARTUPパターンのフォーマット"""
+        return cls.SESSION_STARTUP.format(session_id=session_id)
+    
+    @classmethod
+    def format_hook_session(cls, class_name: str, session_id: str) -> str:
+        """HOOK_SESSIONパターンのフォーマット"""
+        return cls.HOOK_SESSION.format(class_name=class_name, session_id=session_id)
+    
+    @classmethod
+    def format_rule(cls, class_name: str, session_id: str, rule_hash: str) -> str:
+        """RULEパターンのフォーマット"""
+        return cls.RULE.format(class_name=class_name, session_id=session_id, rule_hash=rule_hash)
+    
+    @classmethod
+    def format_command(cls, session_id: str, command_hash: str) -> str:
+        """COMMANDパターンのフォーマット"""
+        return cls.COMMAND.format(session_id=session_id, command_hash=command_hash)
+
 class BaseHook(ABC):
     """Claude Code Hook処理の基底クラス"""
 
@@ -438,7 +489,7 @@ class BaseHook(ABC):
             マーカーファイルのパス
         """
         temp_dir = Path("/tmp")
-        marker_name = f"claude_hook_{self.__class__.__name__}_session_{session_id}"
+        marker_name = MarkerPatterns.format_hook_session(self.__class__.__name__, session_id)
         return temp_dir / marker_name
 
     def get_command_marker_path(self, session_id: str, command: str) -> Path:
@@ -457,7 +508,7 @@ class BaseHook(ABC):
         temp_dir = Path("/tmp")
         # コマンドのハッシュ値を生成（ファイル名として使用）
         command_hash = hashlib.md5(command.encode()).hexdigest()[:8]
-        marker_name = f"claude_cmd_{session_id}_{command_hash}"
+        marker_name = MarkerPatterns.format_command(session_id, command_hash)
         return temp_dir / marker_name
 
     def get_rule_marker_path(self, session_id: str, rule_name: str) -> Path:
@@ -476,7 +527,7 @@ class BaseHook(ABC):
         temp_dir = Path("/tmp")
         # 規約名のハッシュ値を生成（ファイル名として使用）
         rule_hash = hashlib.md5(rule_name.encode()).hexdigest()[:8]
-        marker_name = f"claude_rule_{self.__class__.__name__}_{session_id}_{rule_hash}"
+        marker_name = MarkerPatterns.format_rule(self.__class__.__name__, session_id, rule_hash)
         return temp_dir / marker_name
 
     def is_rule_processed(self, session_id: str, rule_name: str) -> bool:

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from domain.hooks.base_hook import BaseHook
+from domain.hooks.base_hook import BaseHook, MarkerPatterns
 
 
 class SessionStartupHook(BaseHook):
@@ -17,7 +17,6 @@ class SessionStartupHook(BaseHook):
         """初期化"""
         super().__init__(debug=True)
         self.config = self._load_config()
-        self.session_marker_prefix = self.config.get('debug', {}).get('marker_path', 'claude_session_startup_')
         
     def _load_config(self) -> Dict[str, Any]:
         """
@@ -62,7 +61,7 @@ class SessionStartupHook(BaseHook):
             マーカーファイルのパス
         """
         temp_dir = Path("/tmp")
-        marker_name = f"{self.session_marker_prefix}{session_id}"
+        marker_name = MarkerPatterns.format_session_startup(session_id)
         return temp_dir / marker_name
 
     def is_session_startup_processed(self, session_id: str, input_data: Dict[str, Any] = None) -> bool:

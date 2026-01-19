@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
-from .base_hook import BaseHook
+from .base_hook import BaseHook, MarkerPatterns
 
 
 class CompactDetectedHook(BaseHook):
@@ -76,13 +76,8 @@ class CompactDetectedHook(BaseHook):
         renamed_count = 0
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         
-        # リネーム対象のパターン
-        patterns = [
-            f"claude_session_startup_*{session_id}*",  # SessionStartupHook
-            f"claude_rule_*{session_id}*",              # 規約リマインダー
-            f"claude_cmd_{session_id}_*",               # コマンド規約
-            f"claude_hook_*_session_{session_id}",      # BaseHook汎用マーカー
-        ]
+        # リネーム対象のパターン（MarkerPatternsから一元取得）
+        patterns = MarkerPatterns.get_glob_patterns(session_id)
         
         for pattern in patterns:
             for marker_path in temp_dir.glob(pattern):
