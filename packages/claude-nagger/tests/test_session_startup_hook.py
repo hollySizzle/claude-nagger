@@ -25,18 +25,8 @@ class TestSessionStartupHookInit:
             mock_load.assert_called_once()
             assert hook.config == {'enabled': True}
 
-    def test_init_sets_marker_prefix(self):
-        """マーカープレフィックスが設定される"""
-        config = {'debug': {'marker_path': 'custom_prefix_'}}
-        with patch.object(SessionStartupHook, '_load_config', return_value=config):
-            hook = SessionStartupHook()
-            assert hook.session_marker_prefix == 'custom_prefix_'
-
-    def test_init_default_marker_prefix(self):
-        """デフォルトのマーカープレフィックス"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-            assert hook.session_marker_prefix == 'claude_session_startup_'
+    # NOTE: session_marker_prefix はMarkerPatternsクラスへ移行したため、
+    # 関連テストは削除。パターンのテストはtest_base_hook.py::TestMarkerPatternsを参照。
 
 
 class TestLoadConfig:
@@ -112,14 +102,8 @@ class TestGetSessionStartupMarkerPath:
 
         assert path == Path('/tmp/claude_session_startup_test-session-123')
 
-    def test_custom_prefix(self):
-        """カスタムプレフィックスが適用される"""
-        config = {'debug': {'marker_path': 'my_prefix_'}}
-        with patch.object(SessionStartupHook, '_load_config', return_value=config):
-            hook = SessionStartupHook()
-            path = hook.get_session_startup_marker_path('session')
-
-        assert path == Path('/tmp/my_prefix_session')
+    # NOTE: カスタムプレフィックス機能はMarkerPatternsクラスへ移行したため削除。
+    # パターンはMarkerPatterns.SESSION_STARTUPで一元管理。
 
 
 class TestIsSessionStartupProcessed:
