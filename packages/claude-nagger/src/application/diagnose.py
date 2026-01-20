@@ -1,12 +1,15 @@
 """診断コマンド - 環境情報・設定の収集"""
 
 import json
+import logging
 import os
 import platform
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class DiagnoseCommand:
@@ -86,8 +89,8 @@ class DiagnoseCommand:
                 print(f"コマンドパス: {cmd_path}")
             else:
                 print("コマンドパス: 未検出")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"whichコマンド実行失敗: {e}")
         print()
 
     def _detect_install_location(self) -> str | None:
@@ -104,8 +107,8 @@ class DiagnoseCommand:
                 for line in result.stdout.split("\n"):
                     if line.startswith("Location:"):
                         return line.split(': ', 1)[1]
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"pip show実行失敗: {e}")
 
         # 2. uv tool list を試す
         try:
@@ -117,8 +120,8 @@ class DiagnoseCommand:
             )
             if result.returncode == 0 and "claude-nagger" in result.stdout:
                 return None  # uv tool でインストールされている
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"uv tool list実行失敗: {e}")
 
         # 3. pipx list を試す
         try:
@@ -130,8 +133,8 @@ class DiagnoseCommand:
             )
             if result.returncode == 0 and "claude-nagger" in result.stdout:
                 return None  # pipx でインストールされている
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"pipx list実行失敗: {e}")
 
         return None
 
@@ -228,8 +231,8 @@ class DiagnoseCommand:
                                 has_impl_design = True
                                 matched_via = f'"{matcher}"'
                                 break
-                        except re.error:
-                            pass
+                        except re.error as e:
+                            logger.warning(f"正規表現パターン不正（{matcher}）: {e}")
 
                 if has_impl_design:
                     print(f"    {tool_name} ({tool_desc}): ✅ OK (via {matched_via})")

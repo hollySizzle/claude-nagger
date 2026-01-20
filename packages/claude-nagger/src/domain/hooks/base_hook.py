@@ -694,8 +694,8 @@ class BaseHook(ABC):
                 with open(marker_path, 'r') as f:
                     import json
                     return json.load(f)
-        except Exception:
-            pass
+        except Exception as e:
+            self.log_debug(f"マーカーファイル読み取り失敗（{marker_path}）: {e}")
         return None
     
     def _get_current_context_size(self, transcript_path: Optional[str]) -> Optional[int]:
