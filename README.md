@@ -286,6 +286,24 @@ rules:
 
 ---
 
+## compact検知機能 (v1.4.0)
+
+Claude Codeのコンテキスト圧縮(compacting)後、自動的に規約リマインダーを再表示します。
+
+```
+compact発生
+    ↓
+SessionStart[compact] フック発火
+    ↓
+claude-nagger: マーカーファイルをリセット
+    ↓
+次のツール呼び出しで規約が再注入される
+```
+
+これにより「規約の忘却」問題を解決します。設定不要で自動的に動作します。
+
+---
+
 ## コマンド一覧
 
 ```bash
@@ -307,6 +325,7 @@ claude-nagger diagnose
 # フック直接実行（内部用・トラブルシュート用）
 claude-nagger hook session-startup
 claude-nagger hook implementation-design
+claude-nagger hook compact-detected
 
 # パターンマッチングのテスト（設定確認用）
 claude-nagger match-test --file "app/views/test.erb" --pattern "app/views/**/*.erb"
