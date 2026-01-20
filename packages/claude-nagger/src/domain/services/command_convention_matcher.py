@@ -2,12 +2,12 @@
 
 import yaml
 import fnmatch
-import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 from .base_convention_matcher import BaseConventionMatcher
+from shared.structured_logging import get_logger
 
 
 @dataclass
@@ -42,27 +42,9 @@ class CommandConventionMatcher(BaseConventionMatcher):
         
         self.rules_file = Path(rules_file)
         self.debug = debug
-        self._setup_logging()
+        # 統一ログディレクトリを使用（structured_logging）
+        self.logger = get_logger("CommandConventionMatcher")
         self.rules = self._load_rules()
-        
-    def _setup_logging(self):
-        """ロギングの設定"""
-        log_file = Path("/tmp/command_convention_matcher.log")
-        
-        # ロガーを作成
-        self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
-        
-        # 既存のハンドラを削除
-        for handler in self.logger.handlers[:]:
-            self.logger.removeHandler(handler)
-        
-        # ファイルハンドラを追加
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('[%(asctime)s] %(name)s %(levelname)s: %(message)s')
-        file_handler.setFormatter(formatter)
-        self.logger.addHandler(file_handler)
 
     def _load_rules(self) -> List[ConventionRule]:
         """ルールファイルを読み込む"""

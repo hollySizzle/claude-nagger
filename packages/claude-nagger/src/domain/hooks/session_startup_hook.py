@@ -279,15 +279,6 @@ class SessionStartupHook(BaseHook):
 
 def main():
     """メインエントリーポイント"""
-    import logging
-    logging.basicConfig(
-        level=logging.DEBUG,  # ERROR → DEBUG に変更
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler('/tmp/session_startup_hook.log')
-        ]
-    )
-    
     hook = SessionStartupHook(debug=False)
     sys.exit(hook.run())
 

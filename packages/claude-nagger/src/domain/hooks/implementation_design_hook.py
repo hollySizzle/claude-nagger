@@ -10,6 +10,7 @@ from domain.hooks.base_hook import BaseHook
 from domain.services.file_convention_matcher import FileConventionMatcher
 from domain.services.command_convention_matcher import CommandConventionMatcher
 from infrastructure.config.config_manager import ConfigManager
+from shared.structured_logging import get_logger
 
 
 class ImplementationDesignHook(BaseHook):
@@ -28,40 +29,10 @@ class ImplementationDesignHook(BaseHook):
         self.thresholds = self.config.get_context_thresholds()
         self.marker_settings = self.config.get_marker_settings()
         
-        # ImplementationDesignHook専用のログファイル設定
-        self._setup_implementation_design_log()
-        
-        # デバッグログを簡素化（ファイルログのみ）
-        # self.log_debug(f"Context thresholds loaded: {self.thresholds}")
-        # self.log_debug(f"Marker settings loaded: {self.marker_settings}")
-
-    def _setup_implementation_design_log(self):
-        """ImplementationDesignHook専用のログファイル設定"""
-        import logging
-        from pathlib import Path
-        
-        # 専用ログファイルパス
-        log_file = Path("/tmp/implementation_design_hook.log")
-        
-        # 専用ロガーを作成
-        self.impl_logger = logging.getLogger(f"{self.__class__.__name__}_impl")
-        self.impl_logger.setLevel(logging.DEBUG)
-        
-        # 既存のハンドラを削除
-        for handler in self.impl_logger.handlers[:]:
-            self.impl_logger.removeHandler(handler)
-        
-        # ファイルハンドラを追加
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        formatter = logging.Formatter('[%(asctime)s] %(name)s %(levelname)s: %(message)s')
-        file_handler.setFormatter(formatter)
-        self.impl_logger.addHandler(file_handler)
-        
-        # 初期ログ
-        self.impl_logger.info("=== ImplementationDesignHook initialized ===")
-        self.impl_logger.info(f"Context thresholds: {self.thresholds}")
-        self.impl_logger.info(f"Marker settings: {self.marker_settings}")
+        # 統一ログディレクトリを使用（structured_logging）
+        self.impl_logger = get_logger("ImplementationDesignHook")
+        self.impl_logger.info("=== ImplementationDesignHook initialized ===", 
+                              thresholds=self.thresholds, marker_settings=self.marker_settings)
 
     def normalize_file_path(self, file_path: str, cwd: str = '') -> str:
         """
