@@ -299,3 +299,64 @@ class TestAbsolutePathConversion:
         assert matcher.matches_pattern('src/main.py', pattern)
         assert matcher.matches_pattern('src/lib/utils.py', pattern)
         assert not matcher.matches_pattern('other/main.py', pattern)
+
+
+class TestErrorHandling:
+    """エラーハンドリングのテスト"""
+
+    def test_load_rules_yaml_error(self):
+        """YAML構文エラー"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            f.write("invalid: yaml: content:\n  - broken")
+            temp_path = Path(f.name)
+
+        try:
+            matcher = FileConventionMatcher(rules_file=temp_path)
+            assert len(matcher.rules) == 0
+        finally:
+            temp_path.unlink()
+
+    def test_load_rules_missing_required_field(self):
+        """必須フィールド欠落（KeyError）"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {
+                'rules': [
+                    {
+                        'name': 'Missing patterns',
+                        'message': 'No patterns field'
+                    }
+                ]
+            }
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            matcher = FileConventionMatcher(rules_file=temp_path)
+            assert len(matcher.rules) == 0
+        finally:
+            temp_path.unlink()
+
+    def test_invalid_pattern_skipped(self):
+        """無効なパターンがスキップされる"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {
+                'rules': [
+                    {
+                        'name': 'Rule with valid pattern',
+                        'patterns': ['valid/*.py'],
+                        'severity': 'warn',
+                        'message': 'Test message'
+                    }
+                ]
+            }
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            matcher = FileConventionMatcher(rules_file=temp_path)
+            # 無効なパターン（Noneなど）を直接テスト
+            # matches_patternは例外をキャッチしてFalseを返す
+            result = matcher.matches_pattern('test.py', [None])
+            assert result is False
+        finally:
+            temp_path.unlink()

@@ -442,3 +442,31 @@ class TestConventionRule:
             message='Test message'
         )
         assert rule.token_threshold is None
+
+
+class TestInvalidPatternHandling:
+    """無効なパターンのハンドリングテスト"""
+
+    @pytest.fixture
+    def matcher(self):
+        """テスト用マッチャーを作成"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {'rules': []}
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        m = CommandConventionMatcher(rules_file=temp_path)
+        temp_path.unlink()
+        return m
+
+    def test_invalid_pattern_skipped(self, matcher):
+        """無効なパターンがスキップされる"""
+        # Noneパターンを渡すと例外がキャッチされてFalseが返る
+        result = matcher.matches_pattern('git push', [None])
+        assert result is False
+
+    def test_mixed_valid_invalid_patterns(self, matcher):
+        """有効・無効パターン混在時、有効パターンでマッチする"""
+        # 有効なパターンが含まれていればマッチする
+        result = matcher.matches_pattern('git push', [None, 'git push'])
+        assert result is True
