@@ -4,8 +4,11 @@ import os
 import sys
 import json
 import hashlib
+import logging
 from typing import Optional, Dict, Any
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class SessionManager:
@@ -101,8 +104,8 @@ class SessionManager:
             input_data = sys.stdin.read()
             if input_data:
                 return json.loads(input_data)
-        except (json.JSONDecodeError, IOError):
-            pass
+        except (json.JSONDecodeError, IOError) as e:
+            logger.debug(f"stdin JSON読み込み失敗（正常動作）: {e}")
         
         return {}
     

@@ -2,6 +2,10 @@
 
 import os
 import json
+import logging
+
+logger = logging.getLogger(__name__)
+
 try:
     import json5
 except ImportError:
@@ -307,8 +311,8 @@ class ConfigManager:
                     # JSON形式（フォールバック）
                     else:
                         return json.loads(content)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"secrets読み込み失敗（{self.secrets_path}）: {e}")
         return {}
     
     def _resolve_value(self, value: Any) -> Any:
