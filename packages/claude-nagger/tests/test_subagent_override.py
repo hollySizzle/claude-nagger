@@ -8,6 +8,7 @@
 - 統合: SubagentStart → PreToolUse（subagent用メッセージ） → SubagentStop
 """
 
+import io
 import json
 import pytest
 from pathlib import Path
@@ -19,6 +20,7 @@ from src.domain.hooks.session_startup_hook import (
     _deep_copy_dict,
     _deep_merge,
 )
+from src.domain.hooks.subagent_event_hook import main as subagent_event_main
 
 
 # ============================================================
@@ -46,6 +48,21 @@ class TestDeepCopyDict:
     def test_empty_dict(self):
         """空辞書のコピー"""
         assert _deep_copy_dict({}) == {}
+
+    def test_dict_with_list(self):
+        """リスト値を含む辞書の深いコピー"""
+        d = {"a": [1, 2, {"b": 3}]}
+        result = _deep_copy_dict(d)
+        assert result == d
+        assert result["a"] is not d["a"]
+        assert result["a"][2] is not d["a"][2]
+
+    def test_dict_with_nested_list(self):
+        """ネストされたリスト値の深いコピー"""
+        d = {"items": [{"name": "x"}, {"name": "y"}]}
+        result = _deep_copy_dict(d)
+        result["items"][0]["name"] = "modified"
+        assert d["items"][0]["name"] == "x"  # 元データに影響しない
 
 
 class TestDeepMerge:
@@ -493,17 +510,10 @@ class TestSubagentStartupMarker:
 # ============================================================
 
 class TestSubagentEventHook:
-    """SubagentEventHookのテスト"""
+    """SubagentEventHookのテスト（SubagentMarkerManager直接呼び出し確認）"""
 
     def test_subagent_start_creates_marker(self, tmp_path):
         """SubagentStartイベントでマーカーが作成される"""
-        input_data = {
-            "hook_event_name": "SubagentStart",
-            "session_id": "session-123",
-            "agent_id": "agent-abc",
-            "agent_type": "general-purpose",
-        }
-
         with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
             mgr = SubagentMarkerManager("session-123")
             mgr.create_marker("agent-abc", "general-purpose")
@@ -522,6 +532,122 @@ class TestSubagentEventHook:
 
             mgr.delete_marker("agent-abc")
             assert not mgr.is_subagent_active()
+
+
+class TestSubagentEventHookMain:
+    """SubagentEventHook main()のstdin mock経由テスト（#5631）"""
+
+    def _run_main_with_stdin(self, input_data):
+        """stdin経由でmain()を実行するヘルパー。SystemExit例外をキャッチ。"""
+        stdin_text = json.dumps(input_data) if isinstance(input_data, dict) else input_data
+        with patch('sys.stdin', io.StringIO(stdin_text)):
+            with pytest.raises(SystemExit) as exc_info:
+                subagent_event_main()
+        return exc_info.value.code
+
+    def test_start_event_calls_create_marker(self):
+        """SubagentStartイベントでcreate_markerが呼ばれる"""
+        input_data = {
+            "hook_event_name": "SubagentStart",
+            "session_id": "session-123",
+            "agent_id": "agent-abc",
+            "agent_type": "general-purpose",
+        }
+        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
+            mock_instance = MockMgr.return_value
+            exit_code = self._run_main_with_stdin(input_data)
+
+        assert exit_code == 0
+        MockMgr.assert_called_once_with("session-123")
+        mock_instance.create_marker.assert_called_once_with("agent-abc", "general-purpose")
+        mock_instance.delete_marker.assert_not_called()
+
+    def test_stop_event_calls_delete_marker(self):
+        """SubagentStopイベントでdelete_markerが呼ばれる"""
+        input_data = {
+            "hook_event_name": "SubagentStop",
+            "session_id": "session-123",
+            "agent_id": "agent-abc",
+        }
+        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
+            mock_instance = MockMgr.return_value
+            exit_code = self._run_main_with_stdin(input_data)
+
+        assert exit_code == 0
+        MockMgr.assert_called_once_with("session-123")
+        mock_instance.delete_marker.assert_called_once_with("agent-abc")
+        mock_instance.create_marker.assert_not_called()
+
+    def test_invalid_json_exits_cleanly(self):
+        """不正JSONは正常終了（exit 0）"""
+        exit_code = self._run_main_with_stdin("{invalid json!!!")
+
+        # create_marker/delete_markerは呼ばれない（JSONDecodeErrorでexit）
+        assert exit_code == 0
+
+    def test_empty_stdin_exits_cleanly(self):
+        """空stdinは正常終了（exit 0）"""
+        with patch('sys.stdin', io.StringIO("")):
+            with pytest.raises(SystemExit) as exc_info:
+                subagent_event_main()
+        assert exc_info.value.code == 0
+
+    def test_missing_session_id_exits_early(self):
+        """session_id欠損は早期終了（マーカー操作なし）"""
+        input_data = {
+            "hook_event_name": "SubagentStart",
+            "agent_id": "agent-abc",
+            "agent_type": "general-purpose",
+        }
+        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
+            exit_code = self._run_main_with_stdin(input_data)
+
+        assert exit_code == 0
+        MockMgr.assert_not_called()
+
+    def test_missing_agent_id_exits_early(self):
+        """agent_id欠損は早期終了（マーカー操作なし）"""
+        input_data = {
+            "hook_event_name": "SubagentStart",
+            "session_id": "session-123",
+            "agent_type": "general-purpose",
+        }
+        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
+            exit_code = self._run_main_with_stdin(input_data)
+
+        assert exit_code == 0
+        MockMgr.assert_not_called()
+
+    def test_unknown_event_no_marker_operation(self):
+        """未知のイベント名ではマーカー操作なし"""
+        input_data = {
+            "hook_event_name": "UnknownEvent",
+            "session_id": "session-123",
+            "agent_id": "agent-abc",
+        }
+        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
+            mock_instance = MockMgr.return_value
+            exit_code = self._run_main_with_stdin(input_data)
+
+        assert exit_code == 0
+        # SubagentMarkerManagerはインスタンス化されるがマーカー操作は無い
+        MockMgr.assert_called_once_with("session-123")
+        mock_instance.create_marker.assert_not_called()
+        mock_instance.delete_marker.assert_not_called()
+
+    def test_start_event_missing_agent_type_defaults_unknown(self):
+        """agent_type欠損時は"unknown"がデフォルト"""
+        input_data = {
+            "hook_event_name": "SubagentStart",
+            "session_id": "session-123",
+            "agent_id": "agent-abc",
+        }
+        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
+            mock_instance = MockMgr.return_value
+            exit_code = self._run_main_with_stdin(input_data)
+
+        assert exit_code == 0
+        mock_instance.create_marker.assert_called_once_with("agent-abc", "unknown")
 
 
 # ============================================================
