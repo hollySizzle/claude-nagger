@@ -418,6 +418,37 @@ class TestReadMarkerData:
         assert result is None
 
 
+class TestReadMarkerDataLogging:
+    """_read_marker_data の例外ログ出力テスト（issue #5332）"""
+
+    def test_invalid_marker_logs_debug(self, tmp_path):
+        """無効なマーカー読み取り時にlog_debugが呼ばれる"""
+        hook = ConcreteHook()
+        marker_path = tmp_path / 'invalid_marker'
+        marker_path.write_text('not valid json')
+
+        with patch.object(hook, 'log_debug') as mock_log:
+            result = hook._read_marker_data(marker_path)
+
+        assert result is None
+        mock_log.assert_called_once()
+        assert 'マーカーファイル読み取り失敗' in mock_log.call_args[0][0]
+
+    def test_permission_error_logs_debug(self, tmp_path):
+        """パーミッションエラー時にlog_debugが呼ばれる"""
+        hook = ConcreteHook()
+        marker_path = tmp_path / 'restricted_marker'
+        marker_path.write_text('{"key": "value"}')
+
+        with patch('builtins.open', side_effect=PermissionError('Permission denied')):
+            with patch.object(hook, 'log_debug') as mock_log:
+                result = hook._read_marker_data(marker_path)
+
+        assert result is None
+        mock_log.assert_called_once()
+        assert 'マーカーファイル読み取り失敗' in mock_log.call_args[0][0]
+
+
 class TestGetCurrentContextSize:
     """_get_current_context_size メソッドのテスト"""
 

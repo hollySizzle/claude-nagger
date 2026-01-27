@@ -193,6 +193,99 @@ class TestDiagnoseCommand:
         assert "問題は検出されませんでした" in captured.out
 
 
+class TestDiagnoseExceptionLogging:
+    """DiagnoseCommandの例外ログ出力テスト（issue #5332）"""
+
+    def test_which_command_failure_logs_debug(self, tmp_path, capsys, monkeypatch):
+        """whichコマンド失敗時にlogger.debugが呼ばれる"""
+        import subprocess as _subprocess
+        monkeypatch.chdir(tmp_path)
+        cmd = DiagnoseCommand()
+
+        original_run = _subprocess.run
+
+        def selective_side_effect(*args, **kwargs):
+            """whichコマンドのみ例外を発生させる"""
+            cmd_args = args[0] if args else kwargs.get('args', [])
+            if isinstance(cmd_args, list) and cmd_args and cmd_args[0] == 'which':
+                raise FileNotFoundError('which not found')
+            return original_run(*args, **kwargs)
+
+        with patch('subprocess.run', side_effect=selective_side_effect):
+            with patch('application.diagnose.logger') as mock_logger:
+                cmd._print_installation()
+
+        debug_messages = [call[0][0] for call in mock_logger.debug.call_args_list]
+        assert any('whichコマンド実行失敗' in msg for msg in debug_messages)
+
+    def test_detect_install_all_commands_fail_logs_debug(self, tmp_path, monkeypatch):
+        """全外部コマンド失敗時にlogger.debugが各失敗に対して呼ばれる"""
+        monkeypatch.chdir(tmp_path)
+        cmd = DiagnoseCommand()
+
+        def raise_error(*args, **kwargs):
+            raise OSError('command not found')
+
+        with patch('subprocess.run', side_effect=raise_error):
+            with patch('application.diagnose.logger') as mock_logger:
+                result = cmd._detect_install_location()
+
+        assert result is None
+        # pip show, uv tool list, pipx list の3回分
+        assert mock_logger.debug.call_count == 3
+        debug_messages = [call[0][0] for call in mock_logger.debug.call_args_list]
+        assert any('pip show実行失敗' in msg for msg in debug_messages)
+        assert any('uv tool list実行失敗' in msg for msg in debug_messages)
+        assert any('pipx list実行失敗' in msg for msg in debug_messages)
+
+    def test_regex_error_in_hook_matchers_logs_warning(self, tmp_path, capsys, monkeypatch):
+        """不正な正規表現パターン時にlogger.warningが呼ばれる"""
+        monkeypatch.chdir(tmp_path)
+
+        # 不正な正規表現を含むsettings.jsonを作成
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        settings_json = {
+            "hooks": {
+                "PreToolUse": [
+                    {
+                        "matcher": "[invalid regex",
+                        "hooks": [{"type": "command", "command": "claude-nagger hook implementation-design"}]
+                    }
+                ]
+            }
+        }
+        (claude_dir / "settings.json").write_text(json.dumps(settings_json))
+
+        cmd = DiagnoseCommand()
+
+        with patch('application.diagnose.logger') as mock_logger:
+            cmd._print_hook_matchers()
+
+        mock_logger.warning.assert_called()
+        warning_messages = [call[0][0] for call in mock_logger.warning.call_args_list]
+        assert any('正規表現パターン不正' in msg for msg in warning_messages)
+
+    def test_pip_show_timeout_logs_debug(self, tmp_path, monkeypatch):
+        """pip showタイムアウト時にlogger.debugが呼ばれる"""
+        import subprocess
+        monkeypatch.chdir(tmp_path)
+        cmd = DiagnoseCommand()
+
+        def timeout_on_pip(*args, **kwargs):
+            if args and any('pip' in str(a) for a in (args[0] if isinstance(args[0], list) else [args[0]])):
+                raise subprocess.TimeoutExpired(cmd='pip', timeout=10)
+            raise OSError('not found')
+
+        with patch('subprocess.run', side_effect=timeout_on_pip):
+            with patch('application.diagnose.logger') as mock_logger:
+                cmd._detect_install_location()
+
+        assert mock_logger.debug.called
+        debug_messages = [call[0][0] for call in mock_logger.debug.call_args_list]
+        assert any('pip show実行失敗' in msg for msg in debug_messages)
+
+
 class TestCLIDiagnose:
     """CLIからのdiagnoseコマンドテスト"""
 
