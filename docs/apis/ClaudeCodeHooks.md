@@ -1,4 +1,7 @@
 https://code.claude.com/docs/ja/hooks
+> ## Documentation Index
+> Fetch the complete documentation index at: https://code.claude.com/docs/llms.txt
+> Use this file to discover all available pages before exploring further.
 
 # Hooksリファレンス
 
@@ -1113,8 +1116,3 @@ hooksが機能していない場合：
 * 実行されるコマンド
 * 成功/失敗ステータス
 * 出力またはエラーメッセージ
-
-
----
-
-> To find navigation and other pages in this documentation, fetch the llms.txt file at: https://code.claude.com/docs/llms.txt

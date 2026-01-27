@@ -1,0 +1,14 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/-workspace-packages-claude-nagger/00000000-0000-0000-0000-000000000000.jsonl",
+  "cwd": "/workspace/packages/claude-nagger",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Task",
+  "tool_input": {
+    "description": "Subagent hook JSON test",
+    "prompt": "This is a simple test task. Please do the following two things:\n1. Read the file /workspace/packages/claude-nagger/pyproject.toml using the Read tool\n2. Run the bash command: echo \"subagent_test_marker_12345\"\n\nJust do these two things and report what you found. Nothing else needed.",
+    "subagent_type": "general-purpose"
+  },
+  "tool_use_id": "toolu_01Smgt8pizPPTssLMrhvvxPJ"
+}
