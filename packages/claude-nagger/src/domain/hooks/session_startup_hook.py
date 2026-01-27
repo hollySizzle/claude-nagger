@@ -1,5 +1,6 @@
 """セッション開始時の規約確認フック"""
 
+import json
 import sys
 import os
 import yaml
@@ -12,14 +13,9 @@ from domain.services.subagent_marker_manager import SubagentMarkerManager
 
 
 def _deep_copy_dict(d: Dict[str, Any]) -> Dict[str, Any]:
-    """辞書の深いコピー（ネスト対応）"""
-    result = {}
-    for key, value in d.items():
-        if isinstance(value, dict):
-            result[key] = _deep_copy_dict(value)
-        else:
-            result[key] = value
-    return result
+    """辞書の深いコピー（ネスト・リスト対応）"""
+    import copy
+    return copy.deepcopy(d)
 
 
 def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> None:
@@ -144,7 +140,7 @@ class SessionStartupHook(BaseHook):
             marker_path = self._get_subagent_startup_marker_path(session_id, agent_id)
             marker_path.parent.mkdir(parents=True, exist_ok=True)
 
-            import json as json_mod
+
             from datetime import datetime
             marker_data = {
                 "timestamp": datetime.now().isoformat(),
@@ -154,7 +150,7 @@ class SessionStartupHook(BaseHook):
                 "hook_type": "session_startup_subagent",
             }
             with open(marker_path, "w", encoding="utf-8") as f:
-                json_mod.dump(marker_data, f, ensure_ascii=False)
+                json.dump(marker_data, f, ensure_ascii=False)
 
             self.log_info(f"✅ Created subagent startup marker: {marker_path}")
             return True
@@ -223,9 +219,9 @@ class SessionStartupHook(BaseHook):
             if current_tokens is not None:
                 # マーカーファイルから前回のトークン数を取得
                 try:
-                    import json as json_mod
+        
                     with open(marker_path, 'r') as f:
-                        marker_data = json_mod.load(f)
+                        marker_data = json.load(f)
                         last_tokens = marker_data.get('tokens', 0)
                     
                     token_increase = current_tokens - last_tokens
@@ -272,8 +268,8 @@ class SessionStartupHook(BaseHook):
             }
             
             with open(marker_path, 'w') as f:
-                import json as json_mod
-                json_mod.dump(marker_data, f)
+    
+                json.dump(marker_data, f)
                 
             self.log_info(f"✅ Created session startup marker with {current_tokens} tokens: {marker_path}")
             return True
@@ -284,6 +280,12 @@ class SessionStartupHook(BaseHook):
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """
         セッション開始時の処理対象かどうかを判定（設定ファイル対応・subagent override対応）
+
+        Trueを返す場合、以下のインスタンス属性をprocess()用に設定する:
+        - _is_subagent (bool): subagentコンテキストか否か
+        - _resolved_config (dict|None): subagent時のoverride解決済み設定
+        - _current_agent_id (str|None): subagentのagent_id
+        - _current_agent_type (str|None): subagentのagent_type
         
         Args:
             input_data: 入力データ
@@ -360,6 +362,9 @@ class SessionStartupHook(BaseHook):
     def process(self, input_data: Dict[str, Any]) -> Dict[str, str]:
         """
         セッション開始時の規約確認処理を実行（subagent override対応）
+
+        前提: should_process()がTrueを返した後に呼び出すこと。
+        should_process()が設定した_is_subagent, _resolved_config等を参照する。
         
         Args:
             input_data: 入力データ
