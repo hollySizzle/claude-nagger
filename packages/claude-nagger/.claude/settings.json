@@ -10,7 +10,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m domain.hooks.session_startup_hook"
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m domain.hooks.session_startup_hook"
           }
         ]
       },
@@ -19,7 +19,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m domain.hooks.implementation_design_hook"
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m domain.hooks.implementation_design_hook"
           }
         ]
       },
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m domain.hooks.implementation_design_hook"
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m domain.hooks.implementation_design_hook"
           }
         ]
       },
@@ -37,7 +37,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m domain.hooks.implementation_design_hook"
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m domain.hooks.implementation_design_hook"
           }
         ]
       }
@@ -48,7 +48,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m infrastructure.notifiers.discord_notifier \"📢 Claude Code から通知があります\""
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m infrastructure.notifiers.discord_notifier \"📢 Claude Code から通知があります\""
           }
         ]
       }
@@ -59,7 +59,27 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -m infrastructure.notifiers.discord_notifier \"🛑 Claude Code セッションが停止されました\""
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m infrastructure.notifiers.discord_notifier \"🛑 Claude Code セッションが停止されました\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/capture_subagent_event.py\""
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/capture_subagent_event.py\""
           }
         ]
       }

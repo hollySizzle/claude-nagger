@@ -283,6 +283,18 @@ class TestShouldProcess:
 
         assert result is True
 
+    def test_task_tool_skipped(self):
+        """Taskツール（subagent生成）はスキップされる"""
+        config = {'enabled': True, 'behavior': {'once_per_session': True}}
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+            result = hook.should_process({
+                'session_id': 'new-session',
+                'tool_name': 'Task',
+            })
+
+        assert result is False
+
 
 class TestProcess:
     """process メソッドのテスト"""

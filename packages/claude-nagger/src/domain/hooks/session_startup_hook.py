@@ -169,6 +169,12 @@ class SessionStartupHook(BaseHook):
         """
         self.log_info(f"📋 SessionStartupHook - Input data keys: {input_data.keys()}")
         
+        # Taskツール（subagent生成）はスキップ（subagent自身のツール呼び出しで発火する）
+        tool_name = input_data.get('tool_name', '')
+        if tool_name == 'Task':
+            self.log_debug("Skipping Task tool (subagent spawn)")
+            return False
+        
         # 設定で無効化されている場合はスキップ
         if not self.config.get('enabled', True):
             self.log_info("❌ Session startup hook is disabled in config")
