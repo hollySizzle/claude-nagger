@@ -1,0 +1,30 @@
+{
+  "mcpServers": {
+    "git": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-git"
+      ]
+    },
+    "serena": {
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena",
+        "start-mcp-server"
+      ],
+      "env": {},
+      "disabled": false
+    },
+    "redmine_epic_grid": {
+      "type": "http",
+      "url": "${READMINE_PROJECT_URL}",
+      "headers": {
+        "X-Redmine-API-Key": "${REDMINE_API_KEY}",
+        "X-Default-Project": "${REDMINE_X_DEFAULT_PROJECT}"
+      }
+    }
+  }
+}
