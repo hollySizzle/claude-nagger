@@ -4,11 +4,195 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![PyPI](https://img.shields.io/pypi/v/claude-nagger.svg)](https://pypi.org/project/claude-nagger/)
 
-Claude Codeに「必要な時だけ」規約を読ませるフックツール
+**Conditional convention injection + automatic re-injection after context compacting** for Claude Code.
+
+Feeds project conventions to Claude Code **only when relevant files are touched** — and re-injects them when the context window compacts.
+
+> **Japanese version is available below.** See [日本語版](#日本語版)
+
+## The Problem
+
+| Problem | Description |
+|---------|-------------|
+| **Context bloat** | Writing all conventions in CLAUDE.md consumes massive tokens |
+| **Convention amnesia** | Context compacting causes conventions to be "forgotten" |
+| **Irrelevant information** | CSS conventions are unnecessary when editing models, and vice versa |
+
+## How It Works
+
+```
+User: "Fix this CSS"
+  → Claude calls Edit tool (*.css)
+    → PreToolUse Hook (claude-nagger)
+      1. Pattern match: "**/*.css" ✓
+      2. Load & inject matching conventions
+  → Claude edits CSS while referencing conventions
+```
+
+CLAUDE.md alone cannot achieve **conditional injection via PreToolUse hooks** — claude-nagger can.
+
+## Key Features
+
+### 1. File-pattern conditional injection
+
+Conventions fire **only when matching files are edited**:
+
+```yaml
+rules:
+  - name: "CSS conventions"
+    patterns: ["**/*.css", "**/*.scss"]
+    severity: "warn"
+    message: |
+      - Use BEM naming convention
+      - !important is prohibited
+```
+
+CSS rules fire only for CSS files. Model rules fire only for model files. No wasted tokens.
+
+### 2. Compact detection & auto re-injection
+
+When Claude Code compacts its context, conventions are silently dropped. claude-nagger detects compacting via `SessionStart[compact]` hook and resets marker files — conventions re-inject on the next tool call. **No configuration required.**
+
+### 3. Token-threshold re-injection
+
+Each rule can define a `token_threshold`. When token count since last injection exceeds the threshold, the convention re-injects — even without compacting:
+
+```yaml
+rules:
+  - name: "Model conventions"
+    patterns: ["**/models/**/*.py"]
+    severity: "block"
+    token_threshold: 35000
+    message: |
+      - Field names in snake_case
+      - Docstrings required
+```
+
+### Comparison with similar tools
+
+| Feature | claude-nagger | bmad-context-injection | meridian |
+|---------|:---:|:---:|:---:|
+| **File-pattern conditional injection** | Yes | Yes | No (session-level) |
+| **Command-pattern conditional injection** | Yes | No | No |
+| **Compact detection + re-injection** | Yes | No | Yes |
+| **Per-rule token-threshold re-injection** | Yes | No | Session-level |
+| **Distribution** | `pip install` (PyPI) | Copy to project | curl installer |
+| **License** | MIT | MIT (unconfirmed) | Not specified |
+
+## Quick Start
+
+```bash
+# Install (uv tool recommended)
+uv tool install claude-nagger && claude-nagger install-hooks
+
+# or pip
+pip install claude-nagger && claude-nagger install-hooks
+
+# Update
+uv tool upgrade claude-nagger   # or: pip install --upgrade claude-nagger
+
+# Verify
+claude-nagger install-hooks --dry-run
+```
+
+> **Note**: `uvx claude-nagger install-hooks` is not recommended — uvx runs in a temporary environment and hooks will not work.
+
+<details>
+<summary><b>Command not found? (PATH)</b></summary>
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
+```
+</details>
+
+Then edit `.claude-nagger/*.yaml` to set project-specific conventions:
+
+```
+.claude-nagger/
+├── config.yaml              # Session management & context thresholds
+├── file_conventions.yaml    # Conventions for file editing
+└── command_conventions.yaml # Conventions for command execution
+```
+
+## Configuration
+
+### file_conventions.yaml
+
+```yaml
+rules:
+  - name: "CSS conventions"
+    patterns: ["**/*.css", "**/*.scss"]
+    severity: "warn"           # warn | block
+    token_threshold: 30000     # Optional: re-inject threshold
+    message: |
+      - Use BEM naming convention
+      - !important is prohibited
+```
+
+<details>
+<summary><b>config.yaml</b></summary>
+
+```yaml
+session_startup:
+  enabled: true
+  messages:
+    first_time:
+      title: "Project Setup"
+      main_text: "Please review the project conventions"
+      severity: "block"
+
+context_management:
+  reminder_thresholds:
+    light_warning: 30000
+    medium_warning: 60000
+    critical_warning: 100000
+```
+</details>
+
+<details>
+<summary><b>command_conventions.yaml</b></summary>
+
+```yaml
+rules:
+  - name: "Git conventions"
+    patterns: ["git push*", "git commit*"]
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      - Write commit messages in the project language
+      - Run tests before pushing
+```
+</details>
+
+## Commands
+
+```bash
+claude-nagger install-hooks              # Install hooks
+claude-nagger install-hooks --dry-run    # Preview (no changes)
+claude-nagger install-hooks --force      # Force overwrite
+claude-nagger --version                  # Version
+claude-nagger diagnose                   # Environment diagnostics
+claude-nagger hook <name>               # Direct hook execution
+claude-nagger match-test --file "path" --pattern "glob"   # Test pattern matching
+```
+
+## Requirements / Links / License
+
+- **Requires**: Python 3.10+, Claude Code CLI
+- [Bug reports](https://github.com/HollySizzle/claude-nagger/issues/new?template=bug_report.yml) (attach `claude-nagger diagnose` output) | [Feature requests](https://github.com/HollySizzle/claude-nagger/issues/new?template=feature_request.yml) | [Discussions](https://github.com/HollySizzle/claude-nagger/discussions)
+- [Developer setup](https://github.com/HollySizzle/claude-nagger): `git clone` & `./scripts/install-dev.sh`
+- **License**: MIT — See [LICENSE](LICENSE)
+
+---
+---
+
+# 日本語版
+
+Claude Codeに**条件付き規約注入 + コンテキスト圧縮後の自動再注入**を提供するフックツール。
+
+関連ファイルが編集された時**だけ**プロジェクト規約をClaude Codeに注入し、コンテキスト圧縮時に自動で再注入します。
 
 ## 解決する問題
-
-Claude Codeで中〜大規模プロジェクトを扱う際、以下の問題が発生します:
 
 | 問題 | 説明 |
 |------|------|
@@ -16,360 +200,167 @@ Claude Codeで中〜大規模プロジェクトを扱う際、以下の問題が
 | **規約の忘却** | コンテキスト圧縮(compacting)により規約が「忘れられる」 |
 | **無関係な情報** | モデル編集時にCSS規約は不要、逆も然り |
 
-## 解決策
+## 動作原理
 
 ```
-EditツールでCSS編集 → CSS規約のみ注入
-Editツールでモデル編集 → モデル規約のみ注入
+ユーザー: "このCSSを修正して"
+  → Claude: Editツール呼び出し (*.css)
+    → PreToolUse Hook (claude-nagger)
+      1. パターン照合: "**/*.css" ✓
+      2. 対応する規約を読み込み・注入
+  → Claude: 規約を参照しながらCSS編集
 ```
 
-CLAUDE.mdでは実現できない「PreToolUseフックによる条件付き規約注入」を提供します。
+CLAUDE.md単体では実現できない**PreToolUseフックによる条件付き注入**を提供します。
 
----
+## 主な機能
+
+### 1. ファイルパターン条件付き注入
+
+対象ファイルが編集された時**だけ**規約を注入：
+
+```yaml
+rules:
+  - name: "CSS編集規約"
+    patterns: ["**/*.css", "**/*.scss"]
+    severity: "warn"
+    message: |
+      - BEM命名規則を使用
+      - !important は禁止
+```
+
+CSS規約はCSS編集時のみ発火。モデル規約はモデル編集時のみ。トークンの無駄がありません。
+
+### 2. compact検知・自動再注入
+
+Claude Codeがコンテキストを圧縮すると規約は暗黙的に失われます。claude-naggerは`SessionStart[compact]`フックで圧縮を検知しマーカーファイルをリセット — 次のツール呼び出しで規約が自動再注入されます。**設定不要。**
+
+### 3. トークン閾値再注入
+
+ルールごとに`token_threshold`を設定可能。前回注入時からのトークン増加量が閾値を超えると、compactなしでも再注入：
+
+```yaml
+rules:
+  - name: "モデル編集規約"
+    patterns: ["**/models/**/*.py"]
+    severity: "block"
+    token_threshold: 35000
+    message: |
+      - フィールド名はsnake_case
+      - 必ずdocstringを記載
+```
+
+### 類似ツールとの比較
+
+| 機能 | claude-nagger | bmad-context-injection | meridian |
+|------|:---:|:---:|:---:|
+| **ファイルパターン条件付き注入** | Yes | Yes | No（セッション単位） |
+| **コマンドパターン条件付き注入** | Yes | No | No |
+| **compact検知＋再注入** | Yes | No | Yes |
+| **ルール単位トークン閾値再注入** | Yes | No | セッション単位 |
+| **配布方式** | `pip install`（PyPI） | プロジェクトにコピー | curlインストーラ |
+| **ライセンス** | MIT | MIT（未確認） | 未指定 |
 
 ## クイックスタート
 
-### 1. インストール
-
 ```bash
-# uv tool（推奨）
-uv tool install claude-nagger
-claude-nagger install-hooks
+# インストール（uv tool推奨）
+uv tool install claude-nagger && claude-nagger install-hooks
 
 # または pip
-pip install claude-nagger
-claude-nagger install-hooks
+pip install claude-nagger && claude-nagger install-hooks
 
-# dockerfileなどコンテナ向け
-RUN pip install claude-nagger --break-system-packages 
+# アップデート
+uv tool upgrade claude-nagger   # or: pip install --upgrade claude-nagger
+
+# 動作確認
+claude-nagger install-hooks --dry-run
 ```
 
-> **注意**: `uvx claude-nagger install-hooks`は非推奨。uvxは一時実行のためフックが動作しません。
+> **注意**: `uvx claude-nagger install-hooks`は非推奨 — uvxは一時実行のためフックが動作しません。
 
 <details>
 <summary><b>コマンドが見つからない場合（PATH設定）</b></summary>
 
-`uv tool install` 後に `command not found` が出る場合、PATHを設定してください：
-
 ```bash
-# PATHを通す（bash/zsh共通）
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# zshの場合は ~/.zshrc に追加
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 ```
-
 </details>
 
-### アップデート
-
-```bash
-# uv tool
-uv tool upgrade claude-nagger
-
-# pip
-pip install --upgrade claude-nagger
-```
-
-### 2. 動作確認
-
-```bash
-# dry-runで生成内容を確認
-claude-nagger install-hooks --dry-run
-```
-
-### 3. 設定カスタマイズ
-
-生成された `.claude-nagger/` 内のYAMLファイルを編集して、プロジェクト固有の規約を設定します。
-
----
-
-## 生成されるファイル構造
+`.claude-nagger/*.yaml` を編集してプロジェクト固有の規約を設定：
 
 ```
-your-project/
-├── .claude-nagger/
-│   ├── config.yaml              # メイン設定（セッション管理等）
-│   ├── file_conventions.yaml    # ファイル編集時の規約
-│   └── command_conventions.yaml # コマンド実行時の規約
-└── .claude/
-    └── settings.json            # ← claude-naggerが自動設定
+.claude-nagger/
+├── config.yaml              # セッション管理・コンテキスト閾値
+├── file_conventions.yaml    # ファイル編集時の規約
+└── command_conventions.yaml # コマンド実行時の規約
 ```
 
----
+## 設定
 
-## 設定ファイル詳細
-
-### config.yaml（メイン設定）
-
-セッション開始時のメッセージやコンテキスト管理を設定します。
+### file_conventions.yaml
 
 ```yaml
-# セッション開始時設定
+rules:
+  - name: "CSS編集規約"
+    patterns: ["**/*.css", "**/*.scss"]
+    severity: "warn"           # warn | block
+    token_threshold: 30000     # 任意: 再注入閾値
+    message: |
+      - BEM命名規則を使用
+      - !important は禁止
+```
+
+<details>
+<summary><b>config.yaml</b></summary>
+
+```yaml
 session_startup:
   enabled: true
   messages:
     first_time:
       title: "プロジェクトセットアップ"
-      main_text: |
-        プロジェクトの規約を確認してください
-      severity: "block"  # block: 確認必須, warn: 警告のみ
+      main_text: "プロジェクトの規約を確認してください"
+      severity: "block"
 
-# コンテキスト管理設定（トークン数に応じたリマインダー）
 context_management:
   reminder_thresholds:
-    light_warning: 30000     # 軽い警告
-    medium_warning: 60000    # 中程度の警告
-    critical_warning: 100000 # 重要な警告
-
-# デバッグ設定
-debug:
-  enable_logging: false
+    light_warning: 30000
+    medium_warning: 60000
+    critical_warning: 100000
 ```
+</details>
 
-### file_conventions.yaml（ファイル編集規約）
-
-特定のファイルパターンに対して適用される規約を定義します。
+<details>
+<summary><b>command_conventions.yaml</b></summary>
 
 ```yaml
 rules:
-  # CSS編集時の規約
-  - name: "CSS編集規約"
-    patterns:
-      - "**/*.css"
-      - "**/*.scss"
-    severity: "warn"
-    token_threshold: 30000
-    message: |
-      ## CSS規約
-      - BEM命名規則を使用
-      - !important は禁止
-      - ネストは3階層まで
-
-  # モデル編集時の規約
-  - name: "モデル編集規約"
-    patterns:
-      - "**/models/**/*.py"
-      - "**/entities/**/*.py"
-    severity: "block"
-    token_threshold: 35000
-    message: |
-      ## モデル規約
-      - フィールド名はsnake_case
-      - 必ずdocstringを記載
-      - バリデーションを実装
-
-  # View層編集時の規約
-  - name: "View層編集規約"
-    patterns:
-      - "**/views/**/*.erb"
-      - "**/templates/**/*.html"
-    severity: "warn"
-    message: |
-      ## View規約
-      - XSS対策を徹底
-      - ロジックはヘルパーに委譲
-```
-
-### command_conventions.yaml（コマンド実行規約）
-
-危険なコマンドや確認が必要なコマンドに対して適用される規約を定義します。
-
-```yaml
-rules:
-  # Git操作規約
   - name: "Git操作規約"
-    patterns:
-      - "git push*"
-      - "git commit*"
+    patterns: ["git push*", "git commit*"]
     severity: "warn"
     token_threshold: 25000
     message: |
-      ## Git規約
       - コミットメッセージは日本語で記載
       - プッシュ前にテストを実行
-
-  # 本番環境操作規約
-  - name: "本番環境操作規約"
-    patterns:
-      - "*production*"
-      - "*deploy*"
-    severity: "block"
-    message: |
-      ## 本番環境操作
-      - 必ず承認を得てから実行
-      - バックアップを確認
 ```
-
----
-
-## ユースケース例
-
-### Rails プロジェクト
-
-```yaml
-# file_conventions.yaml
-rules:
-  - name: "コントローラ規約"
-    patterns: ["**/controllers/**/*.rb"]
-    message: |
-      - before_actionでの認証確認
-      - Strong Parametersの使用必須
-
-  - name: "マイグレーション規約"
-    patterns: ["**/migrate/*.rb"]
-    severity: "block"
-    message: |
-      - 必ずロールバック可能にする
-      - 大量データ更新時はバッチ処理
-```
-
-### React プロジェクト
-
-```yaml
-# file_conventions.yaml
-rules:
-  - name: "コンポーネント規約"
-    patterns: ["**/components/**/*.tsx"]
-    message: |
-      - Propsの型定義必須
-      - useCallbackでメモ化検討
-
-  - name: "フック規約"
-    patterns: ["**/hooks/**/*.ts"]
-    message: |
-      - カスタムフックは use* で命名
-      - 依存配列を正確に記述
-```
-
-### Python プロジェクト
-
-```yaml
-# file_conventions.yaml
-rules:
-  - name: "API規約"
-    patterns: ["**/api/**/*.py", "**/routes/**/*.py"]
-    message: |
-      - 入力バリデーション必須
-      - エラーハンドリングを実装
-
-  - name: "テスト規約"
-    patterns: ["**/tests/**/*.py"]
-    message: |
-      - Arrange-Act-Assertパターン
-      - モックは最小限に
-```
-
----
-
-## 動作原理
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ Claude Code                                             │
-│                                                         │
-│  ユーザー: "このCSSを修正して"                          │
-│       ↓                                                 │
-│  Claude: Edit ツール呼び出し (*.css)                    │
-│       ↓                                                 │
-│  ┌─────────────────────────────────────┐               │
-│  │ PreToolUse Hook (claude-nagger)     │               │
-│  │                                     │               │
-│  │ 1. パターン照合: "**/*.css" ✓       │               │
-│  │ 2. 対応する規約を読み込み           │               │
-│  │ 3. 規約をコンテキストに注入         │               │
-│  └─────────────────────────────────────┘               │
-│       ↓                                                 │
-│  Claude: 規約を参照しながらCSS編集                      │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## compact検知機能 (v1.4.0)
-
-Claude Codeのコンテキスト圧縮(compacting)後、自動的に規約リマインダーを再表示します。
-
-```
-compact発生
-    ↓
-SessionStart[compact] フック発火
-    ↓
-claude-nagger: マーカーファイルをリセット
-    ↓
-次のツール呼び出しで規約が再注入される
-```
-
-これにより「規約の忘却」問題を解決します。設定不要で自動的に動作します。
-
----
+</details>
 
 ## コマンド一覧
 
 ```bash
-# フックのインストール（.claude/settings.jsonに設定追加）
-claude-nagger install-hooks
-
-# dry-run（実際には変更しない）
-claude-nagger install-hooks --dry-run
-
-# 強制上書き（既存ファイルも再生成）
-claude-nagger install-hooks --force
-
-# バージョン表示
-claude-nagger --version
-
-# 環境診断（トラブルシュート用）
-claude-nagger diagnose
-
-# フック直接実行（内部用・トラブルシュート用）
-claude-nagger hook session-startup
-claude-nagger hook implementation-design
-claude-nagger hook compact-detected
-
-# パターンマッチングのテスト（設定確認用）
-claude-nagger match-test --file "app/views/test.erb" --pattern "app/views/**/*.erb"
-claude-nagger match-test --command "git push" --pattern "git push*"
+claude-nagger install-hooks              # フックインストール
+claude-nagger install-hooks --dry-run    # プレビュー（変更なし）
+claude-nagger install-hooks --force      # 強制上書き
+claude-nagger --version                  # バージョン表示
+claude-nagger diagnose                   # 環境診断
+claude-nagger hook <name>               # フック直接実行
+claude-nagger match-test --file "path" --pattern "glob"   # パターンテスト
 ```
 
----
+## 要件 / リンク / ライセンス
 
-## なぜCLAUDE.mdだけでは不十分か
-
-| アプローチ | コンテキスト消費 | 規約遵守率 | 柔軟性 |
-|-----------|-----------------|-----------|--------|
-| 全規約をCLAUDE.mdに記載 | 高 (常時) | 低 (忘却) | 低 |
-| claude-nagger | 低 (必要時のみ) | 高 | 高 |
-
----
-
-## 開発者向け
-
-```bash
-git clone https://github.com/HollySizzle/claude-nagger.git
-cd claude-nagger
-./scripts/install-dev.sh  # インストール＆フック設定
-```
-
----
-
-## 要件
-
-- Python 3.10以上
-- Claude Code CLI
-
----
-
-## 問題報告・機能リクエスト
-
-- **バグ報告**: [GitHub Issues](https://github.com/HollySizzle/claude-nagger/issues/new?template=bug_report.yml)
-- **機能リクエスト**: [GitHub Issues](https://github.com/HollySizzle/claude-nagger/issues/new?template=feature_request.yml)
-- **質問・議論**: [GitHub Discussions](https://github.com/HollySizzle/claude-nagger/discussions)
-
-バグ報告時は `claude-nagger diagnose` の出力を添付してください。
-
----
-
-## ライセンス
-
-MIT License - 詳細は [LICENSE](LICENSE) を参照
+- **要件**: Python 3.10以上、Claude Code CLI
+- [バグ報告](https://github.com/HollySizzle/claude-nagger/issues/new?template=bug_report.yml)（`claude-nagger diagnose` 出力を添付）| [機能リクエスト](https://github.com/HollySizzle/claude-nagger/issues/new?template=feature_request.yml) | [ディスカッション](https://github.com/HollySizzle/claude-nagger/discussions)
+- [開発者向け](https://github.com/HollySizzle/claude-nagger): `git clone` & `./scripts/install-dev.sh`
+- **ライセンス**: MIT — [LICENSE](LICENSE)
