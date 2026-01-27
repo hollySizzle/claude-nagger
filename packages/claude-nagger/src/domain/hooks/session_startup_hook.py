@@ -1,9 +1,11 @@
 """セッション開始時の規約確認フック"""
 
+import copy
 import json
 import sys
 import os
 import yaml
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 sys.path.append(str(Path(__file__).parent.parent.parent))
@@ -14,7 +16,6 @@ from domain.services.subagent_marker_manager import SubagentMarkerManager
 
 def _deep_copy_dict(d: Dict[str, Any]) -> Dict[str, Any]:
     """辞書の深いコピー（ネスト・リスト対応）"""
-    import copy
     return copy.deepcopy(d)
 
 
@@ -140,8 +141,6 @@ class SessionStartupHook(BaseHook):
             marker_path = self._get_subagent_startup_marker_path(session_id, agent_id)
             marker_path.parent.mkdir(parents=True, exist_ok=True)
 
-
-            from datetime import datetime
             marker_data = {
                 "timestamp": datetime.now().isoformat(),
                 "session_id": session_id,
@@ -219,7 +218,6 @@ class SessionStartupHook(BaseHook):
             if current_tokens is not None:
                 # マーカーファイルから前回のトークン数を取得
                 try:
-        
                     with open(marker_path, 'r') as f:
                         marker_data = json.load(f)
                         last_tokens = marker_data.get('tokens', 0)
@@ -259,7 +257,6 @@ class SessionStartupHook(BaseHook):
                 current_tokens = super()._get_current_context_size(input_data.get('transcript_path')) or 0
             
             # セッション開始時の情報をマーカーファイルに記録
-            from datetime import datetime
             marker_data = {
                 'timestamp': datetime.now().isoformat(),
                 'session_id': session_id,
@@ -268,7 +265,6 @@ class SessionStartupHook(BaseHook):
             }
             
             with open(marker_path, 'w') as f:
-    
                 json.dump(marker_data, f)
                 
             self.log_info(f"✅ Created session startup marker with {current_tokens} tokens: {marker_path}")
