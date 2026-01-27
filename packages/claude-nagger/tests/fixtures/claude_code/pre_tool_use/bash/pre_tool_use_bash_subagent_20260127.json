@@ -1,0 +1,13 @@
+{
+  "session_id": "00000000-0000-0000-0000-000000000000",
+  "transcript_path": "/home/testuser/.claude/projects/-workspace-packages-claude-nagger/00000000-0000-0000-0000-000000000000.jsonl",
+  "cwd": "/workspace/packages/claude-nagger",
+  "permission_mode": "acceptEdits",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "echo \"subagent_test_marker_12345\"",
+    "description": "Print test marker string"
+  },
+  "tool_use_id": "toolu_01Qq4pi3h15Uv7gM9ZnkV4Wu"
+}
