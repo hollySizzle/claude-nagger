@@ -69,7 +69,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/capture_subagent_event.py\""
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m domain.hooks.subagent_event_hook"
           }
         ]
       }
@@ -79,9 +79,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/capture_subagent_event.py\""
+            "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m domain.hooks.subagent_event_hook"
           }
         ]
+      }
+    ]
       }
     ]
   }

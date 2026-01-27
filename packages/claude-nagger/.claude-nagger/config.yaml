@@ -24,6 +24,28 @@ session_startup:
         [ ] AIエージェントは選択肢がある場合は必ずオーナに選択肢を提示し､オーナーの指示を仰ぐこと｡その際は各選択肢のpro/conを提示すること
       severity: "block"
 
+  # subagent別override設定
+  # 解決順序: base(上記) → subagent_default → subagent_types.{type}
+  overrides:
+    subagent_default:
+      messages:
+        first_time:
+          title: "subagent規約"
+          main_text: |
+            [ ] スコープ外のファイルを編集しないこと
+            [ ] 作業完了後に結果を報告すること
+    subagent_types:
+      Explore:
+        enabled: false
+      Plan:
+        enabled: false
+      Bash:
+        messages:
+          first_time:
+            title: "Bash subagent規約"
+            main_text: |
+              [ ] 破壊的コマンド禁止
+
 # コンテキスト管理設定
 context_management:
   reminder_thresholds:
