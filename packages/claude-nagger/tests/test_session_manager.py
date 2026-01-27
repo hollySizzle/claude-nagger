@@ -135,6 +135,36 @@ class TestSessionData:
         assert manager.session_data == {'cached': 'data'}
 
 
+class TestSessionDataExceptionLogging:
+    """例外発生時のログ出力テスト（issue #5332）"""
+
+    def test_invalid_json_logs_debug(self):
+        """無効なJSON時にlogger.debugが呼ばれる"""
+        manager = SessionManager()
+
+        with patch('sys.stdin.isatty', return_value=False):
+            with patch('sys.stdin.read', return_value='not json'):
+                with patch('src.shared.utils.session_manager.logger') as mock_logger:
+                    data = manager._load_session_data()
+
+        assert data == {}
+        mock_logger.debug.assert_called_once()
+        assert 'stdin JSON読み込み失敗' in mock_logger.debug.call_args[0][0]
+
+    def test_io_error_logs_debug(self):
+        """IOエラー時にlogger.debugが呼ばれる"""
+        manager = SessionManager()
+
+        with patch('sys.stdin.isatty', return_value=False):
+            with patch('sys.stdin.read', side_effect=IOError('read error')):
+                with patch('src.shared.utils.session_manager.logger') as mock_logger:
+                    data = manager._load_session_data()
+
+        assert data == {}
+        mock_logger.debug.assert_called_once()
+        assert 'stdin JSON読み込み失敗' in mock_logger.debug.call_args[0][0]
+
+
 class TestGenerateAgentName:
     """_generate_agent_name メソッドのテスト"""
 

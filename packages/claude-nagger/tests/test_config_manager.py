@@ -1022,6 +1022,71 @@ class TestLoadSecrets:
             os.chdir(original_cwd)
 
 
+class TestSecretsExceptionLogging:
+    """secrets読み込み失敗時のログ出力テスト（issue #5332）"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    @pytest.fixture
+    def valid_config(self):
+        """有効な設定データ"""
+        return {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            }
+        }
+
+    def test_corrupt_secrets_logs_warning(self, temp_dir, valid_config):
+        """破損secretsファイル読み込み時にlogger.warningが呼ばれる"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        # 破損したsecretsファイルを作成
+        secrets_path = temp_dir / "secrets.json"
+        secrets_path.write_text("{invalid json content", encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        manager.secrets_path = secrets_path
+
+        with patch('src.infrastructure.config.config_manager.logger') as mock_logger:
+            result = manager._load_secrets()
+
+        assert result == {}
+        mock_logger.warning.assert_called_once()
+        assert 'secrets読み込み失敗' in mock_logger.warning.call_args[0][0]
+
+    def test_corrupt_yaml_secrets_logs_warning(self, temp_dir, valid_config):
+        """破損YAMLシークレット読み込み時にlogger.warningが呼ばれる"""
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(valid_config), encoding="utf-8")
+
+        # 破損したYAMLシークレットファイルを作成
+        secrets_path = temp_dir / "secrets.yaml"
+        secrets_path.write_text("key: [invalid yaml", encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        manager.secrets_path = secrets_path
+
+        with patch('src.infrastructure.config.config_manager.logger') as mock_logger:
+            result = manager._load_secrets()
+
+        assert result == {}
+        mock_logger.warning.assert_called_once()
+        assert 'secrets読み込み失敗' in mock_logger.warning.call_args[0][0]
+
+
 class TestGetClaudeDir:
     """get_claude_dirメソッドのテスト"""
 
