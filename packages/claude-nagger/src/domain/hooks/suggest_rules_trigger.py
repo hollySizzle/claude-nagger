@@ -192,27 +192,35 @@ def _fallback_yaml(
     """claude CLI非存在時のフォールバック: Python統計のみでYAML生成"""
     import yaml
 
+    MAX_RULES = 10
+
+    # ファイルとコマンドの候補を統合し、頻度順でソート
+    all_suggestions = list(file_suggestions) + list(command_suggestions)
+    all_suggestions.sort(key=lambda s: s.count, reverse=True)
+    all_suggestions = all_suggestions[:MAX_RULES]
+
     rules = []
-    for s in file_suggestions[:10]:
-        rules.append({
-            "name": f"{s.pattern} 編集規約",
-            "patterns": [s.pattern],
-            "severity": "warn",
-            "message": (
-                f"# {s.count}回の編集を検出（自動提案）\n"
-                "このファイルを変更する場合は規約を確認してください"
-            ),
-        })
-    for s in command_suggestions[:10]:
-        rules.append({
-            "name": f"{s.pattern} コマンド規約",
-            "commands": [s.pattern],
-            "severity": "warn",
-            "message": (
-                f"# {s.count}回の実行を検出（自動提案）\n"
-                "このコマンドを実行する場合は規約を確認してください"
-            ),
-        })
+    for s in all_suggestions:
+        if s.category == "file":
+            rules.append({
+                "name": f"{s.pattern} 編集規約",
+                "patterns": [s.pattern],
+                "severity": "warn",
+                "message": (
+                    f"# {s.count}回の編集を検出（自動提案）\n"
+                    "このファイルを変更する場合は規約を確認してください"
+                ),
+            })
+        else:
+            rules.append({
+                "name": f"{s.pattern} コマンド規約",
+                "commands": [s.pattern],
+                "severity": "warn",
+                "message": (
+                    f"# {s.count}回の実行を検出（自動提案）\n"
+                    "このコマンドを実行する場合は規約を確認してください"
+                ),
+            })
 
     if not rules:
         return ""
