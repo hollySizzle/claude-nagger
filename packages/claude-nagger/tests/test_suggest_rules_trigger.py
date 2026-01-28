@@ -359,7 +359,7 @@ class TestSaveSuggestedRules:
             assert "rules:" in saved
 
     def test_claude_naggerディレクトリ自動作成(self, tmp_path):
-        """.claude-naggarディレクトリが存在しなくても作成"""
+        """.claude-naggerディレクトリが存在しなくても作成"""
         with patch("domain.hooks.suggest_rules_trigger.Path.cwd", return_value=tmp_path):
             content = "test content"
             path = _save_suggested_rules(content)
