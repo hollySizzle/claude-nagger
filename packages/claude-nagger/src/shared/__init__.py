@@ -7,3 +7,4 @@ from .structured_logging import (
     get_logger,
     DEFAULT_LOG_DIR,
 )
+from .constants import SUGGESTED_RULES_FILENAME

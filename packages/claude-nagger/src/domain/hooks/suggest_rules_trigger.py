@@ -14,11 +14,9 @@ from typing import Any, Dict, List, Optional
 from domain.hooks.base_hook import BaseHook
 from domain.services.rule_suggester import RuleSuggester, PatternSuggestion
 from shared.structured_logging import DEFAULT_LOG_DIR
+from shared.constants import SUGGESTED_RULES_FILENAME
 
 logger = logging.getLogger(__name__)
-
-# バックグラウンド処理の出力先
-SUGGESTED_RULES_FILENAME = "suggested_rules.yaml"
 
 
 class SuggestRulesTrigger(BaseHook):
