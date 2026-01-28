@@ -508,7 +508,7 @@ class BaseHook(ABC):
         
         temp_dir = Path(tempfile.gettempdir())
         # コマンドのハッシュ値を生成（ファイル名として使用）
-        command_hash = hashlib.md5(command.encode()).hexdigest()[:8]
+        command_hash = hashlib.sha256(command.encode()).hexdigest()[:8]
         marker_name = MarkerPatterns.format_command(session_id, command_hash)
         return temp_dir / marker_name
 
@@ -527,7 +527,7 @@ class BaseHook(ABC):
         
         temp_dir = Path(tempfile.gettempdir())
         # 規約名のハッシュ値を生成（ファイル名として使用）
-        rule_hash = hashlib.md5(rule_name.encode()).hexdigest()[:8]
+        rule_hash = hashlib.sha256(rule_name.encode()).hexdigest()[:8]
         marker_name = MarkerPatterns.format_rule(self.__class__.__name__, session_id, rule_hash)
         return temp_dir / marker_name
 

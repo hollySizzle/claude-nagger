@@ -266,7 +266,7 @@ class ImplementationDesignHook(BaseHook):
         
         # 長すぎる場合はハッシュ値を使用
         if len(normalized) > 20:
-            hash_value = hashlib.md5(rule_name.encode()).hexdigest()[:8]
+            hash_value = hashlib.sha256(rule_name.encode()).hexdigest()[:8]
             normalized = f"{normalized[:12]}_{hash_value}"
         
         self.log_debug(f"Normalized rule name: '{rule_name}' -> '{normalized}'")
