@@ -3,6 +3,7 @@
 compact検知時にマーカーファイルをリネームし、既存フローを再発火させる。
 """
 
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
@@ -72,7 +73,7 @@ class CompactDetectedHook(BaseHook):
         Returns:
             リネームしたファイル数
         """
-        temp_dir = Path("/tmp")
+        temp_dir = Path(tempfile.gettempdir())
         renamed_count = 0
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         

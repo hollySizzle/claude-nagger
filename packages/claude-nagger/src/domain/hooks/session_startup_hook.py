@@ -4,6 +4,7 @@ import copy
 import json
 import sys
 import os
+import tempfile
 import yaml
 from datetime import datetime
 from pathlib import Path
@@ -93,7 +94,7 @@ class SessionStartupHook(BaseHook):
         Returns:
             マーカーファイルのパス
         """
-        temp_dir = Path("/tmp")
+        temp_dir = Path(tempfile.gettempdir())
         marker_name = MarkerPatterns.format_session_startup(session_id)
         return temp_dir / marker_name
 

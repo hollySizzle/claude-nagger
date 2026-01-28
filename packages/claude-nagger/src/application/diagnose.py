@@ -6,6 +6,7 @@ import os
 import platform
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -383,9 +384,9 @@ class DiagnoseCommand:
         """セッションファイルの状態を出力"""
         print("## セッション・ログ")
 
-        tmp_claude = Path("/tmp/claude")
+        tmp_claude = Path(tempfile.gettempdir()) / "claude"
         if not tmp_claude.exists():
-            print("  /tmp/claude/: なし")
+            print(f"  {tmp_claude}/: なし")
             print()
             return
 
