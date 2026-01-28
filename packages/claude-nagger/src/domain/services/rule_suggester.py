@@ -218,12 +218,12 @@ class RuleSuggester:
                     if child not in merged_into:
                         merged_into[child] = parent
 
-        # マージ実行
+        # マージ実行（推移的にtargetを解決）
         final_counter: Counter = Counter()
         final_examples: Dict[str, List[str]] = {}
 
         for pattern, count in counter.items():
-            target = merged_into.get(pattern, pattern)
+            target = self._resolve_target(merged_into, pattern)
             final_counter[target] += count
             if target not in final_examples:
                 final_examples[target] = []
@@ -240,6 +240,18 @@ class RuleSuggester:
             )
             for p, c in final_counter.items()
         ]
+
+    @staticmethod
+    def _resolve_target(merged_into: Dict[str, str], pattern: str) -> str:
+        """推移的にマージ先を辿り最終的なtargetを返す（union-find方式）"""
+        target = pattern
+        visited = set()
+        while target in merged_into:
+            if target in visited:
+                break  # 循環防止
+            visited.add(target)
+            target = merged_into[target]
+        return target
 
     @staticmethod
     def _pattern_contains(parent: str, child: str) -> bool:
