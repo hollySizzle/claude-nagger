@@ -206,6 +206,15 @@ discord:
                     "command": "claude-nagger notify \"🛑 Claude Code セッションが停止されました\""
                 }
             ]
+        },
+        {
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook suggest-rules-trigger"
+                }
+            ]
         }
     ]
 

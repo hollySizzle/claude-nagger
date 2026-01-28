@@ -99,6 +99,12 @@ def main():
         help="compact検知フック"
     )
 
+    # hook suggest-rules-trigger
+    hook_subparsers.add_parser(
+        "suggest-rules-trigger",
+        help="セッション終了時の規約提案トリガー（Stop hook）"
+    )
+
     # notify サブコマンド（Discord通知）
     notify_parser = subparsers.add_parser(
         "notify",
@@ -205,6 +211,11 @@ def main():
         if args.hook_name == "compact-detected":
             from domain.hooks.compact_detected_hook import CompactDetectedHook
             hook = CompactDetectedHook()
+            return hook.run()
+
+        if args.hook_name == "suggest-rules-trigger":
+            from domain.hooks.suggest_rules_trigger import SuggestRulesTrigger
+            hook = SuggestRulesTrigger()
             return hook.run()
 
         # hook名未指定時はhookヘルプ表示
