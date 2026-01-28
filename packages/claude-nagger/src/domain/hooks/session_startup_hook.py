@@ -32,6 +32,9 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> None:
             base[key] = value
 
 
+
+SUGGESTED_RULES_FILENAME = "suggested_rules.yaml"
+
 class SessionStartupHook(BaseHook):
     """セッション開始時のAI協働規約確認フック"""
 
@@ -373,7 +376,10 @@ class SessionStartupHook(BaseHook):
         
         self.log_info(f"🎯 Processing session startup for: {session_id} (subagent={self._is_subagent})")
         
-        # メッセージを構築
+        # suggested_rules.yamlの存在を事前チェック
+        has_suggested_rules = self._get_suggested_rules_path().exists()
+        
+        # メッセージを構築（suggested_rulesサマリー含む）
         message = self._build_message(session_id)
         
         self.log_info(f"📋 SESSION STARTUP BLOCKING: Session '{session_id}' requires startup confirmation")
@@ -386,6 +392,10 @@ class SessionStartupHook(BaseHook):
         else:
             # main agent: 既存のマーカーを作成
             self.mark_session_startup_processed(session_id, input_data)
+        
+        # 通知済みのsuggested_rules.yamlをアーカイブ
+        if has_suggested_rules:
+            self._archive_suggested_rules()
         
         # JSON応答でブロック
         return {
@@ -449,9 +459,93 @@ class SessionStartupHook(BaseHook):
         # メッセージを構築
         message = title + "\n\n" + main_text
         
+        # suggested_rules.yaml の提案サマリーを統合
+        rules_data = self._load_suggested_rules()
+        if rules_data:
+            summary = self._build_suggested_rules_summary(rules_data)
+            if summary:
+                message += "\n\n" + summary
+        
         self.log_info(f"🎯 Built message for execution #{execution_count}: {title[:50]}...")
         
         return message
+
+    def _get_suggested_rules_path(self) -> Path:
+        """suggested_rules.yamlのパスを返す"""
+        return Path.cwd() / ".claude-nagger" / SUGGESTED_RULES_FILENAME
+
+    def _load_suggested_rules(self) -> Optional[Dict[str, Any]]:
+        """suggested_rules.yamlを読み込む。存在しない場合はNone"""
+        rules_path = self._get_suggested_rules_path()
+        if not rules_path.exists():
+            return None
+
+        try:
+            with open(rules_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            self.log_info(f"📋 suggested_rules.yaml を検出: {rules_path}")
+            return data
+        except Exception as e:
+            self.log_error(f"❌ suggested_rules.yaml 読み込み失敗: {e}")
+            return None
+
+    def _build_suggested_rules_summary(self, rules_data: Dict[str, Any]) -> str:
+        """規約提案データからサマリーメッセージを構築"""
+        rules = rules_data.get('rules', [])
+        if not rules:
+            return ""
+
+        lines = [
+            "---",
+            "📋 規約提案があります（suggested_rules.yaml）",
+            f"提案数: {len(rules)}件",
+            "",
+        ]
+
+        for i, rule in enumerate(rules, 1):
+            name = rule.get('name', '(名前なし)')
+            severity = rule.get('severity', 'warn')
+            message = rule.get('message', '').strip().split('\n')[0]
+
+            patterns = rule.get('patterns', [])
+            commands = rule.get('commands', [])
+
+            target = ""
+            if patterns:
+                target = f"パターン: {', '.join(patterns[:3])}"
+            elif commands:
+                target = f"コマンド: {', '.join(commands[:3])}"
+
+            lines.append(f"{i}. [{severity}] {name}")
+            if target:
+                lines.append(f"   {target}")
+            if message:
+                lines.append(f"   → {message}")
+
+        lines.extend([
+            "",
+            "確認後、file_conventions.yaml / command_conventions.yaml に追記してください。",
+        ])
+
+        return "\n".join(lines)
+
+    def _archive_suggested_rules(self) -> bool:
+        """通知済みのsuggested_rules.yamlをリネーム"""
+        rules_path = self._get_suggested_rules_path()
+        if not rules_path.exists():
+            return False
+
+        today = datetime.now().strftime("%Y%m%d")
+        archived_name = f".suggested_rules.yaml.notified_{today}"
+        archived_path = rules_path.parent / archived_name
+
+        try:
+            rules_path.rename(archived_path)
+            self.log_info(f"📦 suggested_rules.yaml をアーカイブ: {archived_path}")
+            return True
+        except Exception as e:
+            self.log_error(f"❌ suggested_rules.yaml アーカイブ失敗: {e}")
+            return False
 
 
 def main():
