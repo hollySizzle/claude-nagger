@@ -3,7 +3,7 @@
 import json
 import glob as std_glob
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from collections import Counter
 
@@ -113,7 +113,7 @@ class RuleSuggester:
 
     def _classify_inputs(
         self, inputs: List[Dict[str, Any]]
-    ) -> tuple:
+    ) -> Tuple[List[str], List[str]]:
         """
         tool_nameで振り分け
 
@@ -157,6 +157,9 @@ class RuleSuggester:
 
         例: src/domain/hooks/base_hook.py, src/domain/hooks/session_startup_hook.py
             → src/domain/hooks/**/*.py (2回)
+
+        拡張子なしファイル（Makefile等）は **/ファイル名 パターンを生成。
+        サブディレクトリ包含関係のあるパターンは親パターンにマージする。
         """
         # ディレクトリ+拡張子でグルーピング
         group_counter: Counter = Counter()
@@ -165,15 +168,14 @@ class RuleSuggester:
         for fp in file_paths:
             rel_path = self._to_relative_path(fp)
             p = Path(rel_path)
-            # 拡張子取得（.pyなど）
             suffix = p.suffix
-            if not suffix:
-                suffix = "*"
-            # ディレクトリ部分を取得
             parent = str(p.parent) if str(p.parent) != "." else ""
 
             # globパターン生成
-            if parent:
+            if not suffix:
+                # 拡張子なしファイル（Makefile, Dockerfile等）はファイル名をパターンに使用
+                pattern = f"**/{p.name}" if not parent else f"{parent}/**/{p.name}"
+            elif parent:
                 pattern = f"{parent}/**/*{suffix}"
             else:
                 pattern = f"**/*{suffix}"
@@ -184,15 +186,101 @@ class RuleSuggester:
             if len(group_examples[pattern]) < 3:
                 group_examples[pattern].append(rel_path)
 
+        # サブディレクトリ包含関係のマージ
+        # 例: src/domain/hooks/**/*.py が src/domain/hooks/sub/**/*.py を包含
+        merged = self._merge_contained_patterns(group_counter, group_examples)
+
+        return merged
+
+    def _merge_contained_patterns(
+        self,
+        counter: Counter,
+        examples: Dict[str, List[str]],
+    ) -> List[PatternSuggestion]:
+        """
+        包含関係のあるglobパターンを親パターンにマージ
+
+        例: src/domain/hooks/**/*.py (3回) と src/domain/hooks/sub/**/*.py (1回)
+            → src/domain/hooks/**/*.py (4回) にマージ
+        """
+        patterns = list(counter.keys())
+        merged_into: Dict[str, str] = {}  # child → parent
+
+        for i, child in enumerate(patterns):
+            for j, parent in enumerate(patterns):
+                if i == j:
+                    continue
+                # parentがchildを包含するか判定:
+                # parent="dir/**/*.py", child="dir/sub/**/*.py" の場合、
+                # childのディレクトリがparentのディレクトリ配下かつ拡張子が同一
+                if self._pattern_contains(parent, child):
+                    # より浅い（短い）パターンを親とする
+                    if child not in merged_into:
+                        merged_into[child] = parent
+
+        # マージ実行
+        final_counter: Counter = Counter()
+        final_examples: Dict[str, List[str]] = {}
+
+        for pattern, count in counter.items():
+            target = merged_into.get(pattern, pattern)
+            final_counter[target] += count
+            if target not in final_examples:
+                final_examples[target] = []
+            for ex in examples.get(pattern, []):
+                if len(final_examples[target]) < 3:
+                    final_examples[target].append(ex)
+
         return [
             PatternSuggestion(
                 category="file",
-                pattern=pattern,
-                count=count,
-                examples=group_examples.get(pattern, []),
+                pattern=p,
+                count=c,
+                examples=final_examples.get(p, []),
             )
-            for pattern, count in group_counter.items()
+            for p, c in final_counter.items()
         ]
+
+    @staticmethod
+    def _pattern_contains(parent: str, child: str) -> bool:
+        """
+        親パターンが子パターンを包含するか判定
+
+        条件: 同一拡張子パターンかつ子のディレクトリが親のディレクトリ配下
+        例: "src/**/*.py" は "src/domain/**/*.py" を包含
+        """
+        if parent == child:
+            return False
+
+        def _decompose(pattern: str) -> tuple:
+            """パターンを (ディレクトリ部分, ファイル部分) に分解"""
+            if "/**/" in pattern:
+                parts = pattern.split("/**/", 1)
+                return parts[0], parts[1]
+            elif pattern.startswith("**/"):
+                # **/xxx → ルートパターン（ディレクトリ部分なし）
+                return "", pattern[3:]
+            return None, None
+
+        parent_dir, parent_file = _decompose(parent)
+        child_dir, child_file = _decompose(child)
+
+        if parent_file is None or child_file is None:
+            return False
+
+        # ファイル部分（拡張子パターン or ファイル名）が一致すること
+        if parent_file != child_file:
+            return False
+
+        # 親ディレクトリが空（ルート）なら全て包含
+        if not parent_dir:
+            return bool(child_dir)
+
+        if not child_dir:
+            return False
+
+        # 子ディレクトリが親ディレクトリ配下か
+        return child_dir.startswith(parent_dir + "/")
 
     def _extract_command_prefix(self, command: str) -> str:
         """
@@ -202,8 +290,13 @@ class RuleSuggester:
             "python3 scripts/capture.py" → "python3"
             "ls -la | head -30" → "ls"
             "git commit -m 'fix'" → "git"
+
+        注意: &&/; によるチェーンコマンドは未対応（意図的仕様）。
+        チェーンコマンドは先頭コマンドがプレフィックスとなる。
+        例: "cd /tmp && git status" → "cd"
+        将来的に主コマンド判定が必要な場合は拡張を検討。
         """
-        # パイプ前を取得
+        # パイプ前を取得（&&/;チェーンは非分割・先頭コマンドを採用）
         before_pipe = command.split("|")[0].strip()
         # 最初のトークン
         tokens = before_pipe.split()
@@ -237,7 +330,13 @@ class RuleSuggester:
     def _exclude_existing_file_rules(
         self, suggestions: List[PatternSuggestion]
     ) -> List[PatternSuggestion]:
-        """既存ファイル規約ルールと重複する候補を除外"""
+        """
+        既存ファイル規約ルールと重複する候補を除外
+
+        注意: 現時点はパターン文字列の完全一致で判定。
+        包含関係（例: 既存 src/**/*.py が候補 src/domain/**/*.py を包含）は未考慮。
+        将来的にglob包含判定が必要な場合はここを拡張する。
+        """
         existing_patterns = set()
         for rule in self._file_matcher.list_rules():
             for p in rule.get("patterns", []):
@@ -251,7 +350,11 @@ class RuleSuggester:
     def _exclude_existing_command_rules(
         self, suggestions: List[PatternSuggestion]
     ) -> List[PatternSuggestion]:
-        """既存コマンド規約ルールと重複する候補を除外"""
+        """
+        既存コマンド規約ルールと重複する候補を除外
+
+        注意: パターン文字列の完全一致で判定。包含関係は未考慮。
+        """
         existing_patterns = set()
         for rule in self._command_matcher.list_rules():
             for p in rule.get("patterns", []):
