@@ -13,6 +13,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from domain.hooks.base_hook import BaseHook, MarkerPatterns
 from domain.services.subagent_marker_manager import SubagentMarkerManager
+from shared.constants import SUGGESTED_RULES_FILENAME
 
 
 def _deep_copy_dict(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -32,8 +33,6 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> None:
             base[key] = value
 
 
-
-SUGGESTED_RULES_FILENAME = "suggested_rules.yaml"
 
 class SessionStartupHook(BaseHook):
     """セッション開始時のAI協働規約確認フック"""
@@ -376,11 +375,11 @@ class SessionStartupHook(BaseHook):
         
         self.log_info(f"🎯 Processing session startup for: {session_id} (subagent={self._is_subagent})")
         
-        # suggested_rules.yamlの存在を事前チェック
-        has_suggested_rules = self._get_suggested_rules_path().exists()
+        # suggested_rules.yamlを一度だけ読み込み
+        suggested_rules_data = self._load_suggested_rules()
         
-        # メッセージを構築（suggested_rulesサマリー含む）
-        message = self._build_message(session_id)
+        # メッセージを構築（ロード結果を引数で渡す）
+        message = self._build_message(session_id, suggested_rules_data=suggested_rules_data)
         
         self.log_info(f"📋 SESSION STARTUP BLOCKING: Session '{session_id}' requires startup confirmation")
         
@@ -394,7 +393,7 @@ class SessionStartupHook(BaseHook):
             self.mark_session_startup_processed(session_id, input_data)
         
         # 通知済みのsuggested_rules.yamlをアーカイブ
-        if has_suggested_rules:
+        if suggested_rules_data is not None:
             self._archive_suggested_rules()
         
         # JSON応答でブロック
@@ -426,12 +425,13 @@ class SessionStartupHook(BaseHook):
         # 実行前の状態では、次回実行予定の回数を返す
         return count + 1 if count > 0 else 1
     
-    def _build_message(self, session_id: str) -> str:
+    def _build_message(self, session_id: str, suggested_rules_data: Optional[Dict[str, Any]] = None) -> str:
         """
         設定ファイルからメッセージを構築（subagent override対応）
         
         Args:
             session_id: セッションID
+            suggested_rules_data: ロード済みのsuggested_rulesデータ（Noneなら提案なし）
             
         Returns:
             構築されたメッセージ文字列
@@ -460,9 +460,8 @@ class SessionStartupHook(BaseHook):
         message = title + "\n\n" + main_text
         
         # suggested_rules.yaml の提案サマリーを統合
-        rules_data = self._load_suggested_rules()
-        if rules_data:
-            summary = self._build_suggested_rules_summary(rules_data)
+        if suggested_rules_data:
+            summary = self._build_suggested_rules_summary(suggested_rules_data)
             if summary:
                 message += "\n\n" + summary
         
@@ -535,8 +534,8 @@ class SessionStartupHook(BaseHook):
         if not rules_path.exists():
             return False
 
-        today = datetime.now().strftime("%Y%m%d")
-        archived_name = f".suggested_rules.yaml.notified_{today}"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archived_name = f".suggested_rules.yaml.notified_{timestamp}"
         archived_path = rules_path.parent / archived_name
 
         try:

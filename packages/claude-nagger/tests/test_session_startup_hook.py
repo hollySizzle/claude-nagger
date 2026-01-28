@@ -557,12 +557,12 @@ class TestArchiveSuggestedRules:
 
             with patch.object(hook, '_get_suggested_rules_path', return_value=rules_file):
                 with patch('src.domain.hooks.session_startup_hook.datetime') as mock_dt:
-                    mock_dt.now.return_value.strftime.return_value = '20260127'
+                    mock_dt.now.return_value.strftime.return_value = '20260127_120000'
                     result = hook._archive_suggested_rules()
 
         assert result is True
         assert not rules_file.exists()
-        archived = tmp_path / ".suggested_rules.yaml.notified_20260127"
+        archived = tmp_path / ".suggested_rules.yaml.notified_20260127_120000"
         assert archived.exists()
 
     def test_archive_returns_false_when_no_file(self):
@@ -595,7 +595,7 @@ class TestBuildMessageWithSuggestedRules:
     """_build_message メソッドのsuggested_rules統合テスト"""
 
     def test_message_includes_suggested_rules_summary(self):
-        """suggested_rules.yaml存在時にサマリーがメッセージに含まれる"""
+        """suggested_rules_data指定時にサマリーがメッセージに含まれる"""
         config = {
             'messages': {
                 'first_time': {
@@ -617,8 +617,7 @@ class TestBuildMessageWithSuggestedRules:
             hook = SessionStartupHook()
 
             with patch.object(hook, '_get_execution_count', return_value=1):
-                with patch.object(hook, '_load_suggested_rules', return_value=rules_data):
-                    message = hook._build_message('test')
+                message = hook._build_message('test', suggested_rules_data=rules_data)
 
         assert 'テストタイトル' in message
         assert 'テスト本文' in message
@@ -626,7 +625,7 @@ class TestBuildMessageWithSuggestedRules:
         assert 'テスト規約' in message
 
     def test_message_without_suggested_rules(self):
-        """suggested_rules.yaml非存在時は通常メッセージのみ"""
+        """suggested_rules_data=None時は通常メッセージのみ"""
         config = {
             'messages': {
                 'first_time': {
@@ -640,8 +639,7 @@ class TestBuildMessageWithSuggestedRules:
             hook = SessionStartupHook()
 
             with patch.object(hook, '_get_execution_count', return_value=1):
-                with patch.object(hook, '_load_suggested_rules', return_value=None):
-                    message = hook._build_message('test')
+                message = hook._build_message('test', suggested_rules_data=None)
 
         assert 'テストタイトル' in message
         assert 'テスト本文' in message
@@ -652,14 +650,13 @@ class TestProcessWithSuggestedRules:
     """process メソッドのsuggested_rulesアーカイブテスト"""
 
     def test_archives_suggested_rules_when_exists(self):
-        """suggested_rules.yaml存在時にアーカイブされる"""
+        """suggested_rules.yamlロード成功時にアーカイブされる"""
+        rules_data = {'rules': [{'name': 'test'}]}
+
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
 
-            mock_path = MagicMock()
-            mock_path.exists.return_value = True
-
-            with patch.object(hook, '_get_suggested_rules_path', return_value=mock_path):
+            with patch.object(hook, '_load_suggested_rules', return_value=rules_data):
                 with patch.object(hook, 'mark_session_startup_processed', return_value=True):
                     with patch.object(hook, '_build_message', return_value='msg'):
                         with patch.object(hook, '_archive_suggested_rules') as mock_archive:
@@ -668,14 +665,11 @@ class TestProcessWithSuggestedRules:
             mock_archive.assert_called_once()
 
     def test_no_archive_when_no_suggested_rules(self):
-        """suggested_rules.yaml非存在時はアーカイブしない"""
+        """suggested_rules.yamlロードがNone時はアーカイブしない"""
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
 
-            mock_path = MagicMock()
-            mock_path.exists.return_value = False
-
-            with patch.object(hook, '_get_suggested_rules_path', return_value=mock_path):
+            with patch.object(hook, '_load_suggested_rules', return_value=None):
                 with patch.object(hook, 'mark_session_startup_processed', return_value=True):
                     with patch.object(hook, '_build_message', return_value='msg'):
                         with patch.object(hook, '_archive_suggested_rules') as mock_archive:
