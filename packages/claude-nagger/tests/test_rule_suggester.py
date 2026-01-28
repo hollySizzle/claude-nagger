@@ -90,6 +90,40 @@ class TestLoadHookInputs:
         result = suggester._load_hook_inputs()
         assert len(result) == 5
 
+    def test_session_idフィルタ(self, tmp_log_dir, mock_file_matcher, mock_command_matcher):
+        """session_id指定時は該当セッションのファイルのみ読込"""
+        # セッションA: 3件
+        for i in range(3):
+            filepath = tmp_log_dir / f"hook_input_sessA_{i:04d}.json"
+            filepath.write_text(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": f"/a{i}.py"}}))
+        # セッションB: 2件
+        for i in range(2):
+            filepath = tmp_log_dir / f"hook_input_sessB_{i:04d}.json"
+            filepath.write_text(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": f"/b{i}.py"}}))
+
+        # session_id=sessA でフィルタ
+        s = RuleSuggester(
+            log_dir=tmp_log_dir, cwd=Path("/workspace"),
+            file_matcher=mock_file_matcher, command_matcher=mock_command_matcher,
+            session_id="sessA",
+        )
+        result = s._load_hook_inputs()
+        assert len(result) == 3
+
+    def test_session_id未指定で全件読込(self, tmp_log_dir, mock_file_matcher, mock_command_matcher):
+        """session_id未指定時は全セッションのファイルを読込"""
+        for sid, count in [("sessA", 3), ("sessB", 2)]:
+            for i in range(count):
+                filepath = tmp_log_dir / f"hook_input_{sid}_{i:04d}.json"
+                filepath.write_text(json.dumps({"tool_name": "Edit", "tool_input": {"file_path": f"/{sid}{i}.py"}}))
+
+        s = RuleSuggester(
+            log_dir=tmp_log_dir, cwd=Path("/workspace"),
+            file_matcher=mock_file_matcher, command_matcher=mock_command_matcher,
+        )
+        result = s._load_hook_inputs()
+        assert len(result) == 5
+
 
 # === _classify_inputs テスト ===
 

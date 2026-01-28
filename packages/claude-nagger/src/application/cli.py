@@ -111,6 +111,28 @@ def main():
         help="送信するメッセージ"
     )
 
+    # suggest-rules サブコマンド（規約候補提案）
+    suggest_rules_parser = subparsers.add_parser(
+        "suggest-rules",
+        help="hook入力JSONから規約候補をYAML出力"
+    )
+    suggest_rules_parser.add_argument(
+        "--min-count", type=int, default=3,
+        help="最低出現回数（デフォルト: 3）"
+    )
+    suggest_rules_parser.add_argument(
+        "--type", dest="rule_type", choices=["file", "command"],
+        help="規約種別フィルタ（file/command）"
+    )
+    suggest_rules_parser.add_argument(
+        "--top", type=int, default=10,
+        help="上位N件を出力（デフォルト: 10）"
+    )
+    suggest_rules_parser.add_argument(
+        "--session", dest="session_id",
+        help="特定セッションIDのみ分析"
+    )
+
     args = parser.parse_args()
 
     if args.version:
@@ -158,6 +180,16 @@ def main():
         else:
             print(f"Failed to send Discord message: {result['error']}", file=sys.stderr)
         return 0
+
+    if args.command == "suggest-rules":
+        from application.suggest_rules import SuggestRulesCommand
+        cmd = SuggestRulesCommand(
+            min_count=args.min_count,
+            rule_type=args.rule_type,
+            top=args.top,
+            session_id=args.session_id,
+        )
+        return cmd.execute()
 
     if args.command == "hook":
         if args.hook_name == "session-startup":
