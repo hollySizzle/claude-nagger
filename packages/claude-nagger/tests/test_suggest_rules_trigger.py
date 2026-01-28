@@ -2,6 +2,7 @@
 
 import json
 import os
+import subprocess
 import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
@@ -161,6 +162,8 @@ class TestLaunchBackground:
         assert "--model" in cmd
         assert "sonnet" in cmd
         assert args[1]["start_new_session"] is True
+        assert args[1]["stdout"] == subprocess.DEVNULL
+        assert args[1]["stderr"] == subprocess.DEVNULL
 
     @patch("domain.hooks.suggest_rules_trigger.subprocess.Popen", side_effect=Exception("test error"))
     def test_起動失敗時にエラーログ(self, mock_popen):
@@ -355,7 +358,7 @@ class TestSaveSuggestedRules:
             assert saved.startswith("# header")
             assert "rules:" in saved
 
-    def test_claude_naggarディレクトリ自動作成(self, tmp_path):
+    def test_claude_naggerディレクトリ自動作成(self, tmp_path):
         """.claude-naggarディレクトリが存在しなくても作成"""
         with patch("domain.hooks.suggest_rules_trigger.Path.cwd", return_value=tmp_path):
             content = "test content"
@@ -499,6 +502,41 @@ rules:
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout="規約候補が見つかりませんでした。",
+            stderr="",
+        )
+
+        result = run_background_analysis()
+
+        assert result == 0
+        mock_save.assert_called_once()
+        saved_content = mock_save.call_args[0][0]
+        assert "Python統計のみ" in saved_content
+
+    @patch("domain.hooks.suggest_rules_trigger._save_suggested_rules")
+    @patch("domain.hooks.suggest_rules_trigger.subprocess.run")
+    @patch("domain.hooks.suggest_rules_trigger.shutil.which", return_value="/usr/bin/claude")
+    @patch("domain.hooks.suggest_rules_trigger.RuleSuggester")
+    def test_不正YAML時フォールバック(
+        self, MockSuggester, mock_which, mock_run, mock_save
+    ):
+        """抽出YAMLが構文不正の場合フォールバック使用"""
+        mock_instance = MockSuggester.return_value
+        mock_instance.analyze.return_value = {
+            "file_suggestions": [
+                PatternSuggestion("file", "*.py", 10, [])
+            ],
+            "command_suggestions": [],
+            "stats": {"total_inputs": 15, "file_inputs": 15, "command_inputs": 0},
+        }
+
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout="""```yaml
+rules:
+  - name: "テスト
+    invalid: [yaml
+```
+""",
             stderr="",
         )
 

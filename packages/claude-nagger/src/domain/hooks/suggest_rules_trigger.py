@@ -90,11 +90,10 @@ class SuggestRulesTrigger(BaseHook):
         env["PYTHONPATH"] = f"{src_dir}:{existing}" if existing else src_dir
 
         try:
-            devnull = open(os.devnull, "w")
             subprocess.Popen(
                 cmd,
-                stdout=devnull,
-                stderr=devnull,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 start_new_session=True,
                 env=env,
             )
@@ -316,8 +315,16 @@ def run_background_analysis(model: str = "sonnet") -> int:
                 _save_suggested_rules(yaml_content)
             return 0
 
-        # 5. YAML抽出
+        # 5. YAML抽出 + 検証
         yaml_content = _extract_yaml_from_output(proc.stdout)
+        if yaml_content:
+            # YAML構文検証（不正な場合フォールバック）
+            try:
+                import yaml
+                yaml.safe_load(yaml_content)
+            except yaml.YAMLError:
+                logger.warning("抽出YAMLの構文検証失敗。フォールバック使用")
+                yaml_content = None
         if not yaml_content:
             logger.warning("claude出力からYAML抽出失敗。フォールバック使用")
             yaml_content = _fallback_yaml(
