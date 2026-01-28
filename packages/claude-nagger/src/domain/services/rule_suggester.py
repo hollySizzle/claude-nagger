@@ -35,6 +35,7 @@ class RuleSuggester:
         cwd: Optional[Path] = None,
         file_matcher: Optional[FileConventionMatcher] = None,
         command_matcher: Optional[CommandConventionMatcher] = None,
+        session_id: Optional[str] = None,
     ):
         """
         初期化
@@ -44,12 +45,14 @@ class RuleSuggester:
             cwd: 相対パス変換用の作業ディレクトリ
             file_matcher: 既存ファイル規約マッチャー（重複除外用）
             command_matcher: 既存コマンド規約マッチャー（重複除外用）
+            session_id: 特定セッションのみ分析（Noneで全セッション対象）
         """
         self.log_dir = log_dir or DEFAULT_LOG_DIR
         self.cwd = cwd or Path.cwd()
         self.logger = get_logger("RuleSuggester")
         self._file_matcher = file_matcher or FileConventionMatcher()
         self._command_matcher = command_matcher or CommandConventionMatcher()
+        self._session_id = session_id
 
     def analyze(self) -> Dict[str, Any]:
         """
@@ -94,8 +97,11 @@ class RuleSuggester:
         }
 
     def _load_hook_inputs(self) -> List[Dict[str, Any]]:
-        """hook_input_*.jsonを全件読込"""
-        pattern = str(self.log_dir / "hook_input_*.json")
+        """hook_input_*.jsonを読込（session_id指定時はフィルタ）"""
+        if self._session_id:
+            pattern = str(self.log_dir / f"hook_input_{self._session_id}_*.json")
+        else:
+            pattern = str(self.log_dir / "hook_input_*.json")
         files = std_glob.glob(pattern)
         self.logger.info(f"hook_input JSON検出: {len(files)}件 ({self.log_dir})")
 
