@@ -3,6 +3,7 @@
 import json
 import os
 import sys
+import tempfile
 import time
 from abc import ABC, abstractmethod
 from enum import IntEnum
@@ -109,7 +110,7 @@ class BaseHook(ABC):
         初期化
 
         Args:
-            log_dir: ログ出力ディレクトリ（デフォルト: /tmp/claude-nagger-{uid}）
+            log_dir: ログ出力ディレクトリ（デフォルト: {tempdir}/claude-nagger-{uid}）
             debug: デバッグモードフラグ（Noneの場合は環境変数から自動検出）
         """
         # デバッグモード: 明示的指定 > 環境変数検出
@@ -488,7 +489,7 @@ class BaseHook(ABC):
         Returns:
             マーカーファイルのパス
         """
-        temp_dir = Path("/tmp")
+        temp_dir = Path(tempfile.gettempdir())
         marker_name = MarkerPatterns.format_hook_session(self.__class__.__name__, session_id)
         return temp_dir / marker_name
 
@@ -505,7 +506,7 @@ class BaseHook(ABC):
         """
         import hashlib
         
-        temp_dir = Path("/tmp")
+        temp_dir = Path(tempfile.gettempdir())
         # コマンドのハッシュ値を生成（ファイル名として使用）
         command_hash = hashlib.md5(command.encode()).hexdigest()[:8]
         marker_name = MarkerPatterns.format_command(session_id, command_hash)
@@ -524,7 +525,7 @@ class BaseHook(ABC):
         """
         import hashlib
         
-        temp_dir = Path("/tmp")
+        temp_dir = Path(tempfile.gettempdir())
         # 規約名のハッシュ値を生成（ファイル名として使用）
         rule_hash = hashlib.md5(rule_name.encode()).hexdigest()[:8]
         marker_name = MarkerPatterns.format_rule(self.__class__.__name__, session_id, rule_hash)

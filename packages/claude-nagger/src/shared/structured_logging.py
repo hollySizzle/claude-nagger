@@ -5,7 +5,7 @@ Claude Codeとの連携、トラブルシューティング効率化のための
 
 特徴:
 - JSON形式でパース可能
-- 出力先統一（/tmp/claude-nagger-{uid}/）
+- 出力先統一（{tempdir}/claude-nagger-{uid}/）
 - デバッグモード検出（CLAUDE_CODE_DEBUG環境変数）
 """
 
@@ -13,13 +13,14 @@ import json
 import logging
 import os
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
 
 # 統一ログディレクトリ（ユーザー固有パスで権限競合を回避）
-DEFAULT_LOG_DIR = Path(f"/tmp/claude-nagger-{os.getuid()}")
+DEFAULT_LOG_DIR = Path(tempfile.gettempdir()) / f"claude-nagger-{os.getuid()}"
 
 
 def is_debug_mode() -> bool:
@@ -112,7 +113,7 @@ class StructuredLogger:
         """
         Args:
             name: ロガー名（通常はクラス名）
-            log_dir: ログ出力ディレクトリ（デフォルト: /tmp/claude-nagger-{uid}）
+            log_dir: ログ出力ディレクトリ（デフォルト: {tempdir}/claude-nagger-{uid}）
             session_id: セッションID（ファイル名に使用）
         """
         self.name = name
