@@ -331,6 +331,30 @@ class TestFallbackYaml:
         for i in range(10, 15):
             assert f"pattern_{i}" not in result
 
+    def test_ファイルとコマンド混合で合計10件に制限(self):
+        """file + command合計で10件に制限（頻度順）"""
+        file_suggestions = [
+            PatternSuggestion(
+                category="file", pattern=f"file_{i}", count=20 - i, examples=[]
+            )
+            for i in range(8)
+        ]
+        command_suggestions = [
+            PatternSuggestion(
+                category="command", pattern=f"cmd_{i}", count=15 - i, examples=[]
+            )
+            for i in range(8)
+        ]
+        stats = {"total_inputs": 100}
+
+        result = _fallback_yaml(file_suggestions, command_suggestions, stats)
+
+        # 合計10件に制限されていること
+        assert result.count("編集規約") + result.count("コマンド規約") == 10
+        # 頻度が高いものが優先されること（file_0=20, file_1=19, ...）
+        assert "file_0" in result
+        assert "cmd_0" in result
+
 
 # === _save_suggested_rulesテスト ===
 
