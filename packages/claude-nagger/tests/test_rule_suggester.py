@@ -463,3 +463,141 @@ class TestWithExistingFixtures:
         assert result["stats"]["file_inputs"] > 0
         # Bashフィクスチャがあるのでコマンド入力 > 0
         assert result["stats"]["command_inputs"] > 0
+
+
+# === #5642: 拡張子なしファイルのパターン生成テスト ===
+
+class TestExtensionlessFilePatterns:
+    """拡張子なしファイル（Makefile, Dockerfile等）のパターン生成"""
+
+    def test_Makefile_パターン生成(self, suggester):
+        """Makefileは **/Makefile パターンを生成"""
+        file_paths = ["/workspace/vibes/claude_nagger/Makefile"]
+        suggestions = suggester._aggregate_file_patterns(file_paths)
+        assert len(suggestions) == 1
+        assert suggestions[0].pattern == "**/Makefile"
+
+    def test_Dockerfile_ディレクトリ付き(self, suggester):
+        """ディレクトリ配下のDockerfileは dir/**/Dockerfile パターン"""
+        file_paths = ["/workspace/vibes/claude_nagger/docker/Dockerfile"]
+        suggestions = suggester._aggregate_file_patterns(file_paths)
+        assert len(suggestions) == 1
+        assert suggestions[0].pattern == "docker/**/Dockerfile"
+
+    def test_拡張子なし複数ファイル集約(self, suggester):
+        """同名の拡張子なしファイルは1パターンに集約"""
+        file_paths = [
+            "/workspace/vibes/claude_nagger/Makefile",
+            "/workspace/vibes/claude_nagger/sub/Makefile",
+        ]
+        suggestions = suggester._aggregate_file_patterns(file_paths)
+        # **/Makefile と sub/**/Makefile → マージされて **/Makefile (2回)
+        assert len(suggestions) == 1
+        assert suggestions[0].pattern == "**/Makefile"
+        assert suggestions[0].count == 2
+
+    def test_拡張子ありとなし混在(self, suggester):
+        """拡張子あり/なしファイルが混在する場合は別パターン"""
+        file_paths = [
+            "/workspace/vibes/claude_nagger/src/main.py",
+            "/workspace/vibes/claude_nagger/Makefile",
+        ]
+        suggestions = suggester._aggregate_file_patterns(file_paths)
+        patterns = {s.pattern for s in suggestions}
+        assert "src/**/*.py" in patterns
+        assert "**/Makefile" in patterns
+
+
+# === #5645: チェーンコマンドのプレフィックス抽出テスト ===
+
+class TestChainCommandPrefix:
+    """&&/; チェーンコマンドのプレフィックス抽出"""
+
+    def test_AND_チェーン(self, suggester):
+        """&&チェーンは先頭コマンドがプレフィックス（仕様）"""
+        assert suggester._extract_command_prefix("cd /tmp && git status") == "cd"
+
+    def test_セミコロン_チェーン(self, suggester):
+        """；チェーンは先頭コマンドがプレフィックス（仕様）"""
+        assert suggester._extract_command_prefix("mkdir -p /tmp/test; cd /tmp/test") == "mkdir"
+
+    def test_パイプとANDの混合(self, suggester):
+        """パイプ優先で分割し先頭トークンを取得"""
+        assert suggester._extract_command_prefix("ls -la | grep test && echo done") == "ls"
+
+
+# === #5647: tool_nameキー欠損時の分類テスト ===
+
+class TestMissingToolName:
+    """tool_nameキーが存在しない入力データの分類処理"""
+
+    def test_tool_nameキー欠損(self, suggester):
+        """tool_nameキーがない場合はスキップ"""
+        inputs = [{"tool_input": {"file_path": "/workspace/test.py"}}]
+        file_paths, commands = suggester._classify_inputs(inputs)
+        assert file_paths == []
+        assert commands == []
+
+    def test_tool_name空文字(self, suggester):
+        """tool_nameが空文字の場合はスキップ"""
+        inputs = [{"tool_name": "", "tool_input": {"file_path": "/workspace/test.py"}}]
+        file_paths, commands = suggester._classify_inputs(inputs)
+        assert file_paths == []
+        assert commands == []
+
+    def test_tool_inputキー欠損(self, suggester):
+        """tool_inputキーがない場合はスキップ"""
+        inputs = [{"tool_name": "Edit"}]
+        file_paths, commands = suggester._classify_inputs(inputs)
+        assert file_paths == []
+        assert commands == []
+
+
+# === #5646: サブディレクトリ包含マージテスト ===
+
+class TestPatternContainsMerge:
+    """サブディレクトリ跨ぎの冗長パターンマージ"""
+
+    def test_親子ディレクトリのマージ(self, suggester):
+        """親ディレクトリパターンが子を包含する場合マージ"""
+        file_paths = [
+            "/workspace/vibes/claude_nagger/src/domain/hooks/base_hook.py",
+            "/workspace/vibes/claude_nagger/src/domain/hooks/sub/nested_hook.py",
+        ]
+        suggestions = suggester._aggregate_file_patterns(file_paths)
+        # src/domain/hooks/**/*.py が src/domain/hooks/sub/**/*.py を包含
+        assert len(suggestions) == 1
+        assert suggestions[0].pattern == "src/domain/hooks/**/*.py"
+        assert suggestions[0].count == 2
+
+    def test_異なる拡張子はマージしない(self, suggester):
+        """拡張子が異なるパターンはマージしない"""
+        file_paths = [
+            "/workspace/vibes/claude_nagger/src/main.py",
+            "/workspace/vibes/claude_nagger/src/sub/config.yaml",
+        ]
+        suggestions = suggester._aggregate_file_patterns(file_paths)
+        assert len(suggestions) == 2
+
+    def test_兄弟ディレクトリはマージしない(self, suggester):
+        """兄弟ディレクトリ（包含関係なし）はマージしない"""
+        file_paths = [
+            "/workspace/vibes/claude_nagger/src/domain/hooks/base_hook.py",
+            "/workspace/vibes/claude_nagger/src/domain/services/manager.py",
+        ]
+        suggestions = suggester._aggregate_file_patterns(file_paths)
+        assert len(suggestions) == 2
+
+    def test_pattern_contains_判定(self):
+        """_pattern_contains の直接テスト"""
+        assert RuleSuggester._pattern_contains("src/**/*.py", "src/domain/**/*.py") is True
+        assert RuleSuggester._pattern_contains("src/**/*.py", "src/domain/hooks/**/*.py") is True
+        assert RuleSuggester._pattern_contains("**/*.py", "src/**/*.py") is True
+        # 同一パターンは包含しない
+        assert RuleSuggester._pattern_contains("src/**/*.py", "src/**/*.py") is False
+        # 拡張子が異なる
+        assert RuleSuggester._pattern_contains("src/**/*.py", "src/**/*.yaml") is False
+        # 兄弟ディレクトリ
+        assert RuleSuggester._pattern_contains("src/hooks/**/*.py", "src/services/**/*.py") is False
+        # 拡張子なしパターン
+        assert RuleSuggester._pattern_contains("**/Makefile", "sub/**/Makefile") is True
