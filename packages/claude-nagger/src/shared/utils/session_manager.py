@@ -119,8 +119,8 @@ class SessionManager:
         Returns:
             エージェント名（例: "キヨマツ-abc12345"）
         """
-        # MD5ハッシュを生成
-        hash_obj = hashlib.md5(session_id.encode())
+        # SHA256ハッシュを生成
+        hash_obj = hashlib.sha256(session_id.encode())
         hash_hex = hash_obj.hexdigest()
         
         # ハッシュ値から名前インデックスを計算
