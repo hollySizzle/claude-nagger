@@ -588,6 +588,30 @@ class TestPatternContainsMerge:
         suggestions = suggester._aggregate_file_patterns(file_paths)
         assert len(suggestions) == 2
 
+    def test_3段ネストの推移的マージ(self, suggester):
+        """src/**/*.py → src/domain/**/*.py → src/domain/hooks/**/*.py が全て1パターンにマージ"""
+        file_paths = [
+            "/workspace/vibes/claude_nagger/src/main.py",
+            "/workspace/vibes/claude_nagger/src/domain/entity.py",
+            "/workspace/vibes/claude_nagger/src/domain/hooks/base_hook.py",
+        ]
+        suggestions = suggester._aggregate_file_patterns(file_paths)
+        assert len(suggestions) == 1
+        assert suggestions[0].pattern == "src/**/*.py"
+        assert suggestions[0].count == 3
+
+    def test_resolve_target_推移的解決(self):
+        """_resolve_target が推移的にtargetを辿る"""
+        merged_into = {
+            "src/domain/hooks/**/*.py": "src/domain/**/*.py",
+            "src/domain/**/*.py": "src/**/*.py",
+        }
+        assert RuleSuggester._resolve_target(merged_into, "src/domain/hooks/**/*.py") == "src/**/*.py"
+        assert RuleSuggester._resolve_target(merged_into, "src/domain/**/*.py") == "src/**/*.py"
+        assert RuleSuggester._resolve_target(merged_into, "src/**/*.py") == "src/**/*.py"
+        # マージ対象外
+        assert RuleSuggester._resolve_target(merged_into, "docs/**/*.md") == "docs/**/*.md"
+
     def test_pattern_contains_判定(self):
         """_pattern_contains の直接テスト"""
         assert RuleSuggester._pattern_contains("src/**/*.py", "src/domain/**/*.py") is True
