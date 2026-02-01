@@ -32,7 +32,7 @@ hooks:
     - matcher: ""
       hooks:
         - type: command
-          command: PYTHONPATH="$CLAUDE_PROJECT_DIR/src" python3 -m domain.hooks.session_startup_hook
+          command: claude-nagger hook session-startup
 ---
 
 あなたはRedmineチケット管理専門エージェントです。
