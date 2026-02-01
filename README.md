@@ -87,6 +87,32 @@ claude-nagger suggest-rules                        # Analyze & output suggestion
 claude-nagger suggest-rules --min-count 5 --top 5  # Filter by frequency
 ```
 
+### 5. Subagent-aware convention enforcement
+
+When Claude Code spawns subagents (via the Task tool), conventions are enforced there too — with **per-type override** support:
+
+```yaml
+# config.yaml
+session_startup:
+  overrides:
+    subagent_default:          # Applied to ALL subagents
+      messages:
+        first_time:
+          title: "Subagent rules"
+          main_text: "No out-of-scope edits"
+
+    subagent_types:            # Per-type overrides (highest priority)
+      ticket-manager:
+        messages:
+          first_time:
+            title: "Ticket agent rules"
+            main_text: "Redmine operations only"
+      Explore:
+        enabled: false         # Skip for Explore subagents
+```
+
+claude-nagger tracks subagent lifecycle via `SubagentStart`/`SubagentStop` hooks, resolves the appropriate config override (`base → subagent_default → subagent_types.{type}`), and injects the right conventions — once per subagent, non-blocking after first display.
+
 ### Comparison with similar tools
 
 | Feature | claude-nagger | bmad-context-injection | meridian |
@@ -96,6 +122,7 @@ claude-nagger suggest-rules --min-count 5 --top 5  # Filter by frequency
 | **Compact detection + re-injection** | Yes | No | Yes |
 | **Per-rule token-threshold re-injection** | Yes | No | Session-level |
 | **Automatic rule suggestion** | Yes | No | No |
+| **Subagent-aware enforcement** | Yes | No | No |
 | **Distribution** | `pip install` (PyPI) | Copy to project | curl installer |
 | **License** | MIT | MIT (unconfirmed) | Not specified |
 
@@ -161,6 +188,17 @@ session_startup:
       title: "Project Setup"
       main_text: "Please review the project conventions"
       severity: "block"
+
+  # Subagent overrides (base → subagent_default → subagent_types.{type})
+  overrides:
+    subagent_default:
+      messages:
+        first_time:
+          title: "Subagent rules"
+          main_text: "No out-of-scope file edits"
+    subagent_types:
+      Explore:
+        enabled: false
 
 context_management:
   reminder_thresholds:
@@ -291,6 +329,32 @@ claude-nagger suggest-rules                        # 使用履歴から規約候
 claude-nagger suggest-rules --min-count 5 --top 5  # 出現頻度でフィルタ
 ```
 
+### 5. subagent対応の規約適用
+
+Claude Codeがsubagent（Taskツール）を起動した場合も、**タイプ別オーバーライド**で規約を自動適用：
+
+```yaml
+# config.yaml
+session_startup:
+  overrides:
+    subagent_default:          # 全subagent共通
+      messages:
+        first_time:
+          title: "subagent規約"
+          main_text: "スコープ外の編集禁止"
+
+    subagent_types:            # タイプ別オーバーライド（最優先）
+      ticket-manager:
+        messages:
+          first_time:
+            title: "チケット管理agent規約"
+            main_text: "Redmine操作のみ"
+      Explore:
+        enabled: false         # Exploreでは規約表示をスキップ
+```
+
+`SubagentStart`/`SubagentStop`フックでsubagentのライフサイクルを追跡し、設定を解決（`base → subagent_default → subagent_types.{type}`）して適切な規約を注入します。初回表示後はノンブロッキング。
+
 ### 類似ツールとの比較
 
 | 機能 | claude-nagger | bmad-context-injection | meridian |
@@ -300,6 +364,7 @@ claude-nagger suggest-rules --min-count 5 --top 5  # 出現頻度でフィルタ
 | **compact検知＋再注入** | Yes | No | Yes |
 | **ルール単位トークン閾値再注入** | Yes | No | セッション単位 |
 | **自動規約提案** | Yes | No | No |
+| **subagent対応規約適用** | Yes | No | No |
 | **配布方式** | `pip install`（PyPI） | プロジェクトにコピー | curlインストーラ |
 | **ライセンス** | MIT | MIT（未確認） | 未指定 |
 
@@ -365,6 +430,17 @@ session_startup:
       title: "プロジェクトセットアップ"
       main_text: "プロジェクトの規約を確認してください"
       severity: "block"
+
+  # subagentオーバーライド（base → subagent_default → subagent_types.{type}）
+  overrides:
+    subagent_default:
+      messages:
+        first_time:
+          title: "subagent規約"
+          main_text: "スコープ外の編集禁止"
+    subagent_types:
+      Explore:
+        enabled: false
 
 context_management:
   reminder_thresholds:
