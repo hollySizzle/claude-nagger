@@ -10,6 +10,9 @@ session_startup:
         [ ] チケット駆動開発: MCPツールのルールに従いチケットに報告を行うこと
         [ ] 選択肢がある場合はオーナに提示し指示を仰ぐこと(pro/con付き)
         [ ] チケット操作(起票・更新・構造変更)はticket-manager subagentに委譲すること
+        [ ] コードを直接編集しないこと(coder subagentに委譲)
+        [ ] USをTask粒度に分解してからcoderに渡すこと
+        [ ] coder成果物を必ずレビューすること(git diff確認)
         [ ] hookブロック後はリトライすること(1回限りの通知のため2回目は通過する)
       severity: "block"
 
@@ -20,6 +23,8 @@ session_startup:
         [ ] チケット駆動開発: チケットに報告を行うこと
         [ ] 選択肢提示時はpro/con付きでオーナに確認
         [ ] チケット操作はticket-manager subagentに委譲
+        [ ] コード編集はcoder subagentに委譲
+        [ ] coder成果物をレビュー(git diff確認)
         [ ] hookブロック後はリトライ(1回限り通知)
       severity: "block"
 
