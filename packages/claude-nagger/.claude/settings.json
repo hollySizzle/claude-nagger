@@ -40,6 +40,78 @@
             "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m domain.hooks.implementation_design_hook"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook session-startup"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*__write.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook implementation-design"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*replace.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook implementation-design"
+          }
+        ]
+      },
+      {
+        "matcher": "mcp__.*insert.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook implementation-design"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook implementation-design"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook implementation-design"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook implementation-design"
+          }
+        ]
+      },
+      {
+        "matcher": "MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook implementation-design"
+          }
+        ]
       }
     ],
     "Notification": [
@@ -51,6 +123,15 @@
             "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m infrastructure.notifiers.discord_notifier \"📢 Claude Code から通知があります\""
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger notify \"📢 Claude Code から通知があります\""
+          }
+        ]
       }
     ],
     "Stop": [
@@ -60,6 +141,15 @@
           {
             "type": "command",
             "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m infrastructure.notifiers.discord_notifier \"🛑 Claude Code セッションが停止されました\""
+          }
+        ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger notify \"🛑 Claude Code セッションが停止されました\""
           }
         ]
       }
@@ -80,6 +170,17 @@
           {
             "type": "command",
             "command": "PYTHONPATH=\"$CLAUDE_PROJECT_DIR/src\" python3 -m domain.hooks.subagent_event_hook"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook compact-detected"
           }
         ]
       }
