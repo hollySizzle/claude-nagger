@@ -1,4 +1,4 @@
-# サブエージェント活用方針 - 調査・検討メモ
+# ticket-tasuki - サブエージェント活用方針 調査・検討メモ
 
 ## 概要
 **目的**: claude-nagger subagent機能の活用方針決定
@@ -21,7 +21,7 @@ Agent1(PM) → Agent2(開発) → Agent3(レビュー) を手動切替で運用�
   - YAML通信プロトコルはClaude Code既存機能の再発明
 
 ### B. 1セッション統合 + subagent活用
-- **概要**: SE役のメインエージェントが判断・レビューを担当、実装はsubagentに委譲
+- **概要**: leader役のメインエージェントが判断・レビューを担当、実装はcoder subagentに委譲
 - **利点**: コンテキスト維持、切替コスト削減、実装と判断の分離
 - **課題**: subagentの出力フィルタリング問題、Context low問題
 
@@ -34,22 +34,31 @@ TiDD規約 + claude-nagger のフック強制により、チケットコメン�
 
 ## 決定: エージェント設計
 
+### システム名称
+**ticket-tasuki**: TiDD基盤のエージェント間コンテキストリレー機構
+- `ticket-` でTiDD基盤を明示、`tasuki` で駅伝の襷リレー（コンテキスト受け渡し）を暗示
+
+### 命名規則
+`-er` 統一: leader / coder / tester
+- 業界標準で説明不要、SIer臭なし、責務が名前から直接読める
+- 軍制メタファー（shogun等）は却下: 技術ドキュメントとしての可読性優先
+
 ### 設計思想
-- **SE（管制塔）とコーダーの分離**: 意思決定者は実装しない、実装者は判断しない
-- **バイアス排除**: 管制塔は自分が書いていないコードを客観的にレビューできる
-- **コンテキスト保護**: 管制塔のコンテキストを実装詳細で圧迫させない
+- **leaderとcoderの分離**: 意思決定者は実装しない、実装者は判断しない
+- **バイアス排除**: leaderは自分が書いていないコードを客観的にレビューできる
+- **コンテキスト保護**: leaderのコンテキストを実装詳細で圧迫させない
 - **1US = 1セッション**: USの完了とセッションの完了が一致
 
 ### エージェント構成
 
 ```
-SE / 管制塔（メインエージェント）
+leader（メインエージェント）
   責務: 意思決定・レビュー・オーナー窓口・タスク分解
   やること: 読む・判断する・指示する・レビューする
   やらないこと: コード編集
   │
-  ├── コーダー subagent → コード実装（判断しない、指示通りに実装）
-  │     - 管制塔がUSをTask粒度に分解してから渡す
+  ├── coder subagent → コード実装（判断しない、指示通りに実装）
+  │     - leaderがUSをTask粒度に分解してから渡す
   │     - Context low対策: 1Task = 1subagent起動
   │
   ├── ticket-manager subagent → チケット操作
@@ -61,26 +70,25 @@ SE / 管制塔（メインエージェント）
   │
   ├── general-purpose subagent → Web調査
   │
-  └── （将来）テスター subagent → テスト設計・実行・結果報告
+  └── （将来）tester subagent → テスト設計・実行・結果報告
 ```
 
 ### 分離の根拠
-| 観点 | 管制塔が実装兼務 | 管制塔とコーダー分離 |
+| 観点 | leaderが実装兼務 | leader/coder分離 |
 |------|-----------------|-------------------|
 | コンテキスト | 実装詳細で圧迫される | 意図・判断・経緯が残る |
 | レビュー品質 | 自作バイアスが混入 | 他人のコードとして客観評価 |
 | タスク分解 | 実装中に視野が狭まる | 俯瞰的に設計・分解できる |
-| スクラムとの対応 | 1人が全部やる | SE=PO代理、コーダー=開発者 |
 
 ### Context low対策
-管制塔がUSをTask粒度に分解してからsubagentに渡す:
+leaderがUSをTask粒度に分解してからsubagentに渡す:
 ```
 US#123「ユーザー登録機能」
-  → Task1: バリデーション追加（1ファイル）→ コーダーsubagent A
-  → Task2: DB保存処理（1ファイル）→ コーダーsubagent B
-  → Task3: エラーハンドリング（1ファイル）→ コーダーsubagent C
+  → Task1: バリデーション追加（1ファイル）→ coder subagent A
+  → Task2: DB保存処理（1ファイル）→ coder subagent B
+  → Task3: エラーハンドリング（1ファイル）→ coder subagent C
 ```
-これはSEの本来の仕事（設計・分解）であり、管制塔の責務と一致する。
+これはleaderの本来の仕事（設計・分解）であり、責務と一致する。
 
 ## 調査結果: subagent の実態（Reddit・GitHub・事例）
 
@@ -136,15 +144,16 @@ US#123「ユーザー登録機能」
 ### 残存リスクと対策
 - **却下案の記録漏れ**: コメントテンプレートに「却下案」欄追加を推奨
 - **コメント量爆発（20件超）**: 長期USでは要約が必要
-- **出力美化問題**: 管制塔がレビューを担当することで構造的に回避
+- **出力美化問題**: leaderがレビューを担当することで構造的に回避
 
 ## 次のアクション
 
 1. `redmine_driven_dev.yaml` のコメントテンプレートに「却下案」欄追加
 2. `.claude-nagger/config.yaml` のsubagent_types に委譲ルール明文化
-3. コーダーsubagentの定義・プロンプト設計
+3. coder subagentの定義・プロンプト設計
 
 ## 関連文書
+- @docs/specs/ticket_tasuki.md（ticket-tasuki要件定義）
 - @docs/rules/redmine_driven_dev.yaml
 - packages/claude-nagger/.claude-nagger/config.yaml
 - packages/claude-nagger/src/domain/hooks/subagent_event_hook.py
