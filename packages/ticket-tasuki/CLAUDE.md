@@ -32,21 +32,12 @@
    d. チケットに中間報告する（実行者マーカー `[coder]`/`[leader]` を付記）
 4. 全Task完了後、オーナーに完了報告する
 
-## チケット操作の責務分離
-
-leaderのコンテクスト削減のため、チケット操作を読み取り/書き込みで分離する。
-
-| 操作種別 | 実行者 | 理由 |
-|---------|--------|------|
-| 読み取り（list_*, get_*, project_structure） | ticket-manager委譲 | レスポンスが大きくコンテクストを圧迫 |
-| 書き込み（create_*, update_*, add_comment） | leader直接 | レスポンスが小さく、意思決定の即時反映 |
-
 ## 利用可能なsubagent
 
 | subagent | 用途 |
 |----------|------|
 | coder | コード実装（Edit/Write/Bash） |
-| ticket-manager | チケット読み取り（一覧・詳細・構造確認） |
+| ticket-manager | チケット操作（Redmine MCP） |
 | Explore | コードベース調査（読み取り専用） |
 | Bash | テスト実行・コマンド実行 |
 | general-purpose | Web調査・複合タスク |
