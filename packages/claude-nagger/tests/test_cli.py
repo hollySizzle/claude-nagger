@@ -253,3 +253,31 @@ class TestHookCompactDetectedCommand:
         assert result == 0
         mock_class.assert_called_once()
         mock_hook.run.assert_called_once()
+
+
+class TestHookSubagentEventCommand:
+    """hook subagent-eventコマンドのテスト"""
+
+    def test_hook_subagent_event_help(self, capsys):
+        """hook subagent-event がヘルプに表示される"""
+        with patch.object(sys, 'argv', ['claude-nagger', 'hook', '--help']):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 0
+        captured = capsys.readouterr()
+        assert "subagent-event" in captured.out
+
+    def test_hook_subagent_event_runs_main(self, monkeypatch):
+        """hook subagent-event がsubagent_event_hook.mainを実行する"""
+        mock_main = MagicMock()
+
+        mock_module = MagicMock()
+        mock_module.main = mock_main
+        monkeypatch.setitem(sys.modules, 'domain.hooks.subagent_event_hook', mock_module)
+
+        with patch.object(sys, 'argv', ['claude-nagger', 'hook', 'subagent-event']):
+            result = main()
+
+        assert result == 0
+        mock_main.assert_called_once()
