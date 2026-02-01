@@ -93,6 +93,8 @@ RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/
 # Install Claude
 RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
 
+# 標準が変更されたため対応
+RUN claude install
 
 # Copy and set up firewall script
 COPY .devcontainer/init-firewall.sh /usr/local/bin/
