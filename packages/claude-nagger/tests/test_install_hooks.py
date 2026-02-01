@@ -540,6 +540,64 @@ class TestExecute:
         finally:
             os.chdir(original_cwd)
 
+    def test_upgrade_adds_new_hook_types_without_force(self, temp_dir):
+        """アップグレード後にinstall-hooksで新フックイベントが追加される（--force不要）"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # 旧バージョンのsettings.json（SubagentStart/Stop未登録）を模擬
+            claude_dir = temp_dir / ".claude"
+            claude_dir.mkdir()
+            old_settings = {
+                "hooks": {
+                    "PreToolUse": [
+                        {"matcher": "", "hooks": [{"type": "command", "command": "claude-nagger hook session-startup"}]}
+                    ],
+                    "Notification": [
+                        {"matcher": "", "hooks": [{"type": "command", "command": "claude-nagger notify \"test\""}]}
+                    ],
+                    "Stop": [
+                        {"matcher": "", "hooks": [{"type": "command", "command": "claude-nagger notify \"stop\""}]}
+                    ],
+                    "SessionStart": [
+                        {"matcher": "compact", "hooks": [{"type": "command", "command": "claude-nagger hook compact-detected"}]}
+                    ]
+                }
+            }
+            (claude_dir / "settings.json").write_text(
+                json.dumps(old_settings), encoding="utf-8"
+            )
+
+            # --force なしで実行
+            cmd = InstallHooksCommand(force=False)
+            cmd.execute()
+
+            settings = json.loads(
+                (claude_dir / "settings.json").read_text(encoding="utf-8")
+            )
+
+            # 新フックイベントが追加されている
+            assert "SubagentStart" in settings["hooks"]
+            assert "SubagentStop" in settings["hooks"]
+            assert len(settings["hooks"]["SubagentStart"]) > 0
+            assert len(settings["hooks"]["SubagentStop"]) > 0
+
+            # 既存フックが保持されている
+            assert "PreToolUse" in settings["hooks"]
+            assert "Notification" in settings["hooks"]
+            assert "Stop" in settings["hooks"]
+            assert "SessionStart" in settings["hooks"]
+
+            # 既存エントリが重複追加されていない（session-startupは1つのまま）
+            session_startup_count = sum(
+                1 for entry in settings["hooks"]["PreToolUse"]
+                if any(h.get("command") == "claude-nagger hook session-startup" for h in entry.get("hooks", []))
+            )
+            assert session_startup_count == 1
+        finally:
+            os.chdir(original_cwd)
+
 
 class TestLoadSettings:
     """settings.json読み込みのテスト"""
