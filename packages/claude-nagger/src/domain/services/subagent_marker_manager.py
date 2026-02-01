@@ -6,6 +6,7 @@ PreToolUse hookがsubagent活動中か否かを判定するための間接的伝
 
 import json
 import logging
+import os
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -17,11 +18,11 @@ logger = logging.getLogger(__name__)
 class SubagentMarkerManager:
     """subagentマーカーファイルの作成・削除・照会を管理
 
-    マーカーパス: {tempdir}/claude-nagger/{session_id}/subagents/{agent_id}.json
+    マーカーパス: {tempdir}/claude-nagger-{uid}/{session_id}/subagents/{agent_id}.json
     並行subagent対応: agent_id単位の個別マーカー
     """
 
-    BASE_DIR = Path(tempfile.gettempdir()) / "claude-nagger"
+    BASE_DIR = Path(tempfile.gettempdir()) / f"claude-nagger-{os.getuid()}"
 
     def __init__(self, session_id: str):
         """初期化
