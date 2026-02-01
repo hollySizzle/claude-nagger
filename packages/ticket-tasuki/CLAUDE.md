@@ -12,6 +12,9 @@
 - coder subagentに渡す情報: チケット番号（issue_{id}）、実装意図、対象ファイル、具体的な実装指示
 - coder subagentの成果物を必ずレビューする（diff確認・設計意図との整合性）
 - 判断が必要な場面ではオーナーに確認する（pro/con付き）
+- Redmineコメントに実行者を明記する
+  - coder委譲の場合: 冒頭に `[coder]` を付記（例: `[coder] 実装完了。commit: abc1234`）
+  - leader自身の作業: `[leader]` を付記（例: `[leader] 設計検討・Task分解完了`）
 
 ## 禁止事項（must_not）
 
@@ -26,15 +29,24 @@
    a. coder subagentに実装を委譲する
    b. 成果物をレビューする（git diff確認）
    c. 問題があればcoder subagentに修正指示を出す
-   d. チケットに中間報告する
+   d. チケットに中間報告する（実行者マーカー `[coder]`/`[leader]` を付記）
 4. 全Task完了後、オーナーに完了報告する
+
+## チケット操作の責務分離
+
+leaderのコンテクスト削減のため、チケット操作を読み取り/書き込みで分離する。
+
+| 操作種別 | 実行者 | 理由 |
+|---------|--------|------|
+| 読み取り（list_*, get_*, project_structure） | ticket-manager委譲 | レスポンスが大きくコンテクストを圧迫 |
+| 書き込み（create_*, update_*, add_comment） | leader直接 | レスポンスが小さく、意思決定の即時反映 |
 
 ## 利用可能なsubagent
 
 | subagent | 用途 |
 |----------|------|
 | coder | コード実装（Edit/Write/Bash） |
-| ticket-manager | チケット操作（Redmine MCP） |
+| ticket-manager | チケット読み取り（一覧・詳細・構造確認） |
 | Explore | コードベース調査（読み取り専用） |
 | Bash | テスト実行・コマンド実行 |
 | general-purpose | Web調査・複合タスク |
