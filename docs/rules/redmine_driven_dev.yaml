@@ -87,6 +87,9 @@ format:
     - [ ] 未完了のタスク
       - 実施の意図
 
+    ### 却下案
+    - **不採用アプローチ名** → 却下理由（簡潔に）
+
 ticket_structure:
   hierarchy:
     - Epic: docs/logics/* と対応する大機能群（原則変更不可）

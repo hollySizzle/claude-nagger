@@ -52,6 +52,15 @@ session_startup:
               [ ] Redmineチケット操作のみ行うこと
               [ ] コード変更は行わないこと
               [ ] ステータス変更時はルールに従うこと
+      coder:
+        messages:
+          first_time:
+            title: "coder subagent規約"
+            main_text: |
+              [ ] チケット番号(issue_{id})をコミットメッセージに含めること
+              [ ] 指示されたスコープ外のファイルを編集しないこと
+              [ ] 判断が必要な場合は実装せず報告すること
+              [ ] 完了時に変更内容・コミットハッシュを報告すること
 
 # コンテキスト管理設定
 context_management:

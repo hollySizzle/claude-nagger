@@ -3,8 +3,8 @@
 ## 概要
 **名称**: ticket-tasuki（TiDD基盤のエージェント間コンテキストリレー機構）
 **目的**: 1セッション内でleader（意思決定）とcoder（実装）を分離し、コンテキスト保護・バイアス排除・レビュー品質向上を実現
-**範囲**: claude-nagger設定、CLAUDE.md、redmine_driven_dev.yaml
-**依存**: claude-nagger（hooks/subagent管理）、redmine-epic-grid MCP、Claude Code Task tool
+**配布形態**: Claude Codeプラグイン（`.claude-plugin/plugin.json`）
+**依存**: claude-nagger（推奨）、redmine-epic-grid MCP（必須）、Claude Code（必須）
 
 ## 背景・意図
 
@@ -26,7 +26,7 @@ leader（メインエージェント）
   やること: 読む・判断する・指示する・レビューする
   やらないこと: コード編集
   │
-  ├── coder subagent（general-purpose）→ コード実装
+  ├── coder subagent → コード実装
   ├── ticket-manager subagent → チケット操作
   ├── Explore subagent → コード調査
   ├── Bash subagent → テスト実行
@@ -37,33 +37,85 @@ leader（メインエージェント）
 **コンテキスト共有**: チケットコメント + コミットID（issue_{id}紐付け）
 **コンテキスト復元**: チケット読込 + git log + 親チケット + 規約
 
+## 配布設計
+
+### プラグイン構成
+```
+packages/ticket-tasuki/
+  .claude-plugin/
+    plugin.json                ← マニフェスト
+  agents/
+    coder.md                   ← coder subagent定義（REQ-2、tools:制限あり）
+  skills/
+    tasuki-setup/
+      SKILL.md                 ← /tasuki-setup セットアップ用skill
+    tasuki-delegate/
+      SKILL.md                 ← /tasuki-delegate coder委譲用skill
+  hooks/
+    hooks.json                 ← SubagentStart/Stop等
+  CLAUDE.md                    ← leader規約定義（REQ-1、ソフト制約）
+  README.md
+```
+**注**: leader規約はCLAUDE.mdに記載（メインエージェントはsubagent定義の対象外のため）
+
+### 配布方法
+- GitHubリポジトリとして公開
+- `/plugin install` で導入可能
+- マーケットプレイス登録（marketplace.json）
+
+### 開発方針
+- モノレポ（`/workspace/packages/ticket-tasuki/`）で開発
+- リリース時に `git subtree push` で別リポジトリに切り出し
+- claude-naggarと同じワークスペースで並行開発
+
+## エージェント制御方式
+
+### 制御の二層構造
+leaderはメインエージェント自身であり、subagent定義の`tools:`制限は適用不可。
+coderはsubagentであり、`tools:`制限でClaude Code本体が物理的に強制可能。
+
+| 対象 | 制御手段 | 強制力 |
+|------|---------|--------|
+| leader | CLAUDE.md指示 + claude-nagger session_startup通知 | ソフト制約（LLM遵守に依存） |
+| coder | `agents/coder.md`の`tools:`フィールド | 物理的制限（Claude Code本体が強制） |
+| coder | claude-nagger `subagent_types.coder` override | 通知レベルのガードレール |
+
+**段階的強化**: ソフト制約で不十分な場合、`ImplementationDesignHook`にSubagentMarkerManager参照を追加し、メインエージェントのWrite/Editを物理ブロック可能（現時点では未実装・必要性未確定）。
+
+### 既存基盤の確認状況（2026-02-01時点）
+- `SessionStartupHook`: subagent種別ごとのoverride解決済み（`_resolve_subagent_config`実装済み）
+- `SubagentMarkerManager`: subagentライフサイクル追跡済み（create/delete/get_active）
+- `ImplementationDesignHook`: SubagentMarkerManager**未参照**（メイン/subagent区別なし）
+- `file_conventions.yaml`: ルール空（`[]`）。配管済み・バルブ未開放
+- `ticket-manager.md`: `tools:`制限の実績あり（Redmine MCPのみ許可→ファイル操作不可）
+
 ## 要件
 
-### REQ-1: leaderの役割定義
-**対象**: CLAUDE.md または session_startup メッセージ
+### REQ-1: leader規約定義
+**対象**: CLAUDE.md / プラグインの規約ファイル（メインエージェント向け）
+**注意**: leaderはsubagentではないため`agents/leader.md`のtools制限は使えない
 **内容**:
-- leaderはコードを直接編集しない（must_not）
+- leaderはコードを直接編集しない（must_not、ソフト制約）
 - USをTask粒度に分解してからsubagentに渡す（must）
 - subagent成果物を必ずレビューする（must）
 - 判断が必要な場面ではオーナーに確認する（must）
 
-### REQ-2: codersubagentプロンプトテンプレート
-**対象**: CLAUDE.md または専用テンプレートファイル
+### REQ-2: coder subagent定義
+**対象**: `agents/coder.md`
 **内容**:
-- Task tool起動時のpromptに含める定型情報:
-  - チケット番号（issue_{id}）
-  - 実装意図（leaderが記載）
-  - 対象ファイル（leaderが指定）
-  - 実装指示（leaderが記載）
-  - 制約: 判断が必要な場合は実装せず報告すること
-- コミットメッセージにissue_{id}を含める指示
+- `tools:`でEdit/Write/Bash/Read等に制限（物理的強制）
+- チケット番号（issue_{id}）を受け取る
+- 実装意図・対象ファイル・実装指示に従う
+- 判断が必要な場合は実装せず報告する（must）
+- コミットメッセージにissue_{id}を含める（must）
+- スコープ外のファイルを編集しない（must_not）
 
-### REQ-3: claude-nagger subagent_types更新
+### REQ-3: claude-nagger連携
 **対象**: `.claude-nagger/config.yaml`
 **内容**:
-- coder役（general-purpose）のオーバーライド追加
-  - 規約: スコープ外編集禁止、判断せず報告、コミット規約遵守
-- 既存subagent_typesの整理（Explore無効化の維持等）
+- `subagent_types.coder` overrideを追加（規約通知）
+- leader向け: session_startup messagesに「コード編集禁止・coder委譲」を明記
+- 既存subagent_typesとの整合性確認
 
 ### REQ-4: 却下案テンプレート追加
 **対象**: `docs/rules/redmine_driven_dev.yaml`
@@ -74,18 +126,21 @@ leader（メインエージェント）
 
 ## 制約・前提
 
-### 新規ツール開発なし
-全てclaude-nagger設定・CLAUDE.md・規約YAMLの変更で完結する。
-新規MCP/CLIの開発は行わない。
-
 ### subagentの既知制約（Claude Code本体）
 - Context low時の自動compact不可 → 1Task=1subagent起動で緩和
 - 親エージェントの出力美化 → leaderがレビュー担当で構造的回避
 - ネスト不可（subagent→subagent） → leaderが全subagentを直接起動
 - ~20kトークン/subagentのオーバーヘッド → 小タスクの過剰委譲を避ける
 
-### 1US = 1セッション
+### leader制御の制約
+- メインエージェントはsubagent定義の`tools:`制限対象外
+- CLAUDE.md指示はソフト制約（物理的強制ではない）
+- claude-nagger session_startupは通知・ガードレールであり、ファイル編集の物理ブロックではない
+- 物理ブロックが必要な場合: ImplementationDesignHookへのSubagentMarkerManager統合で実現可能（将来対応）
+
+### 1US = 1セッション（推奨運用）
 - USの完了とセッションの完了が一致
+- 大きなUSでセッションが長期化してもメインエージェントのcompact conversationで継続可能
 - 次のUS開始時はチケットからコンテキスト復元
 
 ## 関連文書
@@ -93,3 +148,6 @@ leader（メインエージェント）
 - @docs/rules/redmine_driven_dev.yaml（TiDD規約）
 - @docs/specs/architecture.md
 - packages/claude-nagger/.claude-nagger/config.yaml
+- https://code.claude.com/docs/en/plugins（Claude Codeプラグイン公式ドキュメント）
+- https://code.claude.com/docs/en/sub-agents（subagent公式ドキュメント）
+- https://code.claude.com/docs/en/plugin-marketplaces（マーケットプレイス公式ドキュメント）
