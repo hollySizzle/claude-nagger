@@ -941,3 +941,82 @@ class TestMergeHookEntries:
         assert "PreToolUse" in settings["hooks"]
         assert "Notification" in settings["hooks"]
         assert len(settings["hooks"]["PreToolUse"]) == 1
+
+    def test_default_subagentstart_hooks_defined(self):
+        """DEFAULT_SUBAGENTSTART_HOOKSが定義されている"""
+        cmd = InstallHooksCommand()
+        assert hasattr(cmd, "DEFAULT_SUBAGENTSTART_HOOKS")
+        assert isinstance(cmd.DEFAULT_SUBAGENTSTART_HOOKS, list)
+        assert len(cmd.DEFAULT_SUBAGENTSTART_HOOKS) > 0
+        # subagent-eventコマンドが設定されている
+        commands = [
+            h["hooks"][0]["command"]
+            for h in cmd.DEFAULT_SUBAGENTSTART_HOOKS
+        ]
+        assert any("subagent-event" in c for c in commands)
+
+    def test_default_subagentstop_hooks_defined(self):
+        """DEFAULT_SUBAGENTSTOP_HOOKSが定義されている"""
+        cmd = InstallHooksCommand()
+        assert hasattr(cmd, "DEFAULT_SUBAGENTSTOP_HOOKS")
+        assert isinstance(cmd.DEFAULT_SUBAGENTSTOP_HOOKS, list)
+        assert len(cmd.DEFAULT_SUBAGENTSTOP_HOOKS) > 0
+        # subagent-eventコマンドが設定されている
+        commands = [
+            h["hooks"][0]["command"]
+            for h in cmd.DEFAULT_SUBAGENTSTOP_HOOKS
+        ]
+        assert any("subagent-event" in c for c in commands)
+
+    def test_merge_subagentstart_hooks_to_empty(self):
+        """空のsettingsにSubagentStartフックをマージ"""
+        cmd = InstallHooksCommand()
+        settings = {}
+
+        cmd._merge_hook_entries(settings, "SubagentStart", cmd.DEFAULT_SUBAGENTSTART_HOOKS)
+
+        assert "hooks" in settings
+        assert "SubagentStart" in settings["hooks"]
+        assert len(settings["hooks"]["SubagentStart"]) > 0
+
+    def test_merge_subagentstop_hooks_to_empty(self):
+        """空のsettingsにSubagentStopフックをマージ"""
+        cmd = InstallHooksCommand()
+        settings = {}
+
+        cmd._merge_hook_entries(settings, "SubagentStop", cmd.DEFAULT_SUBAGENTSTOP_HOOKS)
+
+        assert "hooks" in settings
+        assert "SubagentStop" in settings["hooks"]
+        assert len(settings["hooks"]["SubagentStop"]) > 0
+
+    def test_merge_subagentstart_hooks_prevents_duplicate(self):
+        """SubagentStartフックの重複追加を防止"""
+        cmd = InstallHooksCommand()
+        settings = {
+            "hooks": {
+                "SubagentStart": [
+                    {"matcher": "", "hooks": [{"type": "command", "command": "claude-nagger hook subagent-event"}]}
+                ]
+            }
+        }
+
+        updated = cmd._merge_hook_entries(settings, "SubagentStart", cmd.DEFAULT_SUBAGENTSTART_HOOKS)
+
+        assert updated is False
+        assert len(settings["hooks"]["SubagentStart"]) == 1
+
+    def test_update_settings_includes_subagent_hooks(self):
+        """_update_settings_jsonがSubagentStart/Stopを含む"""
+        cmd = InstallHooksCommand()
+        cmd.project_root = Path(tempfile.mkdtemp())
+        cmd.dry_run = False
+
+        cmd._update_settings_json()
+
+        settings_path = cmd.project_root / ".claude" / "settings.json"
+        with open(settings_path) as f:
+            settings = json.load(f)
+
+        assert "SubagentStart" in settings["hooks"]
+        assert "SubagentStop" in settings["hooks"]

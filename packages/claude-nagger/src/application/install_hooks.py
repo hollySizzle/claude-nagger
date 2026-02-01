@@ -232,6 +232,35 @@ discord:
         }
     ]
 
+
+    # デフォルトのSubagentStartフック設定
+    # サブエージェント開始時にマーカーファイルを作成
+    DEFAULT_SUBAGENTSTART_HOOKS: list = [
+        {
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook subagent-event"
+                }
+            ]
+        }
+    ]
+
+    # デフォルトのSubagentStopフック設定
+    # サブエージェント終了時にマーカーファイルを削除
+    DEFAULT_SUBAGENTSTOP_HOOKS: list = [
+        {
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook subagent-event"
+                }
+            ]
+        }
+    ]
+
     def __init__(self, force: bool = False, dry_run: bool = False):
         """
         Args:
@@ -344,6 +373,8 @@ discord:
             ("Notification", self.DEFAULT_NOTIFICATION_HOOKS),
             ("Stop", self.DEFAULT_STOP_HOOKS),
             ("SessionStart", self.DEFAULT_SESSIONSTART_HOOKS),
+            ("SubagentStart", self.DEFAULT_SUBAGENTSTART_HOOKS),
+            ("SubagentStop", self.DEFAULT_SUBAGENTSTOP_HOOKS),
         ]
 
         any_updated = False

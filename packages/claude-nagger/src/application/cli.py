@@ -105,6 +105,12 @@ def main():
         help="セッション終了時の規約提案トリガー（Stop hook）"
     )
 
+    # hook subagent-event
+    hook_subparsers.add_parser(
+        "subagent-event",
+        help="サブエージェントStart/Stopイベントハンドラ"
+    )
+
     # notify サブコマンド（Discord通知）
     notify_parser = subparsers.add_parser(
         "notify",
@@ -217,6 +223,11 @@ def main():
             from domain.hooks.suggest_rules_trigger import SuggestRulesTrigger
             hook = SuggestRulesTrigger()
             return hook.run()
+
+        if args.hook_name == "subagent-event":
+            from domain.hooks.subagent_event_hook import main as subagent_event_main
+            subagent_event_main()
+            return 0
 
         # hook名未指定時はhookヘルプ表示
         hook_parser.print_help()
