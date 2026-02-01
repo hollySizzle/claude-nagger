@@ -20,51 +20,57 @@ _logger = StructuredLogger(name="SubagentEventHook", log_dir=DEFAULT_LOG_DIR)
 
 def main():
     """メインエントリーポイント"""
-    _logger.info("SubagentEventHook invoked")
-
     try:
-        raw = sys.stdin.read()
-        _logger.info(f"stdin raw length: {len(raw)}")
-        _logger.debug(f"stdin raw content: {raw[:500]}")
-        data = json.loads(raw) if raw else {}
-    except json.JSONDecodeError as e:
-        # JSON解析失敗時はスキップ
-        _logger.error(f"JSON decode error: {e}, raw: {raw[:200]}")
-        sys.exit(0)
+        _logger.info("SubagentEventHook invoked")
 
-    event_name = data.get("hook_event_name", "")
-    session_id = data.get("session_id", "")
-    agent_id = data.get("agent_id", "")
-    agent_type = data.get("agent_type", "")
+        try:
+            raw = sys.stdin.read()
+            _logger.info(f"stdin raw length: {len(raw)}")
+            _logger.debug(f"stdin raw content: {raw[:500]}")
+            data = json.loads(raw) if raw else {}
+        except json.JSONDecodeError as e:
+            # JSON解析失敗時はスキップ
+            _logger.error(f"JSON decode error: {e}, raw: {raw[:200]}")
+            sys.exit(0)
 
-    _logger.info(
-        f"Event: {event_name}, session_id: {session_id}, "
-        f"agent_id: {agent_id}, agent_type: {agent_type}"
-    )
-    _logger.info(f"Input data keys: {list(data.keys())}")
+        event_name = data.get("hook_event_name", "")
+        session_id = data.get("session_id", "")
+        agent_id = data.get("agent_id", "")
+        agent_type = data.get("agent_type", "")
 
-    if not session_id or not agent_id:
-        _logger.warning(
-            f"Missing required fields - session_id: '{session_id}', agent_id: '{agent_id}'"
-        )
-        sys.exit(0)
-
-    manager = SubagentMarkerManager(session_id)
-
-    if event_name == "SubagentStart":
-        agent_type = agent_type or "unknown"
-        manager.create_marker(agent_id, agent_type)
         _logger.info(
-            f"Marker created: session={session_id}, agent={agent_id}, type={agent_type}"
+            f"Event: {event_name}, session_id: {session_id}, "
+            f"agent_id: {agent_id}, agent_type: {agent_type}"
         )
-    elif event_name == "SubagentStop":
-        manager.delete_marker(agent_id)
-        _logger.info(f"Marker deleted: session={session_id}, agent={agent_id}")
-    else:
-        _logger.warning(f"Unknown event: {event_name}")
+        _logger.info(f"Input data keys: {list(data.keys())}")
 
-    # 処理をブロックしない
-    sys.exit(0)
+        if not session_id or not agent_id:
+            _logger.warning(
+                f"Missing required fields - session_id: '{session_id}', agent_id: '{agent_id}'"
+            )
+            sys.exit(0)
+
+        manager = SubagentMarkerManager(session_id)
+
+        if event_name == "SubagentStart":
+            agent_type = agent_type or "unknown"
+            manager.create_marker(agent_id, agent_type)
+            _logger.info(
+                f"Marker created: session={session_id}, agent={agent_id}, type={agent_type}"
+            )
+        elif event_name == "SubagentStop":
+            manager.delete_marker(agent_id)
+            _logger.info(f"Marker deleted: session={session_id}, agent={agent_id}")
+        else:
+            _logger.warning(f"Unknown event: {event_name}")
+
+        # 処理をブロックしない
+        sys.exit(0)
+
+    except Exception as e:
+        # 予期せぬ例外がstderrに漏れてClaude Codeの動作に影響しないようにする
+        _logger.exception(f"Unexpected error: {e}")
+        sys.exit(0)
 
 
 if __name__ == "__main__":
