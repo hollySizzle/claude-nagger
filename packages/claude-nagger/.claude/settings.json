@@ -185,5 +185,16 @@
         ]
       }
     ]
+  },
+  "extraKnownMarketplaces": {
+    "workspace-plugins": {
+      "source": {
+        "source": "directory",
+        "path": "/workspace/packages"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ticket-tasuki@workspace-plugins": true
   }
 }
