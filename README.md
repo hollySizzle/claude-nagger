@@ -68,6 +68,25 @@ rules:
       - Docstrings required
 ```
 
+### 4. Automatic rule suggestion (suggest-rules)
+
+Starting with an empty convention file? claude-nagger analyzes your actual tool usage and **automatically suggests rules**:
+
+```
+Session ends (Stop hook)
+  → Analyze hook_input_*.json (file paths, commands)
+    → Pattern aggregation + Claude LLM analysis
+      → .claude-nagger/suggested_rules.yaml generated
+        → Next session: notification with proposals
+```
+
+Run manually anytime:
+
+```bash
+claude-nagger suggest-rules                        # Analyze & output suggestions
+claude-nagger suggest-rules --min-count 5 --top 5  # Filter by frequency
+```
+
 ### Comparison with similar tools
 
 | Feature | claude-nagger | bmad-context-injection | meridian |
@@ -76,6 +95,7 @@ rules:
 | **Command-pattern conditional injection** | Yes | No | No |
 | **Compact detection + re-injection** | Yes | No | Yes |
 | **Per-rule token-threshold re-injection** | Yes | No | Session-level |
+| **Automatic rule suggestion** | Yes | No | No |
 | **Distribution** | `pip install` (PyPI) | Copy to project | curl installer |
 | **License** | MIT | MIT (unconfirmed) | Not specified |
 
@@ -111,7 +131,8 @@ Then edit `.claude-nagger/*.yaml` to set project-specific conventions:
 .claude-nagger/
 ├── config.yaml              # Session management & context thresholds
 ├── file_conventions.yaml    # Conventions for file editing
-└── command_conventions.yaml # Conventions for command execution
+├── command_conventions.yaml # Conventions for command execution
+└── suggested_rules.yaml     # Auto-generated rule suggestions (by suggest-rules)
 ```
 
 ## Configuration
@@ -172,6 +193,7 @@ claude-nagger install-hooks --dry-run    # Preview (no changes)
 claude-nagger install-hooks --force      # Force overwrite
 claude-nagger --version                  # Version
 claude-nagger diagnose                   # Environment diagnostics
+claude-nagger suggest-rules              # Suggest rules from usage history
 claude-nagger hook <name>               # Direct hook execution
 claude-nagger match-test --file "path" --pattern "glob"   # Test pattern matching
 ```
@@ -250,6 +272,25 @@ rules:
       - 必ずdocstringを記載
 ```
 
+### 4. 自動規約提案（suggest-rules）
+
+規約ファイルが空の状態からでも、実際のツール使用履歴を分析して**規約候補を自動提案**：
+
+```
+セッション終了（Stop hook）
+  → hook_input_*.json分析（ファイルパス・コマンド集約）
+    → Python統計前処理 + Claude LLM分析
+      → .claude-nagger/suggested_rules.yaml 生成
+        → 次回セッション開始時に提案内容を通知
+```
+
+手動実行も可能：
+
+```bash
+claude-nagger suggest-rules                        # 使用履歴から規約候補を出力
+claude-nagger suggest-rules --min-count 5 --top 5  # 出現頻度でフィルタ
+```
+
 ### 類似ツールとの比較
 
 | 機能 | claude-nagger | bmad-context-injection | meridian |
@@ -258,6 +299,7 @@ rules:
 | **コマンドパターン条件付き注入** | Yes | No | No |
 | **compact検知＋再注入** | Yes | No | Yes |
 | **ルール単位トークン閾値再注入** | Yes | No | セッション単位 |
+| **自動規約提案** | Yes | No | No |
 | **配布方式** | `pip install`（PyPI） | プロジェクトにコピー | curlインストーラ |
 | **ライセンス** | MIT | MIT（未確認） | 未指定 |
 
@@ -293,7 +335,8 @@ echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
 .claude-nagger/
 ├── config.yaml              # セッション管理・コンテキスト閾値
 ├── file_conventions.yaml    # ファイル編集時の規約
-└── command_conventions.yaml # コマンド実行時の規約
+├── command_conventions.yaml # コマンド実行時の規約
+└── suggested_rules.yaml     # 自動生成された規約候補（suggest-rules）
 ```
 
 ## 設定
@@ -354,6 +397,7 @@ claude-nagger install-hooks --dry-run    # プレビュー（変更なし）
 claude-nagger install-hooks --force      # 強制上書き
 claude-nagger --version                  # バージョン表示
 claude-nagger diagnose                   # 環境診断
+claude-nagger suggest-rules              # 使用履歴から規約候補を提案
 claude-nagger hook <name>               # フック直接実行
 claude-nagger match-test --file "path" --pattern "glob"   # パターンテスト
 ```

@@ -45,6 +45,14 @@ session_startup:
             title: "Bash subagent規約"
             main_text: |
               [ ] 破壊的コマンド禁止
+      ticket-manager:
+        messages:
+          first_time:
+            title: "チケット管理agent規約"
+            main_text: |
+              [ ] Redmineチケット操作のみ行うこと
+              [ ] コード変更は行わないこと
+              [ ] ステータス変更時はルールに従うこと
 
 # コンテキスト管理設定
 context_management:
