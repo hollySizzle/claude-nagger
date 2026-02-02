@@ -188,6 +188,25 @@ class TestOutputResponse:
 
         assert result is False
 
+    def test_output_response_non_pre_tool_use_event(self):
+        """非PreToolUseイベント時はhookSpecificOutputを出力しない"""
+        hook = ConcreteHook()
+        hook._hook_event_name = 'Stop'
+        with patch('builtins.print') as mock_print:
+            result = hook.output_response('approve', 'test reason')
+        assert result is True
+        # printは呼ばれない（hookSpecificOutput不要）
+        mock_print.assert_not_called()
+
+    def test_output_response_notification_event(self):
+        """Notificationイベント時もhookSpecificOutputを出力しない"""
+        hook = ConcreteHook()
+        hook._hook_event_name = 'Notification'
+        with patch('builtins.print') as mock_print:
+            result = hook.output_response('block', 'some reason')
+        assert result is True
+        mock_print.assert_not_called()
+
 
 class TestSessionMarker:
     """セッションマーカー関連のテスト"""
