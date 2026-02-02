@@ -84,6 +84,16 @@ session_startup:
               [ ] 指示されたスコープ外のファイルを編集しないこと
               [ ] 判断が必要な場合は実装せず報告すること
               [ ] 完了時に変更内容・コミットハッシュを報告すること
+      conductor:
+        messages:
+          first_time:
+            title: "conductor subagent規約"
+            main_text: |
+              [ ] 直接作業を実行しないこと（コード編集・ファイル操作禁止）
+              [ ] 実作業はSubAgent（coder/tester/scribe）へ委譲すること
+              [ ] SubAgentの成果物を必ずレビューすること
+              [ ] 選択肢がある場合はオーナに提示すること（pro/con付き）
+              [ ] チケットコメントに意思決定の経緯・意図を記録すること
 
 # コンテキスト管理設定
 context_management:

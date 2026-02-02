@@ -278,6 +278,20 @@ class TestSessionStartupHookSubagentOverride:
                     }
                 },
                 "Plan": {"enabled": False},
+                "conductor": {
+                    "messages": {
+                        "first_time": {
+                            "title": "conductor subagent規約",
+                            "main_text": (
+                                "[ ] 直接作業を実行しないこと（コード編集・ファイル操作禁止）\n"
+                                "[ ] 実作業はSubAgent（coder/tester/scribe）へ委譲すること\n"
+                                "[ ] SubAgentの成果物を必ずレビューすること\n"
+                                "[ ] 選択肢がある場合はオーナに提示すること（pro/con付き）\n"
+                                "[ ] チケットコメントに意思決定の経緯・意図を記録すること\n"
+                            ),
+                        }
+                    }
+                },
             },
         },
     }
@@ -419,6 +433,24 @@ class TestSessionStartupHookSubagentOverride:
         resolved = hook._resolve_subagent_config("Bash", role=None)
 
         assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
+
+    def test_resolve_conductor_role(self):
+        """conductor roleがsubagent_typesにマッチし専用設定を返す"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("general-purpose", role="conductor")
+
+        assert resolved["messages"]["first_time"]["title"] == "conductor subagent規約"
+        assert "直接作業を実行しない" in resolved["messages"]["first_time"]["main_text"]
+
+    def test_resolve_conductor_role_contains_delegation_rule(self):
+        """conductor設定に委譲規約が含まれる"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("general-purpose", role="conductor")
+
+        main_text = resolved["messages"]["first_time"]["main_text"]
+        assert "SubAgent" in main_text
+        assert "レビュー" in main_text
+        assert "オーナ" in main_text
 
     def test_is_session_processed_context_aware_always_false(self):
         """BaseHookのセッションチェックを常にバイパス"""
