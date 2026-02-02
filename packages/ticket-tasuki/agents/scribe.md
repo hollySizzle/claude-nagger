@@ -78,11 +78,11 @@ Leaderはこの順序でTaskを上から実行する。不要なTaskはLeaderの
 
 ```
 US: {ユーザーストーリー名}
-  ├─ Task: 技術調査・設計検討
-  ├─ Task: 実装
-  ├─ Task: コードレビュー
-  ├─ Task: テストケース作成・実行
-  └─ Task: ドキュメント更新
+  ├─ create_task: 技術調査・設計検討
+  ├─ create_task: 実装
+  ├─ create_task: コードレビュー
+  ├─ create_test: テストケース作成・実行
+  └─ create_task: ドキュメント更新
 ```
 
 ### テンプレート適用規約
