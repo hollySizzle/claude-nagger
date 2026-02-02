@@ -4,3 +4,4 @@ vibes/scripts/hooks/log
 .DS_Store
 .devcontainer/.env
 docs/.claude/settings.local.json
+packages/ticket-tasuki/

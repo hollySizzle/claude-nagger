@@ -66,9 +66,9 @@ packages/ticket-tasuki/
 - マーケットプレイス登録（marketplace.json）
 
 ### 開発方針
-- モノレポ（`/workspace/packages/ticket-tasuki/`）で開発
-- リリース時に `git subtree push` で別リポジトリに切り出し
-- claude-naggarと同じワークスペースで並行開発
+- 独立リポジトリ: `hollySizzle/ticket-tasuki`（GitHub）
+- ワークスペース内配置: `/workspace/packages/ticket-tasuki/`（親リポの`.gitignore`で除外）
+- claude-naggarとは同ワークスペースで並行開発だが、git管理は独立
 
 ## エージェント制御方式
 
