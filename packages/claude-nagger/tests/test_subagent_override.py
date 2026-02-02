@@ -298,7 +298,7 @@ class TestSessionStartupHookSubagentOverride:
         assert resolved["messages"]["first_time"]["title"] == "base"
 
     def test_resolve_namespaced_agent_type_matches_short_key(self):
-        """名前空間付きagent_type（例: ticket-tasuki:coder）が短いキーにマッチ"""
+        """名前空間付きagent_type（例: my-plugin:coder）が短いキーにマッチ"""
         config = {
             "enabled": True,
             "messages": {
@@ -321,7 +321,7 @@ class TestSessionStartupHookSubagentOverride:
             },
         }
         hook = self._make_hook(config)
-        resolved = hook._resolve_subagent_config("ticket-tasuki:coder")
+        resolved = hook._resolve_subagent_config("my-plugin:coder")
 
         assert resolved["messages"]["first_time"]["title"] == "coder規約"
         assert resolved["messages"]["first_time"]["main_text"] == "[ ] スコープ外編集禁止"
@@ -336,7 +336,7 @@ class TestSessionStartupHookSubagentOverride:
             "overrides": {
                 "subagent_default": {},
                 "subagent_types": {
-                    "ticket-tasuki:coder": {
+                    "my-plugin:coder": {
                         "messages": {
                             "first_time": {"title": "完全一致の規約"}
                         }
@@ -350,7 +350,7 @@ class TestSessionStartupHookSubagentOverride:
             },
         }
         hook = self._make_hook(config)
-        resolved = hook._resolve_subagent_config("ticket-tasuki:coder")
+        resolved = hook._resolve_subagent_config("my-plugin:coder")
 
         # 完全一致が優先される
         assert resolved["messages"]["first_time"]["title"] == "完全一致の規約"
@@ -366,7 +366,7 @@ class TestSessionStartupHookSubagentOverride:
     def test_resolve_namespaced_no_match_falls_back_to_default(self):
         """名前空間付きだが短いキーもマッチしない場合はsubagent_defaultにフォールバック"""
         hook = self._make_hook()
-        resolved = hook._resolve_subagent_config("ticket-tasuki:unknown-type")
+        resolved = hook._resolve_subagent_config("my-plugin:unknown-type")
 
         # subagent_defaultのメッセージが使われる
         assert resolved["messages"]["first_time"]["title"] == "subagent規約"

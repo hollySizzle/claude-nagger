@@ -193,8 +193,5 @@
         "path": "/workspace/packages"
       }
     }
-  },
-  "enabledPlugins": {
-    "ticket-tasuki@workspace-plugins": true
   }
 }

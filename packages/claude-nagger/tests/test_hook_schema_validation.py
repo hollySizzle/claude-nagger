@@ -909,7 +909,7 @@ class TestSessionStartupHookReplay:
     def test_replay_subagent_coder_namespaced_type(
         self, hook_runner, subagent_fixture_path, marker_manager
     ):
-        """名前空間付きagent_type（ticket-tasuki:coder）のE2Eリプレイ検証
+        """名前空間付きagent_type（my-plugin:coder）のE2Eリプレイ検証
 
         issue_5779: 名前空間付きagent_typeが短いキー（coder）にマッチし、
         coder subagent規約のメッセージが返ることを確認する。
@@ -917,7 +917,7 @@ class TestSessionStartupHookReplay:
         # マーカーを事前作成（名前空間付きagent_type）
         marker_manager.create_marker(
             agent_id="test-agent-001",
-            agent_type="ticket-tasuki:coder"
+            agent_type="my-plugin:coder"
         )
         assert marker_manager.is_subagent_active(), "マーカーが作成されていない"
 
