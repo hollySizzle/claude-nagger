@@ -31,7 +31,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install claude-nagger package (editable mode)
 COPY packages/claude-nagger/ /tmp/claude-nagger/
 COPY README.md /tmp/claude-nagger/README.md
-RUN pip3 install --break-system-packages -e /tmp/claude-nagger/
+RUN pip3 install --break-system-packages -e /tmp/claude-nagger/[dev]
 
 # uv (Python package manager) のインストール
 RUN pip3 install uv --break-system-packages
