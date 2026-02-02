@@ -1,4 +1,15 @@
 {
+  "extraKnownMarketplaces": {
+    "ticket-tasuki": {
+      "source": {
+        "source": "github",
+        "repo": "hollySizzle/ticket-tasuki"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ticket-tasuki@ticket-tasuki": true
+  },
   "hooks": {
     "PreToolUse": [
       {
@@ -56,6 +67,28 @@
           {
             "type": "command",
             "command": "python3 -m infrastructure.notifiers.discord_notifier \"🛑 Claude Code セッションが停止されました\""
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook subagent-event"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook subagent-event"
           }
         ]
       }
