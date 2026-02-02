@@ -1,6 +1,6 @@
 ---
-name: ticket-manager
-description: Redmineチケット管理専門エージェント。チケットの作成・更新・検索・構造確認を行う。コード変更は行わない。TiDD開発でのチケット操作を委任する際に使用する。
+name: scribe
+description: Redmineチケット読み取り専門エージェント。チケットの検索・構造確認・詳細取得を行う。
 tools:
   - mcp__redmine_epic_grid__list_epics_tool
   - mcp__redmine_epic_grid__list_versions_tool

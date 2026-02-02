@@ -26,12 +26,12 @@ leader（メインエージェント）
   やること: 読む・判断する・指示する・レビューする
   やらないこと: コード編集
   │
-  ├── coder subagent → コード実装
-  ├── ticket-manager subagent → チケット操作
+  ├── coder subagent → コード実装・単体テスト
+  ├── tester subagent → 受入テスト・E2Eテスト
+  ├── scribe subagent → チケット読み取り（コンテキスト削減）
   ├── Explore subagent → コード調査
-  ├── Bash subagent → テスト実行
-  ├── general-purpose subagent → Web調査
-  └── （将来）tester subagent → テスト設計・実行
+  ├── Bash subagent → コマンド実行
+  └── general-purpose subagent → Web調査
 ```
 
 **コンテキスト共有**: チケットコメント + コミットID（issue_{id}紐付け）
@@ -46,6 +46,8 @@ packages/ticket-tasuki/
     plugin.json                ← マニフェスト
   agents/
     coder.md                   ← coder subagent定義（REQ-2、tools:制限あり）
+    tester.md                  ← tester subagent定義（REQ-5、受入・E2Eテスト）
+    scribe.md                  ← scribe subagent定義（チケット読み取り専門）
   skills/
     tasuki-setup/
       SKILL.md                 ← /tasuki-setup セットアップ用skill
@@ -79,6 +81,8 @@ coderはsubagentであり、`tools:`制限でClaude Code本体が物理的に強
 | leader | CLAUDE.md指示 + claude-nagger session_startup通知 | ソフト制約（LLM遵守に依存） |
 | coder | `agents/coder.md`の`tools:`フィールド | 物理的制限（Claude Code本体が強制） |
 | coder | claude-nagger `subagent_types.coder` override | 通知レベルのガードレール |
+| tester | `agents/tester.md`の`tools:`フィールド | 物理的制限（Read/Bash/Glob/Grep） |
+| scribe | `agents/scribe.md`の`tools:`フィールド | 物理的制限（Redmine MCPのみ） |
 
 **段階的強化**: ソフト制約で不十分な場合、`ImplementationDesignHook`にSubagentMarkerManager参照を追加し、メインエージェントのWrite/Editを物理ブロック可能（現時点では未実装・必要性未確定）。
 
@@ -87,7 +91,7 @@ coderはsubagentであり、`tools:`制限でClaude Code本体が物理的に強
 - `SubagentMarkerManager`: subagentライフサイクル追跡済み（create/delete/get_active）
 - `ImplementationDesignHook`: SubagentMarkerManager**未参照**（メイン/subagent区別なし）
 - `file_conventions.yaml`: ルール空（`[]`）。配管済み・バルブ未開放
-- `ticket-manager.md`: `tools:`制限の実績あり（Redmine MCPのみ許可→ファイル操作不可）
+- `scribe.md`（旧ticket-manager.md）: `tools:`制限の実績あり（Redmine MCPのみ許可→ファイル操作不可）
 
 ## 要件
 
@@ -116,6 +120,22 @@ coderはsubagentであり、`tools:`制限でClaude Code本体が物理的に強
 - `subagent_types.coder` overrideを追加（規約通知）
 - leader向け: session_startup messagesに「コード編集禁止・coder委譲」を明記
 - 既存subagent_typesとの整合性確認
+
+### REQ-5: tester subagent定義
+**対象**: `agents/tester.md`
+**内容**:
+- `tools:`でRead/Bash/Glob/Grepに制限（コード読み取り+テスト実行のみ、編集不可）
+- 受入テスト・E2Eテストの設計と実行が責務
+- 単体テストはcoderの責務（実装と密結合のため）
+- テスト結果・失敗箇所・再現手順を報告する（must）
+- coderの実装バイアスを排除するため、実装詳細ではなく仕様・要件からテストを設計する
+
+### REQ-6: scribe subagent定義（旧ticket-manager）
+**対象**: `agents/scribe.md`
+**内容**:
+- ticket-managerからリネーム（leader/coder/scribeの命名一貫性）
+- `tools:`でRedmine MCPツールのみに制限（既存実装と同等）
+- チケット読み取りによるleaderのコンテキスト削減が主目的
 
 ### REQ-4: 却下案テンプレート追加
 **対象**: `docs/rules/redmine_driven_dev.yaml`

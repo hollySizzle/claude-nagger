@@ -9,7 +9,7 @@ session_startup:
       main_text: |
         [ ] チケット駆動開発: MCPツールのルールに従いチケットに報告を行うこと
         [ ] 選択肢がある場合はオーナに提示し指示を仰ぐこと(pro/con付き)
-        [ ] チケット読み取り(一覧・詳細・構造)はticket-manager subagentに委譲すること(コンテクスト削減)
+        [ ] チケット読み取り(一覧・詳細・構造)はscribe subagentに委譲すること(コンテクスト削減)
         [ ] チケット書き込み(起票・更新・コメント)はleader直接実行可
         [ ] コードを直接編集しないこと(coder subagentに委譲)
         [ ] USをTask粒度に分解してからcoderに渡すこと
@@ -23,7 +23,7 @@ session_startup:
       main_text: |
         [ ] チケット駆動開発: チケットに報告を行うこと
         [ ] 選択肢提示時はpro/con付きでオーナに確認
-        [ ] チケット読み取りはticket-manager subagentに委譲
+        [ ] チケット読み取りはscribe subagentに委譲
         [ ] チケット書き込みはleader直接実行可
         [ ] コード編集はcoder subagentに委譲
         [ ] coder成果物をレビュー(git diff確認)
@@ -51,14 +51,23 @@ session_startup:
             title: "Bash subagent規約"
             main_text: |
               [ ] 破壊的コマンド禁止
-      ticket-manager:
+      scribe:
         messages:
           first_time:
-            title: "チケット管理agent規約"
+            title: "scribe subagent規約"
             main_text: |
               [ ] Redmineチケット操作のみ行うこと
               [ ] コード変更は行わないこと
               [ ] ステータス変更時はルールに従うこと
+      tester:
+        messages:
+          first_time:
+            title: "tester subagent規約"
+            main_text: |
+              [ ] 仕様からテストを設計すること（実装詳細に依存しない）
+              [ ] テスト結果・失敗箇所・再現手順を報告すること
+              [ ] コードを編集しないこと（Read専用）
+              [ ] テスト失敗時は自分で修正せずleaderに報告すること
       coder:
         messages:
           first_time:
