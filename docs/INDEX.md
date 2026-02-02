@@ -18,6 +18,7 @@
 ### specs - システム仕様
 - [[TODO: 機能名]仕様書](@docs/specs/_template.md)
 - [アーキテクチャ仕様書](@docs/specs/architecture.md)
+- [claude-naggerテスト仕様書](@docs/specs/claude_nagger_test.md)
 
 ### logics - ビジネスロジック
 - [[TODO: ロジック名]](@docs/logics/_template.md)
