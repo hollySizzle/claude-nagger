@@ -297,6 +297,80 @@ class TestSessionStartupHookSubagentOverride:
 
         assert resolved["messages"]["first_time"]["title"] == "base"
 
+    def test_resolve_namespaced_agent_type_matches_short_key(self):
+        """名前空間付きagent_type（例: ticket-tasuki:coder）が短いキーにマッチ"""
+        config = {
+            "enabled": True,
+            "messages": {
+                "first_time": {"title": "base", "main_text": "base text"},
+            },
+            "overrides": {
+                "subagent_default": {
+                    "messages": {"first_time": {"title": "subagent default"}}
+                },
+                "subagent_types": {
+                    "coder": {
+                        "messages": {
+                            "first_time": {
+                                "title": "coder規約",
+                                "main_text": "[ ] スコープ外編集禁止",
+                            }
+                        }
+                    },
+                },
+            },
+        }
+        hook = self._make_hook(config)
+        resolved = hook._resolve_subagent_config("ticket-tasuki:coder")
+
+        assert resolved["messages"]["first_time"]["title"] == "coder規約"
+        assert resolved["messages"]["first_time"]["main_text"] == "[ ] スコープ外編集禁止"
+
+    def test_resolve_exact_match_takes_priority_over_short_name(self):
+        """完全一致が部分一致（短いキー）より優先される"""
+        config = {
+            "enabled": True,
+            "messages": {
+                "first_time": {"title": "base", "main_text": "base text"},
+            },
+            "overrides": {
+                "subagent_default": {},
+                "subagent_types": {
+                    "ticket-tasuki:coder": {
+                        "messages": {
+                            "first_time": {"title": "完全一致の規約"}
+                        }
+                    },
+                    "coder": {
+                        "messages": {
+                            "first_time": {"title": "短いキーの規約"}
+                        }
+                    },
+                },
+            },
+        }
+        hook = self._make_hook(config)
+        resolved = hook._resolve_subagent_config("ticket-tasuki:coder")
+
+        # 完全一致が優先される
+        assert resolved["messages"]["first_time"]["title"] == "完全一致の規約"
+
+    def test_resolve_plain_agent_type_still_works(self):
+        """":"を含まない従来のagent_typeが引き続き動作する"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("Bash")
+
+        assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
+        assert resolved["messages"]["first_time"]["main_text"] == "[ ] 破壊的コマンド禁止"
+
+    def test_resolve_namespaced_no_match_falls_back_to_default(self):
+        """名前空間付きだが短いキーもマッチしない場合はsubagent_defaultにフォールバック"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("ticket-tasuki:unknown-type")
+
+        # subagent_defaultのメッセージが使われる
+        assert resolved["messages"]["first_time"]["title"] == "subagent規約"
+
     def test_is_session_processed_context_aware_always_false(self):
         """BaseHookのセッションチェックを常にバイパス"""
         hook = self._make_hook()

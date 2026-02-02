@@ -174,7 +174,13 @@ class SessionStartupHook(BaseHook):
         overrides = self.config.get("overrides", {})
         subagent_default = overrides.get("subagent_default", {})
         subagent_types = overrides.get("subagent_types", {})
-        type_specific = subagent_types.get(agent_type, {})
+        # 完全一致 → ":"区切り末尾部分で再検索 → 空dictフォールバック
+        type_specific = subagent_types.get(agent_type)
+        if type_specific is None and ":" in agent_type:
+            short_name = agent_type.rsplit(":", 1)[-1]
+            type_specific = subagent_types.get(short_name, {})
+        elif type_specific is None:
+            type_specific = {}
 
         # base設定をコピー
         resolved = {
