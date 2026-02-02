@@ -19,4 +19,35 @@ rules:
   #   token_threshold: 35000
   #   message: |
   #     このファイルを変更する場合は規約を確認してください
-  []
+
+  - name: "テストファイル編集規約"
+    patterns:
+      - "**/tests/test_*.py"
+    severity: "warn"
+    token_threshold: 30000
+    message: |
+      テストファイル編集時の確認事項:
+      - テスト仕様書(@docs/specs/claude_nagger_test.md)を確認したか
+      - テストクラス・メソッドの命名規約に従っているか
+      - 関連するE2Eリプレイテストへの影響を考慮したか
+
+  - name: "フィクスチャ管理規約"
+    patterns:
+      - "**/tests/fixtures/**/*.json"
+    severity: "block"
+    token_threshold: 20000
+    message: |
+      フィクスチャ編集時の確認事項:
+      - capture_fixture.py --sanitize でキャプチャしたか(手動編集禁止)
+      - サニタイズ済みか(ホームディレクトリ、セッションID、APIキー)
+      - フィクスチャを使用するテストへの影響を確認したか
+
+  - name: "conftest編集規約"
+    patterns:
+      - "**/tests/conftest.py"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      conftest.py編集時の確認事項:
+      - 全テストへの影響範囲を把握しているか
+      - 共通フィクスチャの変更は後方互換性を維持しているか

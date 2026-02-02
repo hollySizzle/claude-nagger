@@ -10,4 +10,16 @@ rules:
   #   token_threshold: 25000
   #   message: |
   #     Git操作を実行する場合は規約を確認してください
-  []
+
+  - name: "pytest実行規約"
+    patterns:
+      - "pytest*"
+      - "python3 -m pytest*"
+      - "python -m pytest*"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      テスト実行時の確認事項:
+      - カバレッジ付きで実行したか(--cov=src --cov-report=term-missing)
+      - E2Eリプレイテストも含めて実行したか
+      - 全テスト実行: python3 -m pytest tests/ -v
