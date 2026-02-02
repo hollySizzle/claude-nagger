@@ -68,6 +68,27 @@ session_startup:
     #     規約を再確認してください
     #   severity: "block"
 
+    # subagent別override設定（subagent自身に直接ブロッキング通知される）
+    # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
+    # 解決順序: base(上記) → subagent_default → subagent_types.{type}
+    # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
+    # overrides:
+    #   subagent_default:
+    #     messages:
+    #       first_time:
+    #         title: "subagent規約"
+    #         main_text: |
+    #           [ ] スコープ外のファイルを編集しないこと
+    #   subagent_types:
+    #     coder:
+    #       messages:
+    #         first_time:
+    #           title: "coder subagent規約"
+    #           main_text: |
+    #             [ ] 指示されたスコープ外のファイルを編集しないこと
+    #     Explore:
+    #       enabled: false
+
 # コンテキスト管理設定
 context_management:
   reminder_thresholds:
