@@ -994,6 +994,55 @@ class TestSessionStartupHookReplay:
             except json.JSONDecodeError:
                 pass  # JSON以外の出力は許容
 
+    def test_replay_subagent_conductor_role(
+        self, hook_runner, subagent_fixture_path, marker_manager
+    ):
+        """conductor roleのsubagentがconductor固有規約を受け取ることを確認
+
+        general-purposeのagent_typeでrole=conductorのマーカーを作成し、
+        session_startup_hookがconductor subagent規約のブロックメッセージを返すことを検証する。
+        """
+        # conductor roleのマーカーを事前作成
+        marker_manager.create_marker(
+            agent_id="test-agent-conductor",
+            agent_type="general-purpose"
+        )
+        # roleフィールドを設定
+        marker_manager.update_marker("test-agent-conductor", role="conductor")
+
+        assert marker_manager.is_subagent_active(), "マーカーが作成されていない"
+
+        # フィクスチャをsession_startup_hookに流す
+        result = hook_runner.run_with_fixture(subagent_fixture_path)
+
+        # 正常終了の確認
+        assert result['success'] is True, (
+            f"Hook実行失敗: return_code={result['return_code']}, "
+            f"stderr={result['stderr']}"
+        )
+        assert result['return_code'] == 0
+
+        # conductor subagent規約のメッセージが返ることを確認
+        stdout = result['stdout'].strip()
+        if stdout:
+            assert result['validation']['valid'] is True, (
+                f"スキーマ検証失敗: {result['validation']['errors']}"
+            )
+
+            output_data = json.loads(stdout)
+            if 'decision' in output_data:
+                assert output_data['decision'] == 'block', (
+                    f"Expected decision='block', got '{output_data['decision']}'"
+                )
+                reason = output_data.get('reason', '')
+                assert 'conductor subagent規約' in reason, (
+                    f"conductor subagent規約のメッセージが含まれていない: {reason[:200]}"
+                )
+                # conductor固有の制約が含まれていることを確認
+                assert '直接作業を実行しない' in reason, (
+                    f"conductor固有の制約（直接作業禁止）が含まれていない: {reason[:200]}"
+                )
+
     def test_replay_no_subagent_marker(
         self, hook_runner, subagent_fixture_path, marker_manager
     ):
