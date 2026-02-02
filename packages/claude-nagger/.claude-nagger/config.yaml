@@ -35,7 +35,10 @@ session_startup:
       severity: "block"
 
   # subagent別override設定
+  # ※ Leader向けではなく、subagent自身に直接ブロッキング通知される
+  # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
   # 解決順序: base(上記) → subagent_default → subagent_types.{type}
+  # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
   overrides:
     subagent_default:
       messages:
