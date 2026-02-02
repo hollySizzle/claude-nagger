@@ -117,6 +117,7 @@ class BaseHook(ABC):
         self.debug = debug if debug is not None else is_debug_mode()
         self.log_dir = log_dir or DEFAULT_LOG_DIR
         self._start_time: Optional[float] = None
+        self._hook_event_name: Optional[str] = None
         self._setup_logging()
 
     def _setup_logging(self):
@@ -260,6 +261,9 @@ class BaseHook(ABC):
             if session_id:
                 self._structured_logger.set_session_id(session_id)
 
+            # イベント名を保持
+            self._hook_event_name = parsed.get('hook_event_name')
+
             return parsed
         except json.JSONDecodeError as e:
             self.log_error(f"JSON decode error", error=str(e))
@@ -280,18 +284,24 @@ class BaseHook(ABC):
             出力成功の場合True
         """
         try:
-            # Claude Code 公式スキーマに対応
-            # hookSpecificOutput 形式で出力
-            response = {
-                'hookSpecificOutput': {
-                    'hookEventName': 'PreToolUse',
-                    'permissionDecision': 'allow' if decision == 'approve' else 'deny',
-                    'permissionDecisionReason': reason
+            event_name = self._hook_event_name or 'PreToolUse'
+
+            # PreToolUseのみhookSpecificOutput形式（permissionDecision付き）
+            if event_name == 'PreToolUse':
+                response = {
+                    'hookSpecificOutput': {
+                        'hookEventName': event_name,
+                        'permissionDecision': 'allow' if decision == 'approve' else 'deny',
+                        'permissionDecisionReason': reason
+                    }
                 }
-            }
-            
-            json_output = json.dumps(response, ensure_ascii=False)
-            print(json_output)
+                json_output = json.dumps(response, ensure_ascii=False)
+                print(json_output)
+            else:
+                # Stop/Notification等: hookSpecificOutput不要
+                # 空出力でexit 0のみ
+                json_output = "{}"
+                self.log_debug(f"Non-PreToolUse event '{event_name}': skip hookSpecificOutput")
 
             self.log_debug(f"Output response: {json_output}")
             return True
