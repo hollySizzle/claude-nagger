@@ -134,6 +134,32 @@ class TestSubagentMarkerManager:
         assert data["agent_type"] == "general-purpose"
         assert data["session_id"] == "test-session-123"
         assert "created_at" in data
+        # #5827/#5828: 新規フィールドのデフォルト値
+        assert data["role"] is None
+        assert data["startup_processed"] is False
+        assert data["startup_processed_at"] is None
+
+    def test_create_marker_new_fields(self, tmp_marker_dir):
+        """マーカー作成時にrole, startup_processed, startup_processed_atが含まれる"""
+        mgr = self._make_manager()
+        mgr.create_marker("agent-new", "Bash")
+        marker_path = tmp_marker_dir / "test-session-123" / "subagents" / "agent-new.json"
+        data = json.loads(marker_path.read_text())
+        assert "role" in data
+        assert "startup_processed" in data
+        assert "startup_processed_at" in data
+
+    def test_update_marker_role(self, tmp_marker_dir):
+        """update_markerでroleを設定できる"""
+        mgr = self._make_manager()
+        mgr.create_marker("agent-abc", "general-purpose")
+        mgr.update_marker("agent-abc", role="coder")
+        marker_path = tmp_marker_dir / "test-session-123" / "subagents" / "agent-abc.json"
+        data = json.loads(marker_path.read_text())
+        assert data["role"] == "coder"
+        # 他のフィールドは変更されない
+        assert data["agent_type"] == "general-purpose"
+        assert data["startup_processed"] is False
 
     def test_delete_marker(self, tmp_marker_dir):
         """マーカー削除の基本動作"""
@@ -371,6 +397,29 @@ class TestSessionStartupHookSubagentOverride:
         # subagent_defaultのメッセージが使われる
         assert resolved["messages"]["first_time"]["title"] == "subagent規約"
 
+    def test_resolve_role_takes_priority(self):
+        """roleがsubagent_typesにマッチする場合、agent_typeより優先"""
+        hook = self._make_hook()
+        # role="Bash"でBash用設定を取得、agent_typeは"general-purpose"
+        resolved = hook._resolve_subagent_config("general-purpose", role="Bash")
+
+        assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
+        assert resolved["messages"]["first_time"]["main_text"] == "[ ] 破壊的コマンド禁止"
+
+    def test_resolve_role_no_match_falls_back_to_agent_type(self):
+        """roleがsubagent_typesに無い場合はagent_typeで解決"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("Bash", role="nonexistent-role")
+
+        assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
+
+    def test_resolve_role_none_uses_agent_type(self):
+        """role=Noneの場合は従来通りagent_typeで解決"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("Bash", role=None)
+
+        assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
+
     def test_is_session_processed_context_aware_always_false(self):
         """BaseHookのセッションチェックを常にバイパス"""
         hook = self._make_hook()
@@ -396,14 +445,17 @@ class TestSessionStartupHookShouldProcessSubagent:
             "agent_type": "general-purpose",
             "session_id": "test-session",
             "created_at": "2026-01-27T00:00:00",
+            "role": None,
+            "startup_processed": False,
+            "startup_processed_at": None,
         }
 
         with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
             mock_instance = MockMgr.return_value
             mock_instance.is_subagent_active.return_value = True
             mock_instance.get_active_subagent.return_value = marker_data
-            with patch.object(hook, '_is_subagent_startup_processed', return_value=False):
-                result = hook.should_process({"session_id": "test-session"})
+            mock_instance.is_startup_processed.return_value = False
+            result = hook.should_process({"session_id": "test-session"})
 
         assert result is True
         assert hook._is_subagent is True
@@ -418,14 +470,17 @@ class TestSessionStartupHookShouldProcessSubagent:
             "agent_type": "general-purpose",
             "session_id": "test-session",
             "created_at": "2026-01-27T00:00:00",
+            "role": None,
+            "startup_processed": True,
+            "startup_processed_at": "2026-01-27T00:01:00",
         }
 
         with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
             mock_instance = MockMgr.return_value
             mock_instance.is_subagent_active.return_value = True
             mock_instance.get_active_subagent.return_value = marker_data
-            with patch.object(hook, '_is_subagent_startup_processed', return_value=True):
-                result = hook.should_process({"session_id": "test-session"})
+            mock_instance.is_startup_processed.return_value = True
+            result = hook.should_process({"session_id": "test-session"})
 
         assert result is False
 
@@ -478,9 +533,11 @@ class TestSessionStartupHookProcessSubagent:
         hook._current_agent_id = "agent-abc"
         hook._current_agent_type = "general-purpose"
         hook._resolved_config = hook._resolve_subagent_config("general-purpose")
+        mock_mgr = MagicMock()
+        mock_mgr.update_marker.return_value = True
+        hook._subagent_marker_manager = mock_mgr
 
-        with patch.object(hook, '_mark_subagent_startup_processed', return_value=True):
-            result = hook.process({"session_id": "test-session"})
+        result = hook.process({"session_id": "test-session"})
 
         assert result["decision"] == "block"
         assert "subagent規約" in result["reason"]
@@ -493,9 +550,11 @@ class TestSessionStartupHookProcessSubagent:
         hook._current_agent_id = "agent-bash"
         hook._current_agent_type = "Bash"
         hook._resolved_config = hook._resolve_subagent_config("Bash")
+        mock_mgr = MagicMock()
+        mock_mgr.update_marker.return_value = True
+        hook._subagent_marker_manager = mock_mgr
 
-        with patch.object(hook, '_mark_subagent_startup_processed', return_value=True):
-            result = hook.process({"session_id": "test-session"})
+        result = hook.process({"session_id": "test-session"})
 
         assert "Bash subagent規約" in result["reason"]
         assert "破壊的コマンド禁止" in result["reason"]
@@ -513,18 +572,24 @@ class TestSessionStartupHookProcessSubagent:
         assert result["decision"] == "block"
         assert "プロジェクト規約" in result["reason"]
 
-    def test_subagent_creates_subagent_marker(self):
-        """subagent処理時はsubagent別マーカーを作成"""
+    def test_subagent_updates_lifecycle_marker(self):
+        """subagent処理時はライフサイクルマーカーのstartup_processedを更新"""
         hook = self._make_hook()
         hook._is_subagent = True
         hook._current_agent_id = "agent-abc"
         hook._current_agent_type = "general-purpose"
         hook._resolved_config = hook._resolve_subagent_config("general-purpose")
+        mock_mgr = MagicMock()
+        mock_mgr.update_marker.return_value = True
+        hook._subagent_marker_manager = mock_mgr
 
-        with patch.object(hook, '_mark_subagent_startup_processed', return_value=True) as mock_mark:
-            hook.process({"session_id": "test-session"})
+        hook.process({"session_id": "test-session"})
 
-        mock_mark.assert_called_once_with("test-session", "agent-abc", "general-purpose")
+        mock_mgr.update_marker.assert_called_once()
+        call_kwargs = mock_mgr.update_marker.call_args
+        assert call_kwargs[0][0] == "agent-abc"
+        assert call_kwargs[1]["startup_processed"] is True
+        assert "startup_processed_at" in call_kwargs[1]
 
     def test_main_agent_creates_main_marker(self):
         """main agent処理時は従来のマーカーを作成"""
@@ -539,44 +604,47 @@ class TestSessionStartupHookProcessSubagent:
         mock_mark.assert_called_once()
 
 
-class TestSubagentStartupMarker:
-    """subagent startup マーカーのテスト"""
+class TestSubagentStartupMarkerUnified:
+    """統一マーカーによるstartup処理済み判定のテスト"""
 
-    def _make_hook(self):
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            return SessionStartupHook()
+    @pytest.fixture
+    def tmp_marker_dir(self, tmp_path):
+        session_id = "test-session"
+        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
+            mgr = SubagentMarkerManager(session_id)
+        return mgr
 
-    def test_subagent_marker_path(self, tmp_path):
-        """subagentマーカーパスの形式確認"""
-        hook = self._make_hook()
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            MockMgr.BASE_DIR = tmp_path
-            path = hook._get_subagent_startup_marker_path("session-123", "agent-abc")
+    def test_is_startup_processed_default_false(self, tmp_marker_dir):
+        """作成直後のマーカーはstartup_processed=False"""
+        mgr = tmp_marker_dir
+        mgr.create_marker("a1", "Bash")
+        assert mgr.is_startup_processed("a1") is False
 
-        assert path == tmp_path / "session-123" / "startup" / "agent-abc.json"
+    def test_update_marker_sets_startup_processed(self, tmp_marker_dir):
+        """update_markerでstartup_processedをTrueに更新"""
+        mgr = tmp_marker_dir
+        mgr.create_marker("a1", "Bash")
+        mgr.update_marker("a1", startup_processed=True, startup_processed_at="2026-01-27T00:00:00")
+        assert mgr.is_startup_processed("a1") is True
 
-    def test_mark_and_check_subagent(self, tmp_path):
-        """subagentマーカー作成と確認"""
-        hook = self._make_hook()
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            MockMgr.BASE_DIR = tmp_path
+    def test_different_agents_independent(self, tmp_marker_dir):
+        """異なるagent_idのstartup_processedは独立"""
+        mgr = tmp_marker_dir
+        mgr.create_marker("a1", "Bash")
+        mgr.create_marker("a2", "Explore")
+        mgr.update_marker("a1", startup_processed=True)
+        assert mgr.is_startup_processed("a1") is True
+        assert mgr.is_startup_processed("a2") is False
 
-            assert hook._is_subagent_startup_processed("s1", "a1") is False
+    def test_is_startup_processed_nonexistent_marker(self, tmp_marker_dir):
+        """存在しないマーカーはFalse"""
+        mgr = tmp_marker_dir
+        assert mgr.is_startup_processed("nonexistent") is False
 
-            hook._mark_subagent_startup_processed("s1", "a1", "Bash")
-
-            assert hook._is_subagent_startup_processed("s1", "a1") is True
-
-    def test_different_agents_independent(self, tmp_path):
-        """異なるagent_idのマーカーは独立"""
-        hook = self._make_hook()
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            MockMgr.BASE_DIR = tmp_path
-
-            hook._mark_subagent_startup_processed("s1", "a1", "Bash")
-
-            assert hook._is_subagent_startup_processed("s1", "a1") is True
-            assert hook._is_subagent_startup_processed("s1", "a2") is False
+    def test_update_nonexistent_marker_returns_false(self, tmp_marker_dir):
+        """存在しないマーカーの更新はFalse"""
+        mgr = tmp_marker_dir
+        assert mgr.update_marker("nonexistent", startup_processed=True) is False
 
 
 # ============================================================
@@ -766,23 +834,32 @@ class TestSubagentOverrideIntegration:
             mgr = SubagentMarkerManager(session_id)
             mgr.create_marker(agent_id, agent_type)
             assert mgr.is_subagent_active()
+            # 初期状態: startup未処理
+            assert mgr.is_startup_processed(agent_id) is False
 
         # Step 2: PreToolUse → SessionStartupHook発火
         with patch.object(SessionStartupHook, '_load_config', return_value=self.CONFIG):
             hook = SessionStartupHook()
             input_data = {"session_id": session_id, "tool_name": "Read"}
 
+            marker_data = {
+                "agent_id": agent_id,
+                "agent_type": agent_type,
+                "session_id": session_id,
+                "created_at": "2026-01-27T00:00:00",
+                "role": None,
+                "startup_processed": False,
+                "startup_processed_at": None,
+            }
+
             # SubagentMarkerManagerをモック
             with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
                 MockMgr.BASE_DIR = tmp_path
                 mock_instance = MockMgr.return_value
                 mock_instance.is_subagent_active.return_value = True
-                mock_instance.get_active_subagent.return_value = {
-                    "agent_id": agent_id,
-                    "agent_type": agent_type,
-                    "session_id": session_id,
-                    "created_at": "2026-01-27T00:00:00",
-                }
+                mock_instance.get_active_subagent.return_value = marker_data
+                mock_instance.is_startup_processed.return_value = False
+                mock_instance.update_marker.return_value = True
 
                 # should_process: subagent検出 → True
                 result = hook.should_process(input_data)
@@ -790,13 +867,14 @@ class TestSubagentOverrideIntegration:
                 assert hook._is_subagent is True
                 assert hook._current_agent_type == agent_type
 
-                # process: subagent用メッセージでblock
+                # process: subagent用メッセージでblock + update_marker呼び出し
                 process_result = hook.process(input_data)
                 assert process_result["decision"] == "block"
                 assert "subagent規約" in process_result["reason"]
+                mock_instance.update_marker.assert_called_once()
 
-                # 2回目のPreToolUse → 処理済みでスキップ
-                # マーカーが作成されたので、_is_subagent_startup_processedがTrueを返す
+                # 2回目のPreToolUse → startup_processed=Trueで処理済みスキップ
+                mock_instance.is_startup_processed.return_value = True
                 result2 = hook.should_process(input_data)
                 assert result2 is False
 
@@ -854,3 +932,247 @@ class TestSubagentOverrideIntegration:
 
                 assert result is True
                 assert hook._is_subagent is False
+
+
+# ============================================================
+# ROLE prefix トランスクリプト解析テスト (#5829)
+# ============================================================
+
+class TestParseRoleFromTranscript:
+    """_parse_role_from_transcript のユニットテスト"""
+
+    BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
+
+    def _make_hook(self, config=None):
+        config = config if config is not None else self.BASE_CONFIG
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            return SessionStartupHook()
+
+    def _write_transcript(self, tmp_path, lines):
+        """JSONL形式のトランスクリプトファイルを作成"""
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w', encoding='utf-8') as f:
+            for entry in lines:
+                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+        return str(transcript)
+
+    def test_basic_role_extraction(self, tmp_path):
+        """基本的な[ROLE:xxx]抽出"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": "[ROLE:coder]\nPlease fix the bug."}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "coder"
+
+    def test_role_in_list_content(self, tmp_path):
+        """contentがリスト形式の場合"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": [
+                {"type": "text", "text": "[ROLE:reviewer]\nReview this PR."},
+            ]}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "reviewer"
+
+    def test_no_role_returns_none(self, tmp_path):
+        """[ROLE:xxx]がない場合はNone"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": "Just a normal message."}},
+        ])
+        assert hook._parse_role_from_transcript(path) is None
+
+    def test_only_first_user_message_checked(self, tmp_path):
+        """最初のuserメッセージのみ検索"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": "No role here."}},
+            {"type": "user", "message": {"content": "[ROLE:tester]\nThis should be ignored."}},
+        ])
+        assert hook._parse_role_from_transcript(path) is None
+
+    def test_skips_non_user_entries(self, tmp_path):
+        """user以外のエントリはスキップ"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": "[ROLE:fake]\nNot a user."}},
+            {"type": "user", "message": {"content": "[ROLE:planner]\nPlan the work."}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "planner"
+
+    def test_none_transcript_path(self):
+        """transcript_pathがNoneの場合"""
+        hook = self._make_hook()
+        assert hook._parse_role_from_transcript(None) is None
+
+    def test_nonexistent_file(self):
+        """存在しないファイルパスの場合"""
+        hook = self._make_hook()
+        assert hook._parse_role_from_transcript("/nonexistent/path.jsonl") is None
+
+    def test_malformed_json_lines(self, tmp_path):
+        """不正なJSONL行はスキップ"""
+        hook = self._make_hook()
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write("not valid json\n")
+            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:debug]\nOK"}}) + '\n')
+        assert hook._parse_role_from_transcript(str(transcript)) == "debug"
+
+    def test_empty_file(self, tmp_path):
+        """空ファイルの場合"""
+        hook = self._make_hook()
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text("")
+        assert hook._parse_role_from_transcript(str(transcript)) is None
+
+    def test_content_string_list_mixed(self, tmp_path):
+        """contentリスト内に文字列要素が混在する場合"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": ["[ROLE:ops]\nDo the thing."]}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "ops"
+
+
+class TestShouldProcessRoleParsing:
+    """should_processでのROLE解析統合テスト"""
+
+    BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
+
+    def _make_hook(self, config=None):
+        config = config if config is not None else self.BASE_CONFIG
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            return SessionStartupHook()
+
+    def test_role_parsed_and_stored_in_marker(self, tmp_path):
+        """transcript解析でroleがマーカーに保存される"""
+        hook = self._make_hook()
+
+        # トランスクリプトファイル作成
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:coder]\nFix bug."}}) + '\n')
+
+        marker_data = {
+            "agent_id": "agent-role-test",
+            "agent_type": "general-purpose",
+            "session_id": "test-session",
+            "created_at": "2026-01-27T00:00:00",
+            "role": None,
+            "startup_processed": False,
+            "startup_processed_at": None,
+        }
+
+        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
+            mock_instance = MockMgr.return_value
+            mock_instance.is_subagent_active.return_value = True
+            mock_instance.get_active_subagent.return_value = marker_data
+            mock_instance.is_startup_processed.return_value = False
+
+            result = hook.should_process({
+                "session_id": "test-session",
+                "transcript_path": str(transcript),
+            })
+
+        assert result is True
+        # update_markerがrole=coderで呼ばれたことを確認
+        mock_instance.update_marker.assert_called_once_with("agent-role-test", role="coder")
+
+    def test_existing_role_not_overwritten(self, tmp_path):
+        """マーカーに既存roleがある場合はtranscript解析しない"""
+        hook = self._make_hook()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:reviewer]\nReview."}}) + '\n')
+
+        marker_data = {
+            "agent_id": "agent-existing-role",
+            "agent_type": "general-purpose",
+            "session_id": "test-session",
+            "created_at": "2026-01-27T00:00:00",
+            "role": "coder",  # 既にroleがある
+            "startup_processed": False,
+            "startup_processed_at": None,
+        }
+
+        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
+            mock_instance = MockMgr.return_value
+            mock_instance.is_subagent_active.return_value = True
+            mock_instance.get_active_subagent.return_value = marker_data
+            mock_instance.is_startup_processed.return_value = False
+
+            result = hook.should_process({
+                "session_id": "test-session",
+                "transcript_path": str(transcript),
+            })
+
+        assert result is True
+        # update_markerはroleで呼ばれない（roleが既にある）
+        mock_instance.update_marker.assert_not_called()
+
+    def test_no_role_in_transcript_no_update(self, tmp_path):
+        """transcriptにROLEがない場合はupdate_marker呼ばれない"""
+        hook = self._make_hook()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({"type": "user", "message": {"content": "No role here."}}) + '\n')
+
+        marker_data = {
+            "agent_id": "agent-no-role",
+            "agent_type": "general-purpose",
+            "session_id": "test-session",
+            "created_at": "2026-01-27T00:00:00",
+            "role": None,
+            "startup_processed": False,
+            "startup_processed_at": None,
+        }
+
+        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
+            mock_instance = MockMgr.return_value
+            mock_instance.is_subagent_active.return_value = True
+            mock_instance.get_active_subagent.return_value = marker_data
+            mock_instance.is_startup_processed.return_value = False
+
+            result = hook.should_process({
+                "session_id": "test-session",
+                "transcript_path": str(transcript),
+            })
+
+        assert result is True
+        mock_instance.update_marker.assert_not_called()
+
+    def test_role_passed_to_resolve_subagent_config(self, tmp_path):
+        """解析されたroleが_resolve_subagent_configに渡される"""
+        hook = self._make_hook()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:coder]\nWork."}}) + '\n')
+
+        marker_data = {
+            "agent_id": "agent-resolve-test",
+            "agent_type": "general-purpose",
+            "session_id": "test-session",
+            "created_at": "2026-01-27T00:00:00",
+            "role": None,
+            "startup_processed": False,
+            "startup_processed_at": None,
+        }
+
+        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
+            mock_instance = MockMgr.return_value
+            mock_instance.is_subagent_active.return_value = True
+            mock_instance.get_active_subagent.return_value = marker_data
+            mock_instance.is_startup_processed.return_value = False
+
+            with patch.object(hook, '_resolve_subagent_config', return_value={"enabled": True, "messages": {}, "behavior": {}}) as mock_resolve:
+                hook.should_process({
+                    "session_id": "test-session",
+                    "transcript_path": str(transcript),
+                })
+
+            # roleがresolve_subagent_configに渡される
+            mock_resolve.assert_called_once_with("general-purpose", role="coder")

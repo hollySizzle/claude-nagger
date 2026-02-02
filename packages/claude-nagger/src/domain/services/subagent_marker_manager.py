@@ -60,6 +60,9 @@ class SubagentMarkerManager:
                 "agent_type": agent_type,
                 "session_id": self.session_id,
                 "created_at": datetime.now().isoformat(),
+                "role": None,
+                "startup_processed": False,
+                "startup_processed_at": None,
             }
 
             marker_path = self._get_marker_path(agent_id)
@@ -92,6 +95,58 @@ class SubagentMarkerManager:
                 return True  # 冪等: 既に削除済みでもTrue
         except Exception as e:
             logger.error(f"Failed to delete subagent marker: {e}")
+            return False
+
+    def update_marker(self, agent_id: str, **fields) -> bool:
+        """既存マーカーの指定フィールドを更新
+
+        Args:
+            agent_id: サブエージェントID
+            **fields: 更新するフィールド（role, startup_processed等）
+
+        Returns:
+            更新成功の場合True
+        """
+        try:
+            marker_path = self._get_marker_path(agent_id)
+            if not marker_path.exists():
+                logger.warning(f"Marker not found for update: {agent_id}")
+                return False
+
+            with open(marker_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            data.update(fields)
+
+            with open(marker_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False)
+
+            logger.debug(f"Subagent marker updated: {marker_path} fields={list(fields.keys())}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update subagent marker: {e}")
+            return False
+
+    def is_startup_processed(self, agent_id: str) -> bool:
+        """マーカーのstartup_processedフィールドを返す
+
+        Args:
+            agent_id: サブエージェントID
+
+        Returns:
+            startup処理済みの場合True
+        """
+        try:
+            marker_path = self._get_marker_path(agent_id)
+            if not marker_path.exists():
+                return False
+
+            with open(marker_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            return data.get("startup_processed", False)
+        except Exception as e:
+            logger.warning(f"Failed to read startup_processed for {agent_id}: {e}")
             return False
 
     def get_active_subagent(self) -> Optional[Dict[str, Any]]:

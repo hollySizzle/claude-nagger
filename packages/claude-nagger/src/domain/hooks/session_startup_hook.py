@@ -2,6 +2,7 @@
 
 import copy
 import json
+import re
 import sys
 import os
 import tempfile
@@ -100,73 +101,15 @@ class SessionStartupHook(BaseHook):
         marker_name = MarkerPatterns.format_session_startup(session_id)
         return temp_dir / marker_name
 
-    def _get_subagent_startup_marker_path(self, session_id: str, agent_id: str) -> Path:
-        """subagent別のstartup処理済みマーカーパスを取得
-
-        ライフサイクルマーカー（subagents/）とは別ディレクトリに配置。
-
-        Args:
-            session_id: セッションID
-            agent_id: サブエージェントID
-
-        Returns:
-            マーカーファイルのパス
-        """
-        return SubagentMarkerManager.BASE_DIR / session_id / "startup" / f"{agent_id}.json"
-
-    def _is_subagent_startup_processed(self, session_id: str, agent_id: str) -> bool:
-        """subagent別のstartup処理済み判定
-
-        Args:
-            session_id: セッションID
-            agent_id: サブエージェントID
-
-        Returns:
-            処理済みの場合True
-        """
-        marker_path = self._get_subagent_startup_marker_path(session_id, agent_id)
-        exists = marker_path.exists()
-        self.log_info(f"📋 Subagent startup marker check: {marker_path} -> {'EXISTS' if exists else 'NOT_EXISTS'}")
-        return exists
-
-    def _mark_subagent_startup_processed(self, session_id: str, agent_id: str, agent_type: str) -> bool:
-        """subagent別のstartup処理済みマーカー作成
-
-        Args:
-            session_id: セッションID
-            agent_id: サブエージェントID
-            agent_type: サブエージェント種別
-
-        Returns:
-            作成成功の場合True
-        """
-        try:
-            marker_path = self._get_subagent_startup_marker_path(session_id, agent_id)
-            marker_path.parent.mkdir(parents=True, exist_ok=True)
-
-            marker_data = {
-                "timestamp": datetime.now().isoformat(),
-                "session_id": session_id,
-                "agent_id": agent_id,
-                "agent_type": agent_type,
-                "hook_type": "session_startup_subagent",
-            }
-            with open(marker_path, "w", encoding="utf-8") as f:
-                json.dump(marker_data, f, ensure_ascii=False)
-
-            self.log_info(f"✅ Created subagent startup marker: {marker_path}")
-            return True
-        except Exception as e:
-            self.log_error(f"Failed to create subagent startup marker: {e}")
-            return False
-
-    def _resolve_subagent_config(self, agent_type: str) -> Dict[str, Any]:
+    def _resolve_subagent_config(self, agent_type: str, role: Optional[str] = None) -> Dict[str, Any]:
         """subagent種別に応じたoverride設定を解決
 
         解決順序: base → subagent_default → subagent_types.{type}
+        type解決順序: role → 完全一致agent_type → ":"区切り末尾 → 空dict
 
         Args:
             agent_type: サブエージェント種別
+            role: サブエージェントのロール（優先マッチキー）
 
         Returns:
             解決済み設定辞書
@@ -174,8 +117,12 @@ class SessionStartupHook(BaseHook):
         overrides = self.config.get("overrides", {})
         subagent_default = overrides.get("subagent_default", {})
         subagent_types = overrides.get("subagent_types", {})
-        # 完全一致 → ":"区切り末尾部分で再検索 → 空dictフォールバック
-        type_specific = subagent_types.get(agent_type)
+        # role → 完全一致 → ":"区切り末尾部分で再検索 → 空dictフォールバック
+        type_specific = None
+        if role:
+            type_specific = subagent_types.get(role)
+        if type_specific is None:
+            type_specific = subagent_types.get(agent_type)
         if type_specific is None and ":" in agent_type:
             short_name = agent_type.rsplit(":", 1)[-1]
             type_specific = subagent_types.get(short_name, {})
@@ -197,6 +144,66 @@ class SessionStartupHook(BaseHook):
 
         self.log_info(f"🔧 Resolved subagent config for '{agent_type}': enabled={resolved.get('enabled')}")
         return resolved
+
+    def _parse_role_from_transcript(self, transcript_path: str) -> Optional[str]:
+        """トランスクリプトJSONLから[ROLE:xxx]パターンを抽出
+
+        最初のuserメッセージの内容から[ROLE:xxx]を検索し、
+        マッチしたロール文字列を返す。
+
+        Args:
+            transcript_path: トランスクリプトJSONLファイルパス
+
+        Returns:
+            抽出されたロール文字列、未検出時はNone
+        """
+        if not transcript_path:
+            return None
+
+        try:
+            path = Path(transcript_path)
+            if not path.exists():
+                self.log_debug(f"Transcript file not found: {transcript_path}")
+                return None
+
+            with open(path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    try:
+                        entry = json.loads(line.strip())
+                    except json.JSONDecodeError:
+                        continue
+
+                    if entry.get('type') != 'user':
+                        continue
+
+                    # userメッセージの内容を取得
+                    message = entry.get('message', {})
+                    content = message.get('content', '')
+
+                    # contentがリストの場合（複数ブロック）はテキスト部分を結合
+                    if isinstance(content, list):
+                        text_parts = []
+                        for block in content:
+                            if isinstance(block, dict) and block.get('type') == 'text':
+                                text_parts.append(block.get('text', ''))
+                            elif isinstance(block, str):
+                                text_parts.append(block)
+                        content = '\n'.join(text_parts)
+
+                    # [ROLE:xxx]パターンを検索
+                    match = re.search(r'\[ROLE:(\w+)\]', content)
+                    if match:
+                        role = match.group(1)
+                        self.log_info(f"🏷️ Parsed role from transcript: {role}")
+                        return role
+
+                    # 最初のuserメッセージのみ検索
+                    return None
+
+        except Exception as e:
+            self.log_error(f"Error parsing role from transcript: {e}")
+
+        return None
 
     def is_session_startup_processed(self, session_id: str, input_data: Dict[str, Any] = None) -> bool:
         """
@@ -327,18 +334,28 @@ class SessionStartupHook(BaseHook):
                 agent_type = active.get("agent_type", "unknown")
                 agent_id = active.get("agent_id", "")
 
-                self.log_info(f"🤖 Subagent detected: type={agent_type}, id={agent_id}")
+                role = active.get("role")
 
-                # override設定を解決
-                resolved = self._resolve_subagent_config(agent_type)
+                # マーカーにrole未設定の場合、transcriptから[ROLE:xxx]を解析
+                if not role:
+                    transcript_path = input_data.get('transcript_path')
+                    parsed_role = self._parse_role_from_transcript(transcript_path)
+                    if parsed_role:
+                        manager.update_marker(agent_id, role=parsed_role)
+                        role = parsed_role
+
+                self.log_info(f"🤖 Subagent detected: type={agent_type}, id={agent_id}, role={role}")
+
+                # override設定を解決（role優先）
+                resolved = self._resolve_subagent_config(agent_type, role=role)
 
                 # override設定でenabled: falseの場合はスキップ
                 if not resolved.get("enabled", True):
                     self.log_info(f"❌ Subagent type '{agent_type}' is disabled by overrides")
                     return False
 
-                # subagent別処理済みチェック
-                if self._is_subagent_startup_processed(session_id, agent_id):
+                # ライフサイクルマーカーのstartup_processedフィールドで判定
+                if manager.is_startup_processed(agent_id):
                     self.log_info(f"✅ Subagent startup already processed: {agent_id}")
                     return False
 
@@ -347,6 +364,7 @@ class SessionStartupHook(BaseHook):
                 self._resolved_config = resolved
                 self._current_agent_id = agent_id
                 self._current_agent_type = agent_type
+                self._subagent_marker_manager = manager
 
                 self.log_info(f"🚀 New subagent requires startup processing: {agent_type}/{agent_id}")
                 return True
@@ -390,9 +408,11 @@ class SessionStartupHook(BaseHook):
         self.log_info(f"📋 SESSION STARTUP BLOCKING: Session '{session_id}' requires startup confirmation")
         
         if self._is_subagent:
-            # subagent: subagent別マーカーを作成
-            self._mark_subagent_startup_processed(
-                session_id, self._current_agent_id, self._current_agent_type
+            # subagent: ライフサイクルマーカーのstartup_processedを更新
+            self._subagent_marker_manager.update_marker(
+                self._current_agent_id,
+                startup_processed=True,
+                startup_processed_at=datetime.now().isoformat(),
             )
         else:
             # main agent: 既存のマーカーを作成
