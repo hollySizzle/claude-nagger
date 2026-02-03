@@ -10,6 +10,7 @@
 
 import io
 import json
+import yaml
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -21,6 +22,14 @@ from src.domain.hooks.session_startup_hook import (
     _deep_merge,
 )
 from src.domain.hooks.subagent_event_hook import main as subagent_event_main
+
+
+def _load_real_config():
+    """実config.yamlからsession_startup設定を読み込む"""
+    config_path = Path(__file__).parent.parent / ".claude-nagger" / "config.yaml"
+    with open(config_path, 'r', encoding='utf-8') as f:
+        data = yaml.safe_load(f)
+    return data.get('session_startup', {})
 
 
 # ============================================================
@@ -245,56 +254,7 @@ class TestSubagentMarkerManager:
 class TestSessionStartupHookSubagentOverride:
     """SessionStartupHookのsubagent override機構テスト"""
 
-    BASE_CONFIG = {
-        "enabled": True,
-        "messages": {
-            "first_time": {
-                "title": "プロジェクト規約",
-                "main_text": "[ ] テスト必須",
-            },
-            "repeated": {
-                "title": "継続確認",
-                "main_text": "[ ] テスト必須（再確認）",
-            },
-        },
-        "behavior": {"once_per_session": True},
-        "overrides": {
-            "subagent_default": {
-                "messages": {
-                    "first_time": {
-                        "title": "subagent規約",
-                        "main_text": "[ ] スコープ外編集禁止",
-                    }
-                }
-            },
-            "subagent_types": {
-                "Explore": {"enabled": False},
-                "Bash": {
-                    "messages": {
-                        "first_time": {
-                            "title": "Bash subagent規約",
-                            "main_text": "[ ] 破壊的コマンド禁止",
-                        }
-                    }
-                },
-                "Plan": {"enabled": False},
-                "conductor": {
-                    "messages": {
-                        "first_time": {
-                            "title": "conductor subagent規約",
-                            "main_text": (
-                                "[ ] 直接作業を実行しないこと（コード編集・ファイル操作禁止）\n"
-                                "[ ] 実作業はSubAgent（coder/tester/scribe）へ委譲すること\n"
-                                "[ ] SubAgentの成果物を必ずレビューすること\n"
-                                "[ ] 選択肢がある場合はオーナに提示すること（pro/con付き）\n"
-                                "[ ] チケットコメントに意思決定の経緯・意図を記録すること\n"
-                            ),
-                        }
-                    }
-                },
-            },
-        },
-    }
+    BASE_CONFIG = _load_real_config()
 
     def _make_hook(self, config=None):
         """テスト用hookインスタンス生成"""
@@ -309,7 +269,8 @@ class TestSessionStartupHookSubagentOverride:
 
         assert resolved["enabled"] is True
         assert resolved["messages"]["first_time"]["title"] == "subagent規約"
-        assert resolved["messages"]["first_time"]["main_text"] == "[ ] スコープ外編集禁止"
+        assert "スコープ外のファイルを編集しないこと" in resolved["messages"]["first_time"]["main_text"]
+        assert "作業完了後に結果を報告すること" in resolved["messages"]["first_time"]["main_text"]
 
     def test_resolve_subagent_config_type_specific(self):
         """subagent_typesの設定がsubagent_defaultを上書き"""
@@ -318,7 +279,7 @@ class TestSessionStartupHookSubagentOverride:
 
         assert resolved["enabled"] is True
         assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
-        assert resolved["messages"]["first_time"]["main_text"] == "[ ] 破壊的コマンド禁止"
+        assert "破壊的コマンド禁止" in resolved["messages"]["first_time"]["main_text"]
 
     def test_resolve_subagent_config_disabled(self):
         """enabled: falseの解決"""
@@ -401,7 +362,7 @@ class TestSessionStartupHookSubagentOverride:
         resolved = hook._resolve_subagent_config("Bash")
 
         assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
-        assert resolved["messages"]["first_time"]["main_text"] == "[ ] 破壊的コマンド禁止"
+        assert "破壊的コマンド禁止" in resolved["messages"]["first_time"]["main_text"]
 
     def test_resolve_namespaced_no_match_falls_back_to_default(self):
         """名前空間付きだが短いキーもマッチしない場合はsubagent_defaultにフォールバック"""
@@ -418,7 +379,7 @@ class TestSessionStartupHookSubagentOverride:
         resolved = hook._resolve_subagent_config("general-purpose", role="Bash")
 
         assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
-        assert resolved["messages"]["first_time"]["main_text"] == "[ ] 破壊的コマンド禁止"
+        assert "破壊的コマンド禁止" in resolved["messages"]["first_time"]["main_text"]
 
     def test_resolve_role_no_match_falls_back_to_agent_type(self):
         """roleがsubagent_typesに無い場合はagent_typeで解決"""
@@ -573,7 +534,7 @@ class TestSessionStartupHookProcessSubagent:
 
         assert result["decision"] == "block"
         assert "subagent規約" in result["reason"]
-        assert "スコープ外編集禁止" in result["reason"]
+        assert "スコープ外のファイルを編集しないこと" in result["reason"]
 
     def test_bash_subagent_message(self):
         """Bash subagentは種別固有メッセージを使用"""
@@ -602,7 +563,7 @@ class TestSessionStartupHookProcessSubagent:
                 result = hook.process({"session_id": "test-session"})
 
         assert result["decision"] == "block"
-        assert "プロジェクト規約" in result["reason"]
+        assert "プロジェクトセットアップ" in result["reason"]
 
     def test_subagent_updates_lifecycle_marker(self):
         """subagent処理時はライフサイクルマーカーのstartup_processedを更新"""
