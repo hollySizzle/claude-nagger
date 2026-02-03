@@ -1,0 +1,46 @@
+"""データモデル定義"""
+
+from dataclasses import dataclass
+from typing import Optional
+
+
+@dataclass
+class SubagentRecord:
+    """サブエージェント情報レコード"""
+
+    agent_id: str
+    session_id: str
+    agent_type: str
+    role: Optional[str]
+    role_source: Optional[str]
+    created_at: str
+    startup_processed: bool
+    startup_processed_at: Optional[str]
+    task_match_index: Optional[int]
+
+
+@dataclass
+class SessionRecord:
+    """セッション情報レコード"""
+
+    session_id: str
+    hook_name: str
+    created_at: str
+    last_tokens: int
+    status: str
+    expired_at: Optional[str]
+
+
+@dataclass
+class HookLogRecord:
+    """フックログレコード"""
+
+    id: int
+    session_id: str
+    hook_name: str
+    event_type: str
+    agent_id: Optional[str]
+    timestamp: str
+    result: Optional[str]
+    details: Optional[str]
+    duration_ms: Optional[int]
