@@ -81,11 +81,20 @@ class SessionStartupHook(BaseHook):
             return {}
 
     def is_session_processed_context_aware(self, session_id: str, input_data: Dict[str, Any]) -> bool:
-        """SessionStartupHookは独自のマーカー機構を使用するため、
-        BaseHookのセッションチェックをバイパスしてshould_processに委ねる。
-        subagent対応のため、常にFalseを返す。
+        """subagentアクティブ時はセッション処理済みスキップをバイパス
+        
+        base_hookのrun()はsession_idベースで処理済み判定を行うが、
+        subagentは親セッションと同一session_idを共有するため、
+        subagentのPreToolUseが誤ってスキップされる。
+        subagentマーカーが存在する場合はFalseを返し、should_process()に制御を渡す。
+        
+        TODO: base_hook.pyのセッション管理リファクタリング時に解消予定
         """
-        return False
+        manager = SubagentMarkerManager(session_id)
+        if manager.is_subagent_active():
+            self.log_info("🔀 Subagent active, bypassing session processed check")
+            return False
+        return super().is_session_processed_context_aware(session_id, input_data)
         
     def get_session_startup_marker_path(self, session_id: str) -> Path:
         """
@@ -148,8 +157,9 @@ class SessionStartupHook(BaseHook):
     def _parse_role_from_transcript(self, transcript_path: str) -> Optional[str]:
         """トランスクリプトJSONLから[ROLE:xxx]パターンを抽出
 
-        最初のuserメッセージの内容から[ROLE:xxx]を検索し、
-        マッチしたロール文字列を返す。
+        2つのパターンを検索:
+        1. 最初のuserメッセージ（subagent自身のtranscript）
+        2. 最後のTask tool_useのprompt（親セッションtranscript）
 
         Args:
             transcript_path: トランスクリプトJSONLファイルパス
@@ -166,6 +176,10 @@ class SessionStartupHook(BaseHook):
                 self.log_debug(f"Transcript file not found: {transcript_path}")
                 return None
 
+            role_from_user = None
+            role_from_task = None
+            first_user_seen = False
+
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
                     try:
@@ -173,32 +187,48 @@ class SessionStartupHook(BaseHook):
                     except json.JSONDecodeError:
                         continue
 
-                    if entry.get('type') != 'user':
-                        continue
+                    entry_type = entry.get('type', '')
 
-                    # userメッセージの内容を取得
-                    message = entry.get('message', {})
-                    content = message.get('content', '')
+                    # パターン1: 最初のuserメッセージ
+                    if entry_type == 'user' and not first_user_seen:
+                        first_user_seen = True
+                        message = entry.get('message', {})
+                        content = message.get('content', '')
 
-                    # contentがリストの場合（複数ブロック）はテキスト部分を結合
-                    if isinstance(content, list):
-                        text_parts = []
-                        for block in content:
-                            if isinstance(block, dict) and block.get('type') == 'text':
-                                text_parts.append(block.get('text', ''))
-                            elif isinstance(block, str):
-                                text_parts.append(block)
-                        content = '\n'.join(text_parts)
+                        # contentがリストの場合（複数ブロック）はテキスト部分を結合
+                        if isinstance(content, list):
+                            text_parts = []
+                            for block in content:
+                                if isinstance(block, dict) and block.get('type') == 'text':
+                                    text_parts.append(block.get('text', ''))
+                                elif isinstance(block, str):
+                                    text_parts.append(block)
+                            content = '\n'.join(text_parts)
 
-                    # [ROLE:xxx]パターンを検索
-                    match = re.search(r'\[ROLE:(\w+)\]', content)
-                    if match:
-                        role = match.group(1)
-                        self.log_info(f"🏷️ Parsed role from transcript: {role}")
-                        return role
+                        match = re.search(r'\[ROLE:(\w+)\]', content)
+                        if match:
+                            role_from_user = match.group(1)
 
-                    # 最初のuserメッセージのみ検索
-                    return None
+                    # パターン2: assistant内のTask tool_use prompt
+                    if entry_type == 'assistant':
+                        message = entry.get('message', {})
+                        content = message.get('content', [])
+                        if isinstance(content, list):
+                            for block in content:
+                                if (isinstance(block, dict)
+                                    and block.get('type') == 'tool_use'
+                                    and block.get('name') == 'Task'):
+                                    prompt = block.get('input', {}).get('prompt', '')
+                                    match = re.search(r'\[ROLE:(\w+)\]', prompt)
+                                    if match:
+                                        role_from_task = match.group(1)
+
+            # userメッセージ優先（subagent自身のtranscriptの場合）
+            # Task tool_useはフォールバック（親transcriptの場合）
+            result = role_from_user or role_from_task
+            if result:
+                self.log_info(f"🏷️ Parsed role from transcript: {result}")
+            return result
 
         except Exception as e:
             self.log_error(f"Error parsing role from transcript: {e}")

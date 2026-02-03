@@ -23,8 +23,9 @@ _logger = StructuredLogger(name="SubagentEventHook", log_dir=DEFAULT_LOG_DIR)
 def _parse_role_from_transcript(transcript_path: str) -> Optional[str]:
     """トランスクリプトJSONLから[ROLE:xxx]パターンを抽出
 
-    最初のuserメッセージの内容から[ROLE:xxx]を検索し、
-    マッチしたロール文字列を返す。
+    2つのパターンを検索:
+    1. 最初のuserメッセージ（subagent自身のtranscript）
+    2. 最後のTask tool_useのprompt（親セッションtranscript）
 
     Args:
         transcript_path: トランスクリプトJSONLファイルパス
@@ -41,6 +42,10 @@ def _parse_role_from_transcript(transcript_path: str) -> Optional[str]:
             _logger.debug(f"Transcript file not found: {transcript_path}")
             return None
 
+        role_from_user = None
+        role_from_task = None
+        first_user_seen = False
+
         with open(path, 'r', encoding='utf-8') as f:
             for line in f:
                 try:
@@ -48,32 +53,48 @@ def _parse_role_from_transcript(transcript_path: str) -> Optional[str]:
                 except json.JSONDecodeError:
                     continue
 
-                if entry.get('type') != 'user':
-                    continue
+                entry_type = entry.get('type', '')
 
-                # userメッセージの内容を取得
-                message = entry.get('message', {})
-                content = message.get('content', '')
+                # パターン1: 最初のuserメッセージ
+                if entry_type == 'user' and not first_user_seen:
+                    first_user_seen = True
+                    message = entry.get('message', {})
+                    content = message.get('content', '')
 
-                # contentがリストの場合（複数ブロック）はテキスト部分を結合
-                if isinstance(content, list):
-                    text_parts = []
-                    for block in content:
-                        if isinstance(block, dict) and block.get('type') == 'text':
-                            text_parts.append(block.get('text', ''))
-                        elif isinstance(block, str):
-                            text_parts.append(block)
-                    content = '\n'.join(text_parts)
+                    # contentがリストの場合（複数ブロック）はテキスト部分を結合
+                    if isinstance(content, list):
+                        text_parts = []
+                        for block in content:
+                            if isinstance(block, dict) and block.get('type') == 'text':
+                                text_parts.append(block.get('text', ''))
+                            elif isinstance(block, str):
+                                text_parts.append(block)
+                        content = '\n'.join(text_parts)
 
-                # [ROLE:xxx]パターンを検索
-                match = re.search(r'\[ROLE:(\w+)\]', content)
-                if match:
-                    role = match.group(1)
-                    _logger.info(f"Parsed role from transcript: {role}")
-                    return role
+                    match = re.search(r'\[ROLE:(\w+)\]', content)
+                    if match:
+                        role_from_user = match.group(1)
 
-                # 最初のuserメッセージのみ検索
-                return None
+                # パターン2: assistant内のTask tool_use prompt
+                if entry_type == 'assistant':
+                    message = entry.get('message', {})
+                    content = message.get('content', [])
+                    if isinstance(content, list):
+                        for block in content:
+                            if (isinstance(block, dict)
+                                and block.get('type') == 'tool_use'
+                                and block.get('name') == 'Task'):
+                                prompt = block.get('input', {}).get('prompt', '')
+                                match = re.search(r'\[ROLE:(\w+)\]', prompt)
+                                if match:
+                                    role_from_task = match.group(1)
+
+        # userメッセージ優先（subagent自身のtranscriptの場合）
+        # Task tool_useはフォールバック（親transcriptの場合）
+        result = role_from_user or role_from_task
+        if result:
+            _logger.info(f"Parsed role from transcript: {result}")
+        return result
 
     except Exception as e:
         _logger.error(f"Error parsing role from transcript: {e}")
