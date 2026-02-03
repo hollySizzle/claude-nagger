@@ -144,3 +144,23 @@ tests/fixtures/claude_code/
 | #5332 | test_base_hook.py等 | 例外ログ出力 |
 | #5778 | test_base_hook.py | output_response()非PreToolUse分岐 |
 | #5779 | test_hook_schema_validation.py, test_subagent_override.py | 名前空間マッチング |
+| #5862 | test_subagent_override.py | is_session_processed_context_aware無条件バイパス、マーカー状態別検証 |
+
+## テストアンチパターン
+
+### AP-1: should_process()直接呼び出しのみのテスト
+
+**問題**: `should_process()` を直接呼び出すテストは、`run()` メソッド内のガード条件（`is_session_processed_context_aware`, `should_skip_by_permission_mode` 等）を検証できない。実環境では `run()` が呼ばれるため、ガード条件で早期リターンし `should_process()` に到達しないケースを見逃す。
+
+**事例**: issue #5862 - `is_session_processed_context_aware` の条件付きバイパスが実環境で機能せず、テスト全824件パスしたが実環境で失敗。
+
+**対策**: セッションマーカー存在状態での `run()` 経由フルパステストを必須とする。特に以下の組み合わせ:
+- セッションマーカー存在 + subagentマーカー存在
+- セッションマーカー存在 + subagentマーカー非存在
+- セッションマーカー非存在（初回）
+
+### AP-2: hook間連携のモック過剰使用
+
+**問題**: SubagentStart → PreToolUse 間のデータフローをテストする際、マーカーを手動作成してSubagentStart処理をスキップすると、実際のhook間連携パスが未検証になる。
+
+**対策**: `TestCrossHookRolePropagation` のように、SubagentStart処理（`subagent_event_main()`）を実行してマーカーを作成し、その後PreToolUseの `should_process()` を呼ぶ連携テストを必須とする。

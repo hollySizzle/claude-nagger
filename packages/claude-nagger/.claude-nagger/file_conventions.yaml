@@ -51,3 +51,11 @@ rules:
       conftest.py編集時の確認事項:
       - 全テストへの影響範囲を把握しているか
       - 共通フィクスチャの変更は後方互換性を維持しているか
+
+  - name: "フック開発規約"
+    patterns:
+      - "**/src/domain/hooks/*.py"
+    severity: "block"
+    token_threshold: 20000
+    message: |
+      作業を継続するためには、docs/rules/claude_code_hook_testing.yaml を熟読し遵守することを宣言してください

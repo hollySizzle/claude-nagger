@@ -15,12 +15,24 @@ rules:
     - 手作りモックによる入力データ偽装（実データキャプチャ使用）
     - APIキー・パスワード等の秘密情報をフィクスチャに含める
     - /Users/{実ユーザー名}等の個人情報をフィクスチャに含める
+    - SubagentStartマーカーの即時参照を前提とした設計禁止（SubagentStartはfire-and-forget、マーカー作成完了前にPreToolUseが発火し得る）
 
   should:
     - 空出力許可（処理対象外スキップケース）
     - バージョンアップ時は新データを再キャプチャ
     - テストクラス名はTest{機能名}形式
     - コメントは日本語推奨
+
+hook_api_constraints:
+  SubagentStart:
+    execution_model: fire-and-forget（非同期・決定制御なし）
+    implication: マーカー作成完了がPreToolUse発火前に保証されない
+    prohibited_pattern: SubagentStartで作成したマーカーをPreToolUseのガード条件に使用
+    correct_pattern: should_process()内で遅延チェック、または無条件バイパスで対応
+    reference: "issue #5862 - is_session_processed_context_awareのレースコンディション"
+  SubagentStop:
+    execution_model: 同期（決定制御あり - block可能）
+    implication: マーカー削除はSubagentStop完了後に保証される
 
 output_schema:
   required:
