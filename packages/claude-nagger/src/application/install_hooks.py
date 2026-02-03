@@ -62,32 +62,79 @@ session_startup:
         プロジェクトの規約を確認してください
       severity: "block"
     # 継続セッション用（token_threshold超過時に表示）
-    # repeated:
-    #   title: "規約再確認"
-    #   main_text: |
-    #     規約を再確認してください
-    #   severity: "block"
+    repeated:
+      title: "規約再確認"
+      main_text: |
+        規約を再確認してください
+      severity: "block"
 
-    # subagent別override設定（subagent自身に直接ブロッキング通知される）
-    # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
-    # 解決順序: base(上記) → subagent_default → subagent_types.{type}
-    # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
-    # overrides:
-    #   subagent_default:
-    #     messages:
-    #       first_time:
-    #         title: "subagent規約"
-    #         main_text: |
-    #           [ ] スコープ外のファイルを編集しないこと
-    #   subagent_types:
-    #     coder:
-    #       messages:
-    #         first_time:
-    #           title: "coder subagent規約"
-    #           main_text: |
-    #             [ ] 指示されたスコープ外のファイルを編集しないこと
-    #     Explore:
-    #       enabled: false
+  # subagent別override設定（subagent自身に直接ブロッキング通知される）
+  # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
+  # 解決順序: base(上記) → subagent_default → subagent_types.{type}
+  # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
+  overrides:
+    subagent_default:
+      messages:
+        first_time:
+          title: "subagent規約"
+          main_text: |
+            [ ] スコープ外のファイルを編集しないこと
+            [ ] 作業完了後に結果を報告すること
+    subagent_types:
+      Explore:
+        enabled: false
+      Plan:
+        enabled: false
+      Bash:
+        messages:
+          first_time:
+            title: "Bash subagent規約"
+            main_text: |
+              [ ] 破壊的コマンド禁止
+      scribe:
+        messages:
+          first_time:
+            title: "scribe subagent規約"
+            main_text: |
+              基本規約:
+              [ ] 指定された操作のみ行うこと
+              [ ] スコープ外の操作は行わないこと
+              報告規約:
+              [ ] 作業完了後に結果を報告すること
+              [ ] コメント冒頭に [scribe] プレフィックスを付けること
+      tester:
+        messages:
+          first_time:
+            title: "tester subagent規約"
+            main_text: |
+              基本規約:
+              [ ] 仕様からテストを設計すること（実装詳細に依存しない）
+              [ ] コードを編集しないこと（Read専用）
+              [ ] テスト失敗時に自分で修正しないこと
+              報告規約:
+              [ ] テスト結果を報告すること
+              [ ] 失敗時は期待動作 vs 実際の動作を明記すること
+              [ ] コメント冒頭に [tester] プレフィックスを付けること
+      coder:
+        messages:
+          first_time:
+            title: "coder subagent規約"
+            main_text: |
+              基本規約:
+              [ ] 指示されたスコープ外のファイルを編集しないこと
+              [ ] 判断が必要な場合は実装せず報告すること
+              [ ] テストがあれば実行してから完了報告すること
+              報告規約:
+              [ ] 完了時に変更内容・懸念事項を報告すること
+              [ ] コメント冒頭に [coder] プレフィックスを付けること
+      conductor:
+        messages:
+          first_time:
+            title: "conductor subagent規約"
+            main_text: |
+              [ ] 直接作業を実行しないこと（コード編集・ファイル操作禁止）
+              [ ] 実作業はSubAgent（coder/tester/scribe）へ委譲すること
+              [ ] SubAgentの成果物を必ずレビューすること
 
 # コンテキスト管理設定
 context_management:
