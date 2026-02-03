@@ -8,6 +8,7 @@ rules:
     - 新規フック作成時は結合テスト必須（subprocess実行確認）
     - フィクスチャはコミット前にサニタイズ必須
     - テストはpytest形式で記述
+    - 複数hookイベント間でデータを受け渡すフローには連携テスト必須
 
   must_not:
     - 未サニタイズフィクスチャのコミット
@@ -38,6 +39,8 @@ fixture_management:
   directory_structure:
     pre_tool_use/: PreToolUseイベントのフィクスチャ
     post_tool_use/: PostToolUseイベントのフィクスチャ
+    subagent_start/: SubagentStartイベントのフィクスチャ
+    subagent_stop/: SubagentStopイベントのフィクスチャ
     "{event}/{tool}/": ツール種別ごとにサブディレクトリ
 
   sanitize_targets:
