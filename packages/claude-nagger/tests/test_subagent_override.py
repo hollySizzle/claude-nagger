@@ -421,6 +421,68 @@ class TestSessionStartupHookSubagentOverride:
         assert result is False
 
 
+class TestIsSessionProcessedContextAwareBypass:
+    """is_session_processed_context_awareが常にFalseを返し、run()のセッションチェックをバイパスするテスト
+
+    根拠: SessionStartupHookはshould_process()内に独自の重複排除ロジックを持つため、
+    BaseHookのセッション処理済みチェックは常にバイパスする必要がある。
+    SubagentStartはfire-and-forget(非同期)のため、マーカー依存の条件付きバイパスは
+    レースコンディションを引き起こす(issue #5862)。
+    """
+
+    BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
+
+    def _make_hook(self, config=None):
+        config = config if config is not None else self.BASE_CONFIG
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            return SessionStartupHook()
+
+    def test_always_false_without_markers(self):
+        """マーカーなし状態で常にFalse"""
+        hook = self._make_hook()
+        result = hook.is_session_processed_context_aware("session-123", {})
+        assert result is False
+
+    def test_always_false_with_session_marker(self):
+        """セッションマーカー存在時でもFalse（BaseHookのチェックをバイパス）"""
+        hook = self._make_hook()
+        # BaseHookのセッションマーカーを作成
+        hook.mark_session_processed("session-with-marker", context_tokens=1000)
+        try:
+            # SessionStartupHookのオーバーライドは常にFalse
+            result = hook.is_session_processed_context_aware("session-with-marker", {})
+            assert result is False
+        finally:
+            # マーカー削除
+            marker_path = hook.get_session_marker_path("session-with-marker")
+            if marker_path.exists():
+                marker_path.unlink()
+
+    def test_always_false_with_subagent_marker(self, tmp_path):
+        """subagentマーカー存在時でもFalse"""
+        hook = self._make_hook()
+        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
+            mgr = SubagentMarkerManager("session-sub")
+            mgr.create_marker("agent-abc", "general-purpose")
+            result = hook.is_session_processed_context_aware("session-sub", {})
+            assert result is False
+
+    def test_always_false_with_both_markers(self, tmp_path):
+        """セッションマーカー + subagentマーカー両方存在時でもFalse"""
+        hook = self._make_hook()
+        hook.mark_session_processed("session-both", context_tokens=500)
+        try:
+            with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
+                mgr = SubagentMarkerManager("session-both")
+                mgr.create_marker("agent-xyz", "general-purpose")
+                result = hook.is_session_processed_context_aware("session-both", {})
+                assert result is False
+        finally:
+            marker_path = hook.get_session_marker_path("session-both")
+            if marker_path.exists():
+                marker_path.unlink()
+
+
 class TestSessionStartupHookShouldProcessSubagent:
     """should_processのsubagent検出テスト"""
 

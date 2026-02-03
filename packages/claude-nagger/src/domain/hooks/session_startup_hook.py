@@ -81,20 +81,15 @@ class SessionStartupHook(BaseHook):
             return {}
 
     def is_session_processed_context_aware(self, session_id: str, input_data: Dict[str, Any]) -> bool:
-        """subagentアクティブ時はセッション処理済みスキップをバイパス
-        
-        base_hookのrun()はsession_idベースで処理済み判定を行うが、
-        subagentは親セッションと同一session_idを共有するため、
-        subagentのPreToolUseが誤ってスキップされる。
-        subagentマーカーが存在する場合はFalseを返し、should_process()に制御を渡す。
-        
-        TODO: base_hook.pyのセッション管理リファクタリング時に解消予定
+        """SessionStartupHookは独自のセッション管理機構(should_process内)を使用するため、
+        BaseHookのセッション処理済みチェックを常にバイパスしてshould_processに委ねる。
+
+        理由:
+        - should_process()内にis_session_startup_processed()による独自の重複排除ロジックがある
+        - subagentは親セッションと同一session_idを共有するため、BaseHookの判定では誤スキップが発生
+        - SubagentStartはfire-and-forget(非同期)のため、マーカー依存の条件付きバイパスはレースコンディションを引き起こす
         """
-        manager = SubagentMarkerManager(session_id)
-        if manager.is_subagent_active():
-            self.log_info("🔀 Subagent active, bypassing session processed check")
-            return False
-        return super().is_session_processed_context_aware(session_id, input_data)
+        return False
         
     def get_session_startup_marker_path(self, session_id: str) -> Path:
         """
