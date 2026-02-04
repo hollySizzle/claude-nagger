@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,8 +9,9 @@ from typing import List, Optional
 
 from domain.models.records import SubagentRecord
 from infrastructure.db.nagger_state_db import NaggerStateDB
+from shared.structured_logging import DEFAULT_LOG_DIR, StructuredLogger
 
-_logger = logging.getLogger(__name__)
+_logger = StructuredLogger(name="SubagentRepository", log_dir=DEFAULT_LOG_DIR)
 
 
 class SubagentRepository:
