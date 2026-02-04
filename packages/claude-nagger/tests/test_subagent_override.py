@@ -673,7 +673,7 @@ class TestShouldProcessRoleParsing:
             return SessionStartupHook()
 
     def test_role_parsed_and_stored_in_db(self, tmp_path):
-        """transcript解析でroleがDBに保存される"""
+        """transcript解析でroleがDBに保存される（retry_matchがNoneの場合のフォールバック）"""
         hook = self._make_hook()
 
         # トランスクリプトファイル作成
@@ -691,6 +691,8 @@ class TestShouldProcessRoleParsing:
         mock_record.agent_id = "agent-role-test"
         mock_record.role = None
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # retry_matchがNoneを返す（フォールバックテスト）
+        mock_subagent_repo.retry_match_from_agent_progress.return_value = None
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -736,7 +738,7 @@ class TestShouldProcessRoleParsing:
         mock_subagent_repo.update_role.assert_not_called()
 
     def test_no_role_in_transcript_no_update(self, tmp_path):
-        """transcriptにROLEがない場合はupdate_role呼ばれない"""
+        """transcriptにROLEがない場合はupdate_role呼ばれない（retry_matchもNone）"""
         hook = self._make_hook()
 
         transcript = tmp_path / "transcript.jsonl"
@@ -753,6 +755,8 @@ class TestShouldProcessRoleParsing:
         mock_record.agent_id = "agent-no-role"
         mock_record.role = None
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # retry_matchもNoneを返す
+        mock_subagent_repo.retry_match_from_agent_progress.return_value = None
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -766,7 +770,7 @@ class TestShouldProcessRoleParsing:
         mock_subagent_repo.update_role.assert_not_called()
 
     def test_role_passed_to_resolve_subagent_config(self, tmp_path):
-        """解析されたroleが_resolve_subagent_configに渡される"""
+        """解析されたroleが_resolve_subagent_configに渡される（retry_matchがNoneでフォールバック時）"""
         hook = self._make_hook()
 
         transcript = tmp_path / "transcript.jsonl"
@@ -783,6 +787,8 @@ class TestShouldProcessRoleParsing:
         mock_record.agent_id = "agent-resolve-test"
         mock_record.role = None
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # retry_matchがNoneを返す（フォールバックテスト）
+        mock_subagent_repo.retry_match_from_agent_progress.return_value = None
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -795,3 +801,292 @@ class TestShouldProcessRoleParsing:
 
                     # roleがresolve_subagent_configに渡される
                     mock_resolve.assert_called_once_with("general-purpose", role="coder")
+
+
+# ============================================================
+# 案D簡易版（ハイブリッドアプローチ）テスト (#5947)
+# ============================================================
+
+class TestRetryMatchFromAgentProgress:
+    """retry_match_from_agent_progressのユニットテスト"""
+
+    def test_successful_retry_match(self, tmp_path):
+        """agent_progressからの再マッチが成功するケース"""
+        from src.infrastructure.db.nagger_state_db import NaggerStateDB
+        from src.infrastructure.db.subagent_repository import SubagentRepository
+
+        # tmp_path配下のDBファイルを使用
+        db_path = tmp_path / "state.db"
+        db = NaggerStateDB(db_path)
+        repo = SubagentRepository(db)
+
+        session_id = "test-session"
+        agent_id = "agent-retry-test"
+        tool_use_id = "toolu_01ABC"
+
+        # subagentを登録（role=NULLで）
+        repo.register(agent_id, session_id, "general-purpose", role=None)
+
+        # task_spawnを登録（role付き）
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (session_id, 1, "general-purpose", "coder", "hash123", tool_use_id),
+        )
+        db.conn.commit()
+
+        # agent_progressを含むtranscriptを作成
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id,
+                "data": {
+                    "type": "agent_progress",
+                    "agentId": agent_id,
+                }
+            }) + '\n')
+
+        # 再マッチ試行
+        result = repo.retry_match_from_agent_progress(session_id, agent_id, str(transcript))
+
+        assert result == "coder"
+
+        # subagentのroleが更新されたか確認
+        record = repo.get(agent_id)
+        assert record.role == "coder"
+        assert record.role_source == "retry_match"
+
+        db.close()
+
+    def test_no_agent_progress_returns_none(self, tmp_path):
+        """agent_progressがない場合はNoneを返す"""
+        from src.infrastructure.db.nagger_state_db import NaggerStateDB
+        from src.infrastructure.db.subagent_repository import SubagentRepository
+
+        db_path = tmp_path / "state.db"
+        db = NaggerStateDB(db_path)
+        repo = SubagentRepository(db)
+
+        session_id = "test-session"
+        agent_id = "agent-no-progress"
+
+        repo.register(agent_id, session_id, "general-purpose", role=None)
+
+        # agent_progressのないtranscript
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({"type": "user", "message": {"content": "Hello"}}) + '\n')
+
+        result = repo.retry_match_from_agent_progress(session_id, agent_id, str(transcript))
+        assert result is None
+
+        db.close()
+
+    def test_no_matching_task_spawn_returns_none(self, tmp_path):
+        """task_spawnが見つからない場合はNoneを返す"""
+        from src.infrastructure.db.nagger_state_db import NaggerStateDB
+        from src.infrastructure.db.subagent_repository import SubagentRepository
+
+        db_path = tmp_path / "state.db"
+        db = NaggerStateDB(db_path)
+        repo = SubagentRepository(db)
+
+        session_id = "test-session"
+        agent_id = "agent-no-task-spawn"
+        tool_use_id = "toolu_01XYZ"
+
+        repo.register(agent_id, session_id, "general-purpose", role=None)
+
+        # agent_progressはあるがtask_spawnがない
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id,
+                "data": {
+                    "type": "agent_progress",
+                    "agentId": agent_id,
+                }
+            }) + '\n')
+
+        result = repo.retry_match_from_agent_progress(session_id, agent_id, str(transcript))
+        assert result is None
+
+        db.close()
+
+    def test_already_matched_task_spawn_returns_none(self, tmp_path):
+        """既に他のagentにマッチ済みのtask_spawnはNoneを返す"""
+        from src.infrastructure.db.nagger_state_db import NaggerStateDB
+        from src.infrastructure.db.subagent_repository import SubagentRepository
+
+        db_path = tmp_path / "state.db"
+        db = NaggerStateDB(db_path)
+        repo = SubagentRepository(db)
+
+        session_id = "test-session"
+        agent_id = "agent-late"
+        other_agent_id = "agent-early"
+        tool_use_id = "toolu_01MATCHED"
+
+        repo.register(agent_id, session_id, "general-purpose", role=None)
+
+        # 既にマッチ済みのtask_spawn
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, matched_agent_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+            """,
+            (session_id, 1, "general-purpose", "coder", "hash123", tool_use_id, other_agent_id),
+        )
+        db.conn.commit()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id,
+                "data": {
+                    "type": "agent_progress",
+                    "agentId": agent_id,
+                }
+            }) + '\n')
+
+        result = repo.retry_match_from_agent_progress(session_id, agent_id, str(transcript))
+        assert result is None
+
+        db.close()
+
+
+class TestShouldProcessRetryMatch:
+    """should_processでのretry_match統合テスト"""
+
+    BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
+
+    def _make_hook(self, config=None):
+        config = config if config is not None else self.BASE_CONFIG
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            return SessionStartupHook()
+
+    def test_retry_match_called_when_role_is_none(self, tmp_path):
+        """role=Noneの場合にretry_match_from_agent_progressが呼ばれる"""
+        hook = self._make_hook()
+
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text("")
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-retry"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        mock_subagent_repo.retry_match_from_agent_progress.return_value = "coder"
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "transcript_path": str(transcript),
+                    })
+
+        assert result is True
+        mock_subagent_repo.retry_match_from_agent_progress.assert_called_once_with(
+            "test-session", "agent-retry", str(transcript)
+        )
+        # retry_matchが成功したのでupdate_roleは呼ばれない
+        mock_subagent_repo.update_role.assert_not_called()
+
+    def test_fallback_to_transcript_parse_when_retry_fails(self, tmp_path):
+        """retry_matchが失敗した場合はtranscript解析にフォールバック"""
+        hook = self._make_hook()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:reviewer]\nReview."}}) + '\n')
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-fallback"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        mock_subagent_repo.retry_match_from_agent_progress.return_value = None
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "transcript_path": str(transcript),
+                    })
+
+        assert result is True
+        # retry_matchが失敗したのでtranscript解析でupdate_roleが呼ばれる
+        mock_subagent_repo.update_role.assert_called_once_with("agent-fallback", "reviewer", "transcript_parse")
+
+    def test_retry_match_not_called_when_role_exists(self, tmp_path):
+        """既にroleがある場合はretry_matchが呼ばれない"""
+        hook = self._make_hook()
+
+        transcript = tmp_path / "transcript.jsonl"
+        transcript.write_text("")
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-has-role"
+        mock_record.role = "coder"  # 既にroleがある
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "transcript_path": str(transcript),
+                    })
+
+        assert result is True
+        mock_subagent_repo.retry_match_from_agent_progress.assert_not_called()
+
+    def test_retry_match_not_called_without_transcript_path(self):
+        """transcript_pathがない場合はretry_matchが呼ばれない"""
+        hook = self._make_hook()
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-no-transcript"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        # transcript_pathなし
+                    })
+
+        assert result is True
+        mock_subagent_repo.retry_match_from_agent_progress.assert_not_called()

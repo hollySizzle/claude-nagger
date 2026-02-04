@@ -644,3 +644,77 @@ class SubagentRepository:
         deleted_count = cursor.rowcount
         self._db.conn.commit()
         return deleted_count
+
+    # === 案D簡易版（ハイブリッドアプローチ） ===
+    def retry_match_from_agent_progress(
+        self, session_id: str, agent_id: str, transcript_path: str
+    ) -> Optional[str]:
+        """PreToolUse時にrole=NULLのsubagentに対してagent_progressベースの再マッチを試行
+
+        SubagentStart時点ではagent_progressが未書き込みのため、最初のsubagentでマッチ失敗する。
+        PreToolUse時点ではagent_progressが存在するため、Claim時に再マッチを試行する。
+
+        Args:
+            session_id: セッションID
+            agent_id: subagentのagent_id
+            transcript_path: 親transcriptパス
+
+        Returns:
+            マッチしたrole（存在しない場合None）
+        """
+        _logger.info(f"retry_match_from_agent_progress: agent_id={agent_id}, transcript_path={transcript_path}")
+
+        # 1. find_parent_tool_use_id()でparentToolUseIDを取得
+        parent_tool_use_id = self.find_parent_tool_use_id(transcript_path, agent_id)
+        if not parent_tool_use_id:
+            _logger.info("retry_match: No parentToolUseID found in agent_progress")
+            return None
+
+        _logger.info(f"retry_match: Found parentToolUseID={parent_tool_use_id}")
+
+        # 2. find_task_spawn_by_tool_use_id()でtask_spawnを検索
+        task_spawn = self.find_task_spawn_by_tool_use_id(parent_tool_use_id)
+        if not task_spawn:
+            _logger.info("retry_match: No task_spawn found for tool_use_id")
+            return None
+
+        matched_role = task_spawn.get("role")
+        if not matched_role:
+            _logger.info("retry_match: task_spawn has no role")
+            return None
+
+        task_id = task_spawn.get("id")
+        transcript_index = task_spawn.get("transcript_index")
+
+        _logger.info(f"retry_match: Found task_spawn with role={matched_role}, id={task_id}")
+
+        # 3. マッチしたらsubagentsテーブルのroleを更新
+        self._db.conn.execute("BEGIN EXCLUSIVE")
+        try:
+            # task_spawnsをマッチ済みに更新（まだ未マッチの場合のみ）
+            cursor = self._db.conn.execute(
+                "UPDATE task_spawns SET matched_agent_id = ? WHERE id = ? AND matched_agent_id IS NULL",
+                (agent_id, task_id),
+            )
+            if cursor.rowcount == 0:
+                # 既に他のagentにマッチ済み
+                self._db.conn.commit()
+                _logger.info("retry_match: task_spawn already matched to another agent")
+                return None
+
+            # subagentsのroleを更新
+            self._db.conn.execute(
+                """
+                UPDATE subagents
+                SET role = ?, role_source = 'retry_match', task_match_index = ?
+                WHERE agent_id = ?
+                """,
+                (matched_role, transcript_index, agent_id),
+            )
+
+            self._db.conn.commit()
+            _logger.info(f"retry_match: Successfully updated role to {matched_role}")
+            return matched_role
+        except Exception:
+            self._db.conn.rollback()
+            raise

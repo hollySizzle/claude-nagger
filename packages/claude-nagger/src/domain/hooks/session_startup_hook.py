@@ -276,13 +276,24 @@ class SessionStartupHook(BaseHook):
             agent_id = record.agent_id
             role = record.role
 
-            # roleがない場合はtranscriptから解析
+            # roleがない場合: 案D簡易版（ハイブリッドアプローチ）
+            # SubagentStart時点でagent_progressが未書き込みのため、PreToolUse時に再マッチを試行
             if not role:
                 transcript_path = input_data.get('transcript_path')
-                parsed_role = self._parse_role_from_transcript(transcript_path)
-                if parsed_role:
-                    subagent_repo.update_role(agent_id, parsed_role, 'transcript_parse')
-                    role = parsed_role
+                if transcript_path:
+                    # agent_progressベースの再マッチを試行
+                    retry_role = subagent_repo.retry_match_from_agent_progress(
+                        session_id, agent_id, transcript_path
+                    )
+                    if retry_role:
+                        self.log_info(f"🔄 Retry match succeeded: role={retry_role}")
+                        role = retry_role
+                    else:
+                        # フォールバック: transcriptから解析
+                        parsed_role = self._parse_role_from_transcript(transcript_path)
+                        if parsed_role:
+                            subagent_repo.update_role(agent_id, parsed_role, 'transcript_parse')
+                            role = parsed_role
 
             self.log_info(f"🤖 Subagent detected: type={agent_type}, id={agent_id}, role={role}")
 
