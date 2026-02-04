@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,6 +10,8 @@ from typing import List, Optional
 
 from domain.models.records import SubagentRecord
 from infrastructure.db.nagger_state_db import NaggerStateDB
+
+_logger = logging.getLogger(__name__)
 
 
 class SubagentRepository:
@@ -191,10 +194,13 @@ class SubagentRepository:
         Returns:
             parentToolUseID（存在しない場合None）
         """
+        _logger.info(f"find_parent_tool_use_id: searching for agent_id={agent_id} in {transcript_path}")
         path = Path(transcript_path)
         if not path.exists():
+            _logger.info(f"find_parent_tool_use_id: transcript_path does not exist")
             return None
 
+        agent_progress_count = 0
         with open(path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -210,6 +216,8 @@ class SubagentRepository:
                 if entry.get("type") != "agent_progress":
                     continue
 
+                agent_progress_count += 1
+
                 # agentIdが一致するか確認
                 if entry.get("agentId") != agent_id:
                     continue
@@ -217,8 +225,10 @@ class SubagentRepository:
                 # parentToolUseIDを返す
                 parent_tool_use_id = entry.get("parentToolUseID")
                 if parent_tool_use_id:
+                    _logger.info(f"find_parent_tool_use_id: found {agent_progress_count} agent_progress entries, match found")
                     return parent_tool_use_id
 
+        _logger.info(f"find_parent_tool_use_id: found {agent_progress_count} agent_progress entries, no match")
         return None
 
     def match_task_to_agent(
@@ -258,11 +268,15 @@ class SubagentRepository:
             マッチしたrole（存在しない場合None）
         """
         # Step 0: agent_progressベースの正確なマッチング（issue_5947）
+        _logger.info(f"match_task_to_agent: agent_id={agent_id}, transcript_path={transcript_path}")
         if transcript_path:
             parent_tool_use_id = self.find_parent_tool_use_id(transcript_path, agent_id)
+            _logger.info(f"find_parent_tool_use_id result: {parent_tool_use_id}")
             if parent_tool_use_id:
                 task_spawn = self.find_task_spawn_by_tool_use_id(parent_tool_use_id)
+                _logger.info(f"find_task_spawn_by_tool_use_id result: {task_spawn}")
                 if task_spawn and task_spawn.get("matched_agent_id") is None:
+                    _logger.info(f"Exact match success: role={task_spawn.get('role')}")
                     matched_role = task_spawn.get("role")
                     task_id = task_spawn.get("id")
                     transcript_index = task_spawn.get("transcript_index")
@@ -291,8 +305,15 @@ class SubagentRepository:
                     except Exception:
                         self._db.conn.rollback()
                         raise
+                else:
+                    _logger.info(f"Exact match failed: task_spawn={task_spawn}")
+            else:
+                _logger.info("No agent_progress found, falling back")
+        else:
+            _logger.info("No transcript_path, falling back")
 
         # フォールバック: 従来のマッチングロジック
+        _logger.info("Fallback matching started")
         self._db.conn.execute("BEGIN EXCLUSIVE")
         try:
             row = None
