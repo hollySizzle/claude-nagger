@@ -117,6 +117,9 @@ class SubagentRepository:
                     subagent_type = tool_input.get("subagent_type")
                     prompt = tool_input.get("prompt", "")
 
+                    # tool_use.id を取得（issue_5947）
+                    tool_use_id = content_item.get("id")
+
                     # [ROLE:xxx] を抽出
                     role_match = role_pattern.search(prompt)
                     role = role_match.group(1) if role_match else None
@@ -132,22 +135,104 @@ class SubagentRepository:
                     cursor = self._db.conn.execute(
                         """
                         INSERT OR IGNORE INTO task_spawns
-                        (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?)
+                        (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (session_id, line_num, subagent_type, role, prompt_hash, now),
+                        (session_id, line_num, subagent_type, role, prompt_hash, tool_use_id, now),
                     )
                     inserted_count += cursor.rowcount
 
         self._db.conn.commit()
         return inserted_count
 
+    def find_task_spawn_by_tool_use_id(self, tool_use_id: str) -> Optional[dict]:
+        """tool_use_idでtask_spawnを検索（issue_5947）
+
+        Args:
+            tool_use_id: Task tool_useのid
+
+        Returns:
+            task_spawnレコード（dict形式）、存在しない場合None
+        """
+        cursor = self._db.conn.execute(
+            """
+            SELECT id, session_id, transcript_index, subagent_type, role, prompt_hash,
+                   tool_use_id, matched_agent_id, created_at
+            FROM task_spawns
+            WHERE tool_use_id = ?
+            """,
+            (tool_use_id,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            return None
+
+        return {
+            "id": row[0],
+            "session_id": row[1],
+            "transcript_index": row[2],
+            "subagent_type": row[3],
+            "role": row[4],
+            "prompt_hash": row[5],
+            "tool_use_id": row[6],
+            "matched_agent_id": row[7],
+            "created_at": row[8],
+        }
+
+    def find_parent_tool_use_id(
+        self, transcript_path: str, agent_id: str
+    ) -> Optional[str]:
+        """親transcriptからagent_progressイベントを検索し、parentToolUseIDを取得（issue_5947）
+
+        Args:
+            transcript_path: transcriptファイルパス
+            agent_id: subagentのagent_id
+
+        Returns:
+            parentToolUseID（存在しない場合None）
+        """
+        path = Path(transcript_path)
+        if not path.exists():
+            return None
+
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+
+                # type='agent_progress' のエントリを検索
+                if entry.get("type") != "agent_progress":
+                    continue
+
+                # agentIdが一致するか確認
+                if entry.get("agentId") != agent_id:
+                    continue
+
+                # parentToolUseIDを返す
+                parent_tool_use_id = entry.get("parentToolUseID")
+                if parent_tool_use_id:
+                    return parent_tool_use_id
+
+        return None
+
     def match_task_to_agent(
-        self, session_id: str, agent_id: str, agent_type: str, role: str = None
+        self,
+        session_id: str,
+        agent_id: str,
+        agent_type: str,
+        role: str = None,
+        transcript_path: str = None,
     ) -> Optional[str]:
         """未マッチのtask_spawnから、agent_typeが一致する最古を取得し、マッチング。
 
         アルゴリズム（issue_5947改善）:
+        0. transcript_pathがある場合、agent_progressでtool_use_idを取得し正確マッチ
         1. BEGIN EXCLUSIVE
         2. Step 1: roleが指定されている場合、roleで完全一致マッチ
            SELECT * FROM task_spawns WHERE session_id = ? AND role = ? AND matched_agent_id IS NULL
@@ -167,10 +252,47 @@ class SubagentRepository:
             agent_id: マッチ対象のエージェントID
             agent_type: エージェントタイプ
             role: 優先マッチするrole（オプション）
+            transcript_path: 親transcriptパス（オプション、issue_5947）
 
         Returns:
             マッチしたrole（存在しない場合None）
         """
+        # Step 0: agent_progressベースの正確なマッチング（issue_5947）
+        if transcript_path:
+            parent_tool_use_id = self.find_parent_tool_use_id(transcript_path, agent_id)
+            if parent_tool_use_id:
+                task_spawn = self.find_task_spawn_by_tool_use_id(parent_tool_use_id)
+                if task_spawn and task_spawn.get("matched_agent_id") is None:
+                    matched_role = task_spawn.get("role")
+                    task_id = task_spawn.get("id")
+                    transcript_index = task_spawn.get("transcript_index")
+
+                    # アトミックに更新
+                    self._db.conn.execute("BEGIN EXCLUSIVE")
+                    try:
+                        # task_spawnsをマッチ済みに更新
+                        self._db.conn.execute(
+                            "UPDATE task_spawns SET matched_agent_id = ? WHERE id = ?",
+                            (agent_id, task_id),
+                        )
+
+                        # subagentsのroleを更新
+                        self._db.conn.execute(
+                            """
+                            UPDATE subagents
+                            SET role = ?, role_source = 'task_match', task_match_index = ?
+                            WHERE agent_id = ?
+                            """,
+                            (matched_role, transcript_index, agent_id),
+                        )
+
+                        self._db.conn.commit()
+                        return matched_role
+                    except Exception:
+                        self._db.conn.rollback()
+                        raise
+
+        # フォールバック: 従来のマッチングロジック
         self._db.conn.execute("BEGIN EXCLUSIVE")
         try:
             row = None

@@ -73,8 +73,10 @@ def main():
                     count = repo.register_task_spawns(session_id, transcript_path)
                     _logger.info(f"Task spawns registered: {count} new entries")
 
-                    # agent_typeでマッチング試行
-                    role = repo.match_task_to_agent(session_id, agent_id, agent_type)
+                    # agent_progressベースの正確なマッチング試行（issue_5947）
+                    role = repo.match_task_to_agent(
+                        session_id, agent_id, agent_type, transcript_path=transcript_path
+                    )
                     if role:
                         _logger.info(f"Role matched from task_spawns: {role}")
                 except Exception as e:

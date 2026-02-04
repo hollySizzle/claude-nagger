@@ -71,10 +71,10 @@ class TestNaggerStateDB:
         assert "sessions" in tables
         assert "hook_log" in tables
 
-        # スキーマバージョン確認
+        # スキーマバージョン確認（現在のバージョン）
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
         version = cursor.fetchone()[0]
-        assert version == 1
+        assert version == NaggerStateDB.SCHEMA_VERSION
 
         db.close()
 
@@ -150,6 +150,102 @@ class TestNaggerStateDB:
         # 明示的なconnect()なしでconn使用
         cursor = db.conn.execute("SELECT 1")
         assert cursor.fetchone()[0] == 1
+
+        db.close()
+
+    def test_マイグレーションv1からv2(self, tmp_path):
+        """v1スキーマからv2へのマイグレーション（issue_5947）"""
+        db_path = tmp_path / ".claude-nagger" / "state.db"
+
+        # v1スキーマを手動で作成
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        import sqlite3
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+            CREATE TABLE schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            );
+            INSERT INTO schema_version (version, applied_at) VALUES (1, '2025-01-01T00:00:00Z');
+
+            CREATE TABLE task_spawns (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id          TEXT NOT NULL,
+                transcript_index    INTEGER NOT NULL,
+                subagent_type       TEXT,
+                role                TEXT,
+                prompt_hash         TEXT,
+                matched_agent_id    TEXT,
+                created_at          TEXT NOT NULL,
+                UNIQUE(session_id, transcript_index)
+            );
+
+            CREATE TABLE subagents (
+                agent_id            TEXT PRIMARY KEY,
+                session_id          TEXT NOT NULL,
+                agent_type          TEXT NOT NULL DEFAULT 'unknown',
+                role                TEXT,
+                role_source         TEXT,
+                created_at          TEXT NOT NULL,
+                startup_processed   INTEGER NOT NULL DEFAULT 0,
+                startup_processed_at TEXT,
+                task_match_index    INTEGER
+            );
+
+            CREATE TABLE sessions (
+                session_id          TEXT NOT NULL,
+                hook_name           TEXT NOT NULL,
+                created_at          TEXT NOT NULL,
+                last_tokens         INTEGER DEFAULT 0,
+                status              TEXT NOT NULL DEFAULT 'active',
+                expired_at          TEXT,
+                PRIMARY KEY (session_id, hook_name)
+            );
+
+            CREATE TABLE hook_log (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id          TEXT NOT NULL,
+                hook_name           TEXT NOT NULL,
+                event_type          TEXT NOT NULL,
+                agent_id            TEXT,
+                timestamp           TEXT NOT NULL,
+                result              TEXT,
+                details             TEXT,
+                duration_ms         INTEGER
+            );
+        """)
+        # v1にはtool_use_idカラムがない
+        conn.execute(
+            "INSERT INTO task_spawns (session_id, transcript_index, role, created_at) VALUES (?, ?, ?, ?)",
+            ("session-1", 1, "coder", "2025-01-01T00:00:00Z")
+        )
+        conn.commit()
+        conn.close()
+
+        # NaggerStateDBを開く（マイグレーション実行）
+        db = NaggerStateDB(db_path)
+        db.connect()
+
+        # スキーマバージョンが2に更新されていることを確認
+        cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
+        version = cursor.fetchone()[0]
+        assert version == 2
+
+        # tool_use_idカラムが追加されていることを確認
+        cursor = db.conn.execute("PRAGMA table_info(task_spawns)")
+        columns = [row[1] for row in cursor.fetchall()]
+        assert "tool_use_id" in columns
+
+        # 既存データがそのままであることを確認
+        cursor = db.conn.execute(
+            "SELECT session_id, transcript_index, role, tool_use_id FROM task_spawns WHERE session_id = ?",
+            ("session-1",)
+        )
+        row = cursor.fetchone()
+        assert row[0] == "session-1"
+        assert row[1] == 1
+        assert row[2] == "coder"
+        assert row[3] is None  # 新カラムはNULL
 
         db.close()
 
@@ -661,6 +757,260 @@ class TestSubagentRepository:
             "SELECT COUNT(*) FROM task_spawns WHERE role IS NOT NULL"
         )
         assert cursor.fetchone()[0] == 2
+
+    # === issue_5947: agent_progressベースのマッチングテスト ===
+
+    def test_register_task_spawns_tool_use_id保存(self, subagent_repo, tmp_path):
+        """Task tool_useのidがtool_use_idとして保存される（issue_5947）"""
+        transcript_path = tmp_path / "transcript.jsonl"
+        entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_01ABC123XYZ",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "coder",
+                                "prompt": "[ROLE:coder] コーディングタスク"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        subagent_repo.register_task_spawns("session-1", str(transcript_path))
+
+        # tool_use_idが保存されていることを確認
+        cursor = subagent_repo._db.conn.execute(
+            "SELECT tool_use_id FROM task_spawns WHERE session_id = ?", ("session-1",)
+        )
+        rows = cursor.fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "toolu_01ABC123XYZ"
+
+    def test_find_task_spawn_by_tool_use_id(self, subagent_repo, tmp_path):
+        """tool_use_idでtask_spawnを検索できる（issue_5947）"""
+        transcript_path = tmp_path / "transcript.jsonl"
+        entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_01SEARCH",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "reviewer",
+                                "prompt": "[ROLE:reviewer] レビュータスク"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        subagent_repo.register_task_spawns("session-1", str(transcript_path))
+
+        # tool_use_idで検索
+        result = subagent_repo.find_task_spawn_by_tool_use_id("toolu_01SEARCH")
+
+        assert result is not None
+        assert result["tool_use_id"] == "toolu_01SEARCH"
+        assert result["role"] == "reviewer"
+        assert result["subagent_type"] == "reviewer"
+
+    def test_find_task_spawn_by_tool_use_id_存在しない(self, subagent_repo):
+        """存在しないtool_use_idで検索するとNone（issue_5947）"""
+        result = subagent_repo.find_task_spawn_by_tool_use_id("nonexistent_id")
+        assert result is None
+
+    def test_find_parent_tool_use_id(self, subagent_repo, tmp_path):
+        """agent_progressイベントからparentToolUseIDを取得できる（issue_5947）"""
+        transcript_path = tmp_path / "transcript.jsonl"
+        entries = [
+            {
+                "type": "user",
+                "message": {"content": "タスクを実行してください"}
+            },
+            {
+                "type": "agent_progress",
+                "agentId": "agent-abc",
+                "parentToolUseID": "toolu_01PARENT123"
+            },
+            {
+                "type": "assistant",
+                "message": {"content": "完了しました"}
+            }
+        ]
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        result = subagent_repo.find_parent_tool_use_id(str(transcript_path), "agent-abc")
+
+        assert result == "toolu_01PARENT123"
+
+    def test_find_parent_tool_use_id_異なるagentId(self, subagent_repo, tmp_path):
+        """異なるagentIdの場合はNoneを返す（issue_5947）"""
+        transcript_path = tmp_path / "transcript.jsonl"
+        entries = [
+            {
+                "type": "agent_progress",
+                "agentId": "agent-xyz",
+                "parentToolUseID": "toolu_01OTHER"
+            }
+        ]
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        result = subagent_repo.find_parent_tool_use_id(str(transcript_path), "agent-abc")
+
+        assert result is None
+
+    def test_find_parent_tool_use_id_ファイル存在しない(self, subagent_repo, tmp_path):
+        """存在しないファイルパスの場合はNone（issue_5947）"""
+        result = subagent_repo.find_parent_tool_use_id(
+            str(tmp_path / "nonexistent.jsonl"), "agent-abc"
+        )
+        assert result is None
+
+    def test_match_task_to_agent_agent_progress正確マッチ(self, subagent_repo, tmp_path):
+        """agent_progressを使った正確なマッチング（issue_5947）"""
+        # 親transcript: Task tool_use（2件）
+        parent_transcript_path = tmp_path / "parent_transcript.jsonl"
+        parent_entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_01FIRST",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "coder",
+                                "prompt": "[ROLE:tester] テストタスク"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_01SECOND",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "coder",
+                                "prompt": "[ROLE:coder] コーディングタスク"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        with open(parent_transcript_path, "w", encoding="utf-8") as f:
+            for entry in parent_entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        # task_spawns登録
+        subagent_repo.register_task_spawns("session-1", str(parent_transcript_path))
+
+        # subagent transcript: agent_progressイベント
+        subagent_transcript_path = tmp_path / "subagent_transcript.jsonl"
+        subagent_entries = [
+            {
+                "type": "agent_progress",
+                "agentId": "agent-1",
+                "parentToolUseID": "toolu_01SECOND"  # 2番目のTaskに対応
+            }
+        ]
+        with open(subagent_transcript_path, "w", encoding="utf-8") as f:
+            for entry in subagent_entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        # agent登録
+        subagent_repo.register("agent-1", "session-1", "coder")
+
+        # agent_progressを使ったマッチング（2番目のTask→coderにマッチ）
+        role = subagent_repo.match_task_to_agent(
+            "session-1", "agent-1", "coder",
+            transcript_path=str(subagent_transcript_path)
+        )
+
+        # 2番目のTaskのrole（coder）がマッチ
+        assert role == "coder"
+
+        # task_spawnsがマッチ済みに更新されていることを確認
+        cursor = subagent_repo._db.conn.execute(
+            "SELECT matched_agent_id FROM task_spawns WHERE tool_use_id = ?",
+            ("toolu_01SECOND",)
+        )
+        assert cursor.fetchone()[0] == "agent-1"
+
+    def test_match_task_to_agent_agent_progressなしはフォールバック(self, subagent_repo, tmp_path):
+        """agent_progressがない場合は従来のマッチングにフォールバック（issue_5947）"""
+        parent_transcript_path = tmp_path / "parent_transcript.jsonl"
+        parent_entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_01ONLY",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "coder",
+                                "prompt": "[ROLE:scribe] ドキュメントタスク"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        with open(parent_transcript_path, "w", encoding="utf-8") as f:
+            for entry in parent_entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        subagent_repo.register_task_spawns("session-1", str(parent_transcript_path))
+
+        # agent_progressがないtranscript
+        subagent_transcript_path = tmp_path / "subagent_transcript.jsonl"
+        subagent_entries = [
+            {
+                "type": "user",
+                "message": {"content": "タスク開始"}
+            }
+        ]
+        with open(subagent_transcript_path, "w", encoding="utf-8") as f:
+            for entry in subagent_entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        subagent_repo.register("agent-1", "session-1", "coder")
+
+        # フォールバック: subagent_typeでマッチ
+        role = subagent_repo.match_task_to_agent(
+            "session-1", "agent-1", "coder",
+            transcript_path=str(subagent_transcript_path)
+        )
+
+        assert role == "scribe"
 
 
 # === SessionRepository単体テスト ===

@@ -32,6 +32,7 @@ CREATE TABLE task_spawns (
     subagent_type       TEXT,
     role                TEXT,
     prompt_hash         TEXT,
+    tool_use_id         TEXT,
     matched_agent_id    TEXT,
     created_at          TEXT NOT NULL,
     UNIQUE(session_id, transcript_index)
@@ -63,6 +64,7 @@ CREATE INDEX idx_subagents_session ON subagents(session_id);
 CREATE INDEX idx_subagents_unprocessed ON subagents(session_id, startup_processed) WHERE startup_processed = 0;
 CREATE INDEX idx_task_spawns_session ON task_spawns(session_id);
 CREATE INDEX idx_task_spawns_unmatched ON task_spawns(session_id, matched_agent_id) WHERE matched_agent_id IS NULL;
+CREATE INDEX idx_task_spawns_tool_use_id ON task_spawns(tool_use_id);
 CREATE INDEX idx_sessions_status ON sessions(status);
 CREATE INDEX idx_hook_log_session ON hook_log(session_id, timestamp);
 """
@@ -71,7 +73,7 @@ CREATE INDEX idx_hook_log_session ON hook_log(session_id, timestamp);
 class NaggerStateDB:
     """状態管理SQLiteデータベース"""
 
-    SCHEMA_VERSION = 1
+    SCHEMA_VERSION = 2
 
     def __init__(self, db_path: Path):
         """初期化
@@ -159,15 +161,28 @@ class NaggerStateDB:
             self._migrate(current_version, self.SCHEMA_VERSION)
 
     def _migrate(self, from_ver: int, to_ver: int) -> None:
-        """マイグレーション実行（将来用）
-
-        v1では実質空。将来のバージョンアップ時にここにマイグレーション処理を追加。
+        """マイグレーション実行
 
         Args:
             from_ver: 現在のスキーマバージョン
             to_ver: 目標のスキーマバージョン
         """
-        pass
+        assert self._conn is not None
+
+        if from_ver < 2 <= to_ver:
+            # v1 -> v2: task_spawnsにtool_use_idカラム追加（issue_5947）
+            self._conn.execute(
+                "ALTER TABLE task_spawns ADD COLUMN tool_use_id TEXT"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_task_spawns_tool_use_id ON task_spawns(tool_use_id)"
+            )
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute(
+                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (2, now),
+            )
+            self._conn.commit()
 
     @classmethod
     def resolve_db_path(cls) -> Path:
