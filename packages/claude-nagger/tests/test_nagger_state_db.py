@@ -844,9 +844,12 @@ class TestSubagentRepository:
                 "message": {"content": "タスクを実行してください"}
             },
             {
-                "type": "agent_progress",
-                "agentId": "agent-abc",
-                "parentToolUseID": "toolu_01PARENT123"
+                "type": "progress",
+                "parentToolUseID": "toolu_01PARENT123",
+                "data": {
+                    "type": "agent_progress",
+                    "agentId": "agent-abc"
+                }
             },
             {
                 "type": "assistant",
@@ -866,9 +869,12 @@ class TestSubagentRepository:
         transcript_path = tmp_path / "transcript.jsonl"
         entries = [
             {
-                "type": "agent_progress",
-                "agentId": "agent-xyz",
-                "parentToolUseID": "toolu_01OTHER"
+                "type": "progress",
+                "parentToolUseID": "toolu_01OTHER",
+                "data": {
+                    "type": "agent_progress",
+                    "agentId": "agent-xyz"
+                }
             }
         ]
         with open(transcript_path, "w", encoding="utf-8") as f:
@@ -935,9 +941,12 @@ class TestSubagentRepository:
         subagent_transcript_path = tmp_path / "subagent_transcript.jsonl"
         subagent_entries = [
             {
-                "type": "agent_progress",
-                "agentId": "agent-1",
-                "parentToolUseID": "toolu_01SECOND"  # 2番目のTaskに対応
+                "type": "progress",
+                "parentToolUseID": "toolu_01SECOND",  # 2番目のTaskに対応
+                "data": {
+                    "type": "agent_progress",
+                    "agentId": "agent-1"
+                }
             }
         ]
         with open(subagent_transcript_path, "w", encoding="utf-8") as f:

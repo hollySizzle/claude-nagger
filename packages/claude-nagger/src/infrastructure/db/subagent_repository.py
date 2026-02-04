@@ -212,14 +212,18 @@ class SubagentRepository:
                 except json.JSONDecodeError:
                     continue
 
-                # type='agent_progress' のエントリを検索
-                if entry.get("type") != "agent_progress":
+                # type='progress' かつ data.type='agent_progress' のエントリを検索
+                if entry.get("type") != "progress":
+                    continue
+
+                data = entry.get("data", {})
+                if data.get("type") != "agent_progress":
                     continue
 
                 agent_progress_count += 1
 
-                # agentIdが一致するか確認
-                if entry.get("agentId") != agent_id:
+                # data.agentIdが一致するか確認
+                if data.get("agentId") != agent_id:
                     continue
 
                 # parentToolUseIDを返す
