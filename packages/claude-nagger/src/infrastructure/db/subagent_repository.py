@@ -121,6 +121,10 @@ class SubagentRepository:
                     role_match = role_pattern.search(prompt)
                     role = role_match.group(1) if role_match else None
 
+                    # ROLEがないTask tool_useはスキップ（issue_5947）
+                    if role is None:
+                        continue
+
                     # prompt_hash = SHA256(prompt)[:16]
                     prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
 
@@ -139,45 +143,67 @@ class SubagentRepository:
         return inserted_count
 
     def match_task_to_agent(
-        self, session_id: str, agent_id: str, agent_type: str
+        self, session_id: str, agent_id: str, agent_type: str, role: str = None
     ) -> Optional[str]:
         """未マッチのtask_spawnから、agent_typeが一致する最古を取得し、マッチング。
 
-        アルゴリズム:
+        アルゴリズム（issue_5947改善）:
         1. BEGIN EXCLUSIVE
-        2. SELECT * FROM task_spawns WHERE session_id = ? AND matched_agent_id IS NULL AND subagent_type = ? ORDER BY transcript_index ASC LIMIT 1
-        3. if found:
+        2. Step 1: roleが指定されている場合、roleで完全一致マッチ
+           SELECT * FROM task_spawns WHERE session_id = ? AND role = ? AND matched_agent_id IS NULL
+           ORDER BY transcript_index ASC LIMIT 1
+        3. Step 2: roleマッチなければsubagent_typeでマッチ（ROLEありエントリのみ）
+           SELECT * FROM task_spawns WHERE session_id = ? AND subagent_type = ? AND role IS NOT NULL AND matched_agent_id IS NULL
+           ORDER BY transcript_index ASC LIMIT 1
+        4. if found:
            UPDATE task_spawns SET matched_agent_id = ? WHERE id = ?
            UPDATE subagents SET role = ?, role_source = 'task_match', task_match_index = ? WHERE agent_id = ?
            COMMIT
            return role
-        4. else: COMMIT, return None
+        5. else: COMMIT, return None
 
         Args:
             session_id: セッションID
             agent_id: マッチ対象のエージェントID
             agent_type: エージェントタイプ
+            role: 優先マッチするrole（オプション）
 
         Returns:
             マッチしたrole（存在しない場合None）
         """
         self._db.conn.execute("BEGIN EXCLUSIVE")
         try:
-            cursor = self._db.conn.execute(
-                """
-                SELECT id, role, transcript_index FROM task_spawns
-                WHERE session_id = ? AND matched_agent_id IS NULL AND subagent_type = ?
-                ORDER BY transcript_index ASC LIMIT 1
-                """,
-                (session_id, agent_type),
-            )
-            row = cursor.fetchone()
+            row = None
+
+            # Step 1: roleが指定されている場合、roleで完全一致マッチ
+            if role:
+                cursor = self._db.conn.execute(
+                    """
+                    SELECT id, role, transcript_index FROM task_spawns
+                    WHERE session_id = ? AND role = ? AND matched_agent_id IS NULL
+                    ORDER BY transcript_index ASC LIMIT 1
+                    """,
+                    (session_id, role),
+                )
+                row = cursor.fetchone()
+
+            # Step 2: roleマッチなければsubagent_typeでマッチ（ROLEありエントリのみ）
+            if row is None:
+                cursor = self._db.conn.execute(
+                    """
+                    SELECT id, role, transcript_index FROM task_spawns
+                    WHERE session_id = ? AND subagent_type = ? AND role IS NOT NULL AND matched_agent_id IS NULL
+                    ORDER BY transcript_index ASC LIMIT 1
+                    """,
+                    (session_id, agent_type),
+                )
+                row = cursor.fetchone()
 
             if row is None:
                 self._db.conn.commit()
                 return None
 
-            task_id, role, transcript_index = row
+            task_id, matched_role, transcript_index = row
 
             # task_spawnsをマッチ済みに更新
             self._db.conn.execute(
@@ -192,11 +218,11 @@ class SubagentRepository:
                 SET role = ?, role_source = 'task_match', task_match_index = ?
                 WHERE agent_id = ?
                 """,
-                (role, transcript_index, agent_id),
+                (matched_role, transcript_index, agent_id),
             )
 
             self._db.conn.commit()
-            return role
+            return matched_role
         except Exception:
             self._db.conn.rollback()
             raise
@@ -421,6 +447,52 @@ class SubagentRepository:
         """
         cursor = self._db.conn.execute(
             "DELETE FROM subagents WHERE session_id = ?", (session_id,)
+        )
+        deleted_count = cursor.rowcount
+        self._db.conn.commit()
+        return deleted_count
+
+    def cleanup_old_task_spawns(self, session_id: str, keep_recent: int = 100) -> int:
+        """matched_agent_idがNULLで古いエントリを削除。
+
+        最新keep_recent件を除く未マッチエントリを削除する。
+
+        Args:
+            session_id: セッションID
+            keep_recent: 保持する最新エントリ数（デフォルト100）
+
+        Returns:
+            削除件数
+        """
+        cursor = self._db.conn.execute(
+            """
+            DELETE FROM task_spawns
+            WHERE session_id = ? AND matched_agent_id IS NULL
+            AND id NOT IN (
+                SELECT id FROM task_spawns
+                WHERE session_id = ?
+                ORDER BY id DESC
+                LIMIT ?
+            )
+            """,
+            (session_id, session_id, keep_recent),
+        )
+        deleted_count = cursor.rowcount
+        self._db.conn.commit()
+        return deleted_count
+
+    def cleanup_null_role_task_spawns(self) -> int:
+        """role IS NULLのtask_spawnsエントリを全削除。
+
+        issue_5947: 初回実行時の既存データクリーンアップ用。
+        register_task_spawnsがROLEありのみ登録するようになったため、
+        既存のrole=NULLエントリは不要。
+
+        Returns:
+            削除件数
+        """
+        cursor = self._db.conn.execute(
+            "DELETE FROM task_spawns WHERE role IS NULL"
         )
         deleted_count = cursor.rowcount
         self._db.conn.commit()

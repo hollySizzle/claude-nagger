@@ -454,6 +454,214 @@ class TestSubagentRepository:
 
         assert subagent_repo.get_unprocessed_count("session-1") == 1
 
+    # === issue_5947: ROLEマッチング改善テスト ===
+
+    def test_register_task_spawns_ROLEなしはスキップ(self, subagent_repo, tmp_path):
+        """ROLEタグがないTask tool_useは登録されない（issue_5947）"""
+        transcript_path = tmp_path / "transcript.jsonl"
+        entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "coder",
+                                "prompt": "タスク1（ROLEなし）"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "reviewer",
+                                "prompt": "[ROLE:reviewer] タスク2（ROLEあり）"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        # 登録
+        count = subagent_repo.register_task_spawns("session-1", str(transcript_path))
+
+        # ROLEありの1件のみ登録
+        assert count == 1
+
+        # DB確認
+        cursor = subagent_repo._db.conn.execute(
+            "SELECT role FROM task_spawns WHERE session_id = ?", ("session-1",)
+        )
+        rows = cursor.fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "reviewer"
+
+    def test_match_task_to_agent_role優先(self, subagent_repo, tmp_path):
+        """roleパラメータ指定時、roleで完全一致マッチ優先（issue_5947）"""
+        transcript_path = tmp_path / "transcript.jsonl"
+        entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "coder",
+                                "prompt": "[ROLE:tester] テストタスク"
+                            }
+                        }
+                    ]
+                }
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "coder",
+                                "prompt": "[ROLE:coder] コーディングタスク"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        subagent_repo.register_task_spawns("session-1", str(transcript_path))
+        subagent_repo.register("agent-1", "session-1", "coder")
+
+        # role="coder"を指定すると、subagent_type=coderのエントリではなく
+        # role=coderのエントリにマッチする
+        role = subagent_repo.match_task_to_agent("session-1", "agent-1", "coder", role="coder")
+
+        assert role == "coder"
+
+    def test_match_task_to_agent_role指定なしはsubagent_type(self, subagent_repo, tmp_path):
+        """roleパラメータ未指定時、subagent_typeでマッチ（ROLEありエントリのみ）"""
+        transcript_path = tmp_path / "transcript.jsonl"
+        entries = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "coder",
+                                "prompt": "[ROLE:scribe] ドキュメントタスク"
+                            }
+                        }
+                    ]
+                }
+            }
+        ]
+        with open(transcript_path, "w", encoding="utf-8") as f:
+            for entry in entries:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        subagent_repo.register_task_spawns("session-1", str(transcript_path))
+        subagent_repo.register("agent-1", "session-1", "coder")
+
+        # role未指定でsubagent_type=coderでマッチ
+        role = subagent_repo.match_task_to_agent("session-1", "agent-1", "coder")
+
+        # roleは "scribe"（task_spawnのrole）
+        assert role == "scribe"
+
+    def test_cleanup_old_task_spawns(self, subagent_repo, tmp_path):
+        """古い未マッチエントリの削除（issue_5947）"""
+        # 複数のtask_spawnを手動挿入
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        for i in range(10):
+            subagent_repo._db.conn.execute(
+                """
+                INSERT INTO task_spawns
+                (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (f"session-1", i + 1, "coder", f"role-{i}", f"hash-{i}", now),
+            )
+        subagent_repo._db.conn.commit()
+
+        # 最新5件を残して削除
+        deleted = subagent_repo.cleanup_old_task_spawns("session-1", keep_recent=5)
+
+        assert deleted == 5
+
+        # 残っているのは最新5件
+        cursor = subagent_repo._db.conn.execute(
+            "SELECT COUNT(*) FROM task_spawns WHERE session_id = ?", ("session-1",)
+        )
+        assert cursor.fetchone()[0] == 5
+
+    def test_cleanup_null_role_task_spawns(self, subagent_repo):
+        """role IS NULLのエントリを全削除（issue_5947初回マイグレーション用）"""
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+
+        # role=NULL のエントリを手動挿入
+        for i in range(3):
+            subagent_repo._db.conn.execute(
+                """
+                INSERT INTO task_spawns
+                (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (f"session-{i}", i + 1, "coder", None, f"hash-null-{i}", now),
+            )
+
+        # role!=NULL のエントリを挿入
+        for i in range(2):
+            subagent_repo._db.conn.execute(
+                """
+                INSERT INTO task_spawns
+                (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (f"session-valid-{i}", i + 100, "reviewer", f"role-{i}", f"hash-{i}", now),
+            )
+        subagent_repo._db.conn.commit()
+
+        # cleanup実行
+        deleted = subagent_repo.cleanup_null_role_task_spawns()
+
+        assert deleted == 3
+
+        # role IS NULLは0件
+        cursor = subagent_repo._db.conn.execute(
+            "SELECT COUNT(*) FROM task_spawns WHERE role IS NULL"
+        )
+        assert cursor.fetchone()[0] == 0
+
+        # role IS NOT NULLは2件残っている
+        cursor = subagent_repo._db.conn.execute(
+            "SELECT COUNT(*) FROM task_spawns WHERE role IS NOT NULL"
+        )
+        assert cursor.fetchone()[0] == 2
+
 
 # === SessionRepository単体テスト ===
 class TestSessionRepository:
