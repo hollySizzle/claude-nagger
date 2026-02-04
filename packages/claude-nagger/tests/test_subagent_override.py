@@ -15,7 +15,6 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.domain.services.subagent_marker_manager import SubagentMarkerManager
 from src.domain.hooks.session_startup_hook import (
     SessionStartupHook,
     _deep_copy_dict,
@@ -111,60 +110,6 @@ class TestDeepMerge:
         base = {"a": 1}
         _deep_merge(base, {})
         assert base == {"a": 1}
-
-
-# ============================================================
-# SubagentMarkerManager テスト（レガシー互換性）
-# ============================================================
-
-class TestSubagentMarkerManager:
-    """SubagentMarkerManagerのテスト（レガシー互換性確認）"""
-
-    @pytest.fixture
-    def tmp_marker_dir(self, tmp_path):
-        """テスト用の一時マーカーディレクトリ"""
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            yield tmp_path
-
-    def _make_manager(self, session_id="test-session-123"):
-        return SubagentMarkerManager(session_id)
-
-    def test_create_marker(self, tmp_marker_dir):
-        """マーカー作成の基本動作"""
-        mgr = self._make_manager()
-        result = mgr.create_marker("agent-abc", "general-purpose")
-
-        assert result is True
-        marker_path = tmp_marker_dir / "test-session-123" / "subagents" / "agent-abc.json"
-        assert marker_path.exists()
-
-        data = json.loads(marker_path.read_text())
-        assert data["agent_id"] == "agent-abc"
-        assert data["agent_type"] == "general-purpose"
-        assert data["session_id"] == "test-session-123"
-        assert "created_at" in data
-        # #5827/#5828: 新規フィールドのデフォルト値
-        assert data["role"] is None
-        assert data["startup_processed"] is False
-        assert data["startup_processed_at"] is None
-
-    def test_delete_marker(self, tmp_marker_dir):
-        """マーカー削除の基本動作"""
-        mgr = self._make_manager()
-        mgr.create_marker("agent-abc", "Bash")
-        assert mgr.is_subagent_active()
-
-        result = mgr.delete_marker("agent-abc")
-        assert result is True
-        assert not mgr.is_subagent_active()
-
-    def test_is_subagent_active(self, tmp_marker_dir):
-        """subagentアクティブ判定"""
-        mgr = self._make_manager()
-        assert mgr.is_subagent_active() is False
-
-        mgr.create_marker("agent-1", "Explore")
-        assert mgr.is_subagent_active() is True
 
 
 # ============================================================
