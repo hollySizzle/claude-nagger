@@ -5,15 +5,14 @@ import json
 import re
 import sys
 import os
-import tempfile
 import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
-from domain.hooks.base_hook import BaseHook, MarkerPatterns
-from domain.services.subagent_marker_manager import SubagentMarkerManager
+from domain.hooks.base_hook import BaseHook
+from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository
 from shared.constants import SUGGESTED_RULES_FILENAME
 
 
@@ -47,6 +46,10 @@ class SessionStartupHook(BaseHook):
         self._resolved_config = None
         self._current_agent_id = None
         self._current_agent_type = None
+        # DB関連（should_processで初期化、processで参照）
+        self._db: Optional[NaggerStateDB] = None
+        self._subagent_repo: Optional[SubagentRepository] = None
+        self._session_repo: Optional[SessionRepository] = None
         
     def _load_config(self) -> Dict[str, Any]:
         """
@@ -91,20 +94,6 @@ class SessionStartupHook(BaseHook):
         """
         return False
         
-    def get_session_startup_marker_path(self, session_id: str) -> Path:
-        """
-        セッション開始確認マーカーファイルのパスを取得
-        
-        Args:
-            session_id: セッションID
-            
-        Returns:
-            マーカーファイルのパス
-        """
-        temp_dir = Path(tempfile.gettempdir())
-        marker_name = MarkerPatterns.format_session_startup(session_id)
-        return temp_dir / marker_name
-
     def _resolve_subagent_config(self, agent_type: str, role: Optional[str] = None) -> Dict[str, Any]:
         """subagent種別に応じたoverride設定を解決
 
@@ -230,90 +219,6 @@ class SessionStartupHook(BaseHook):
 
         return None
 
-    def is_session_startup_processed(self, session_id: str, input_data: Dict[str, Any] = None) -> bool:
-        """
-        セッション開始時の規約確認が既に処理済みか確認（トークン閾値対応）
-        
-        Args:
-            session_id: セッションID
-            input_data: 入力データ（トークンチェック用）
-            
-        Returns:
-            処理済みの場合True
-        """
-        if not session_id:
-            return False
-            
-        marker_path = self.get_session_startup_marker_path(session_id)
-        exists = marker_path.exists()
-        
-        self.log_info(f"📋 Session startup marker check: {marker_path} -> {'EXISTS' if exists else 'NOT_EXISTS'}")
-        
-        if not exists:
-            return False
-            
-        # トークン閾値チェック
-        threshold = self.config.get('behavior', {}).get('token_threshold', 50000)
-        if input_data and input_data.get('transcript_path'):
-            current_tokens = super()._get_current_context_size(input_data.get('transcript_path'))
-            if current_tokens is not None:
-                # マーカーファイルから前回のトークン数を取得
-                try:
-                    with open(marker_path, 'r') as f:
-                        marker_data = json.load(f)
-                        last_tokens = marker_data.get('tokens', 0)
-                    
-                    token_increase = current_tokens - last_tokens
-                    
-                    if token_increase >= threshold:
-                        self.log_info(f"🚨 Session startup token threshold exceeded: {token_increase} >= {threshold}")
-                        # 閾値超過時は履歴ファイルを作成してから削除
-                        super()._rename_expired_marker(marker_path)
-                        return False
-                    else:
-                        self.log_info(f"✅ Session startup within token threshold: {token_increase}/{threshold}")
-                        
-                except Exception as e:
-                    self.log_error(f"Error checking token threshold: {e}")
-            
-        return True  # マーカー存在かつ閾値内の場合はスキップ
-
-    def mark_session_startup_processed(self, session_id: str, input_data: Dict[str, Any] = None) -> bool:
-        """
-        セッション開始時の規約確認を処理済みとしてマーク（トークン情報付き）
-        
-        Args:
-            session_id: セッションID
-            input_data: 入力データ（トークン情報用）
-            
-        Returns:
-            マーク成功の場合True
-        """
-        try:
-            marker_path = self.get_session_startup_marker_path(session_id)
-            
-            # 現在のトークン数を取得
-            current_tokens = 0
-            if input_data:
-                current_tokens = super()._get_current_context_size(input_data.get('transcript_path')) or 0
-            
-            # セッション開始時の情報をマーカーファイルに記録
-            marker_data = {
-                'timestamp': datetime.now().isoformat(),
-                'session_id': session_id,
-                'hook_type': 'session_startup',
-                'tokens': current_tokens
-            }
-            
-            with open(marker_path, 'w') as f:
-                json.dump(marker_data, f)
-                
-            self.log_info(f"✅ Created session startup marker with {current_tokens} tokens: {marker_path}")
-            return True
-        except Exception as e:
-            self.log_error(f"Failed to create session startup marker: {e}")
-            return False
-
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """
         セッション開始時の処理対象かどうかを判定（設定ファイル対応・subagent override対応）
@@ -323,87 +228,102 @@ class SessionStartupHook(BaseHook):
         - _resolved_config (dict|None): subagent時のoverride解決済み設定
         - _current_agent_id (str|None): subagentのagent_id
         - _current_agent_type (str|None): subagentのagent_type
-        
+        - _db, _subagent_repo, _session_repo: DB関連
+
         Args:
             input_data: 入力データ
-            
+
         Returns:
             処理対象の場合True
         """
         self.log_info(f"📋 SessionStartupHook - Input data keys: {input_data.keys()}")
-        
+
         # Taskツール（subagent生成）はスキップ（subagent自身のツール呼び出しで発火する）
         tool_name = input_data.get('tool_name', '')
         if tool_name == 'Task':
             self.log_debug("Skipping Task tool (subagent spawn)")
             return False
-        
+
         # 設定で無効化されている場合はスキップ（base設定）
         if not self.config.get('enabled', True):
             self.log_info("❌ Session startup hook is disabled in config")
             return False
-        
+
         # セッションIDを取得
         session_id = input_data.get('session_id', '')
         if not session_id:
             self.log_info("❌ No session_id found, skipping")
             return False
-        
+
         self.log_info(f"🔍 Session ID: {session_id}")
 
-        # subagentマーカー検出
-        manager = SubagentMarkerManager(session_id)
-        if manager.is_subagent_active():
-            active = manager.get_active_subagent()
-            if active:
-                agent_type = active.get("agent_type", "unknown")
-                agent_id = active.get("agent_id", "")
+        # DB Repository初期化
+        db = NaggerStateDB(NaggerStateDB.resolve_db_path())
+        subagent_repo = SubagentRepository(db)
+        session_repo = SessionRepository(db)
 
-                role = active.get("role")
+        # subagent検出（DBベース）
+        if subagent_repo.is_any_active(session_id):
+            # claim_next_unprocessedでアトミックに取得（並列対応）
+            record = subagent_repo.claim_next_unprocessed(session_id)
+            if record is None:
+                # 全subagent処理済み
+                self.log_info("✅ All subagents already processed")
+                db.close()
+                return False
 
-                # マーカーにrole未設定の場合、transcriptから[ROLE:xxx]を解析
-                if not role:
-                    transcript_path = input_data.get('transcript_path')
-                    parsed_role = self._parse_role_from_transcript(transcript_path)
-                    if parsed_role:
-                        manager.update_marker(agent_id, role=parsed_role)
-                        role = parsed_role
+            agent_type = record.agent_type
+            agent_id = record.agent_id
+            role = record.role
 
-                self.log_info(f"🤖 Subagent detected: type={agent_type}, id={agent_id}, role={role}")
+            # roleがない場合はtranscriptから解析
+            if not role:
+                transcript_path = input_data.get('transcript_path')
+                parsed_role = self._parse_role_from_transcript(transcript_path)
+                if parsed_role:
+                    subagent_repo.update_role(agent_id, parsed_role, 'transcript_parse')
+                    role = parsed_role
 
-                # override設定を解決（role優先）
-                resolved = self._resolve_subagent_config(agent_type, role=role)
+            self.log_info(f"🤖 Subagent detected: type={agent_type}, id={agent_id}, role={role}")
 
-                # override設定でenabled: falseの場合はスキップ
-                if not resolved.get("enabled", True):
-                    self.log_info(f"❌ Subagent type '{agent_type}' is disabled by overrides")
-                    return False
+            # override設定を解決（role優先）
+            resolved = self._resolve_subagent_config(agent_type, role=role)
 
-                # ライフサイクルマーカーのstartup_processedフィールドで判定
-                if manager.is_startup_processed(agent_id):
-                    self.log_info(f"✅ Subagent startup already processed: {agent_id}")
-                    return False
+            # override設定でenabled: falseの場合はスキップ
+            if not resolved.get("enabled", True):
+                self.log_info(f"❌ Subagent type '{agent_type}' is disabled by overrides")
+                db.close()
+                return False
 
-                # subagentコンテキストを保存して後続processで使用
-                self._is_subagent = True
-                self._resolved_config = resolved
-                self._current_agent_id = agent_id
-                self._current_agent_type = agent_type
-                self._subagent_marker_manager = manager
+            # subagentコンテキストを保存して後続processで使用
+            # claim_next_unprocessedで既にstartup_processed=1に更新済み
+            self._is_subagent = True
+            self._resolved_config = resolved
+            self._current_agent_id = agent_id
+            self._current_agent_type = agent_type
+            self._db = db
+            self._subagent_repo = subagent_repo
+            self._session_repo = session_repo
 
-                self.log_info(f"🚀 New subagent requires startup processing: {agent_type}/{agent_id}")
-                return True
+            self.log_info(f"🚀 New subagent requires startup processing: {agent_type}/{agent_id}")
+            return True
 
-        # main agentフロー（既存ロジック）
+        # main agentフロー
         self._is_subagent = False
         self._resolved_config = None
+        self._db = db
+        self._subagent_repo = subagent_repo
+        self._session_repo = session_repo
 
-        # once_per_sessionが有効で既に処理済みの場合はスキップ
+        # SessionRepositoryで処理済みチェック
         if self.config.get('behavior', {}).get('once_per_session', True):
-            if self.is_session_startup_processed(session_id, input_data):
+            threshold = self.config.get('behavior', {}).get('token_threshold', 50000)
+            current_tokens = self._get_current_context_size(input_data.get('transcript_path')) or 0
+            if session_repo.is_processed_context_aware(session_id, self.__class__.__name__, current_tokens, threshold):
                 self.log_info(f"✅ Session startup already processed for: {session_id}")
+                db.close()
                 return False
-        
+
         self.log_info(f"🚀 New session detected, requires startup processing: {session_id}")
         return True
 
@@ -413,40 +333,39 @@ class SessionStartupHook(BaseHook):
 
         前提: should_process()がTrueを返した後に呼び出すこと。
         should_process()が設定した_is_subagent, _resolved_config等を参照する。
-        
+
         Args:
             input_data: 入力データ
-            
+
         Returns:
             処理結果 {'decision': 'block'/'approve', 'reason': 'メッセージ'}
         """
         session_id = input_data.get('session_id', '')
-        
+
         self.log_info(f"🎯 Processing session startup for: {session_id} (subagent={self._is_subagent})")
-        
+
         # suggested_rules.yamlを一度だけ読み込み
         suggested_rules_data = self._load_suggested_rules()
-        
+
         # メッセージを構築（ロード結果を引数で渡す）
         message = self._build_message(session_id, suggested_rules_data=suggested_rules_data)
-        
+
         self.log_info(f"📋 SESSION STARTUP BLOCKING: Session '{session_id}' requires startup confirmation")
-        
+
         if self._is_subagent:
-            # subagent: ライフサイクルマーカーのstartup_processedを更新
-            self._subagent_marker_manager.update_marker(
-                self._current_agent_id,
-                startup_processed=True,
-                startup_processed_at=datetime.now().isoformat(),
-            )
+            # subagent: claim_next_unprocessed()で既にstartup_processed=1に更新済み
+            # 追加処理不要
+            self.log_info(f"✅ Subagent {self._current_agent_id} startup_processed already marked via claim_next_unprocessed")
         else:
-            # main agent: 既存のマーカーを作成
-            self.mark_session_startup_processed(session_id, input_data)
-        
+            # main agent: SessionRepositoryで処理済みマーク
+            current_tokens = self._get_current_context_size(input_data.get('transcript_path')) or 0
+            self._session_repo.register(session_id, self.__class__.__name__, current_tokens)
+            self.log_info(f"✅ Registered session in DB: {session_id} with {current_tokens} tokens")
+
         # 通知済みのsuggested_rules.yamlをアーカイブ
         if suggested_rules_data is not None:
             self._archive_suggested_rules()
-        
+
         # JSON応答でブロック
         return {
             'decision': 'block',
@@ -455,26 +374,33 @@ class SessionStartupHook(BaseHook):
 
     def _get_execution_count(self, session_id: str) -> int:
         """
-        セッション内での実行回数を取得
-        
+        セッション内での実行回数を取得（DBベース）
+
+        sessionsテーブルのcreated_atを利用し、同一session_id/hook_nameのレコード数をカウント。
+        expired含む全レコードを対象とする。
+
         Args:
             session_id: セッションID
-            
+
         Returns:
             実行回数（1から開始）
         """
-        count = 0
-        marker_base = self.get_session_startup_marker_path(session_id)
-        temp_dir = marker_base.parent
-        marker_prefix = marker_base.name
-        
-        # 現在のマーカーファイルと.expired_履歴ファイルをカウント
-        for file_path in temp_dir.glob(f"{marker_prefix}*"):
-            if file_path.name.startswith(marker_prefix):
-                count += 1
-        
-        # 実行前の状態では、次回実行予定の回数を返す
-        return count + 1 if count > 0 else 1
+        if self._db is None:
+            # DBが未初期化の場合は1を返す
+            return 1
+
+        cursor = self._db.conn.execute(
+            """
+            SELECT COUNT(*) FROM sessions
+            WHERE session_id = ? AND hook_name = ?
+            """,
+            (session_id, self.__class__.__name__),
+        )
+        row = cursor.fetchone()
+        count = row[0] if row else 0
+
+        # 次回実行予定の回数を返す（カウント+1）
+        return count + 1
     
     def _build_message(self, session_id: str, suggested_rules_data: Optional[Dict[str, Any]] = None) -> str:
         """

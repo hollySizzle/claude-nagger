@@ -1,4 +1,4 @@
-"""session_startup_hook.py のテスト"""
+"""session_startup_hook.py のテスト（DB移行後）"""
 
 import pytest
 import json
@@ -25,8 +25,13 @@ class TestSessionStartupHookInit:
             mock_load.assert_called_once()
             assert hook.config == {'enabled': True}
 
-    # NOTE: session_marker_prefix はMarkerPatternsクラスへ移行したため、
-    # 関連テストは削除。パターンのテストはtest_base_hook.py::TestMarkerPatternsを参照。
+    def test_init_sets_db_attributes_to_none(self):
+        """初期化時にDB関連属性がNoneに設定される"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            assert hook._db is None
+            assert hook._session_repo is None
+            assert hook._subagent_repo is None
 
 
 class TestLoadConfig:
@@ -65,14 +70,14 @@ session_startup:
   enabled: true
   message: "project config message"
 """)
-        
+
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
-        
+
         # カレントディレクトリをtmp_pathに変更してテスト
         with patch('pathlib.Path.cwd', return_value=tmp_path):
             result = hook._load_config()
-        
+
         assert result.get('enabled') is True
         assert result.get('message') == "project config message"
 
@@ -80,7 +85,7 @@ session_startup:
         """プロジェクト設定がない場合はデフォルト設定を使用"""
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
-        
+
         # プロジェクト設定が存在しないディレクトリ
         with patch('pathlib.Path.cwd', return_value=tmp_path):
             # デフォルト設定ファイルが存在する場合
@@ -91,149 +96,8 @@ session_startup:
                 assert isinstance(result, dict)
 
 
-class TestGetSessionStartupMarkerPath:
-    """get_session_startup_marker_path メソッドのテスト"""
-
-    def test_marker_path_format(self):
-        """マーカーパスのフォーマットが正しい"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-            path = hook.get_session_startup_marker_path('test-session-123')
-
-        assert path == Path('/tmp/claude_session_startup_test-session-123')
-
-    # NOTE: カスタムプレフィックス機能はMarkerPatternsクラスへ移行したため削除。
-    # パターンはMarkerPatterns.SESSION_STARTUPで一元管理。
-
-
-class TestIsSessionStartupProcessed:
-    """is_session_startup_processed メソッドのテスト"""
-
-    def test_no_session_id_returns_false(self):
-        """セッションIDがない場合はFalse"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-            result = hook.is_session_startup_processed('')
-
-        assert result is False
-
-    def test_marker_not_exists_returns_false(self):
-        """マーカーがない場合はFalse"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-
-            with patch.object(Path, 'exists', return_value=False):
-                result = hook.is_session_startup_processed('test-session')
-
-        assert result is False
-
-    def test_marker_exists_returns_true(self):
-        """マーカーが存在する場合はTrue（閾値チェックなし）"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-
-            with patch.object(Path, 'exists', return_value=True):
-                result = hook.is_session_startup_processed('test-session', {})
-
-        assert result is True
-
-    def test_token_threshold_exceeded(self, tmp_path):
-        """トークン閾値超過時はFalse"""
-        config = {'behavior': {'token_threshold': 1000}}
-        with patch.object(SessionStartupHook, '_load_config', return_value=config):
-            hook = SessionStartupHook()
-
-            marker_path = tmp_path / 'marker'
-            marker_path.write_text(json.dumps({'tokens': 500}))
-
-            with patch.object(hook, 'get_session_startup_marker_path', return_value=marker_path):
-                with patch.object(hook.__class__.__bases__[0], '_get_current_context_size', return_value=2000):
-                    with patch.object(hook.__class__.__bases__[0], '_rename_expired_marker'):
-                        result = hook.is_session_startup_processed(
-                            'test-session',
-                            {'transcript_path': '/tmp/transcript'}
-                        )
-
-            assert result is False
-
-    def test_token_within_threshold(self, tmp_path):
-        """トークン閾値内はTrue"""
-        config = {'behavior': {'token_threshold': 10000}}
-        with patch.object(SessionStartupHook, '_load_config', return_value=config):
-            hook = SessionStartupHook()
-
-            marker_path = tmp_path / 'marker'
-            marker_path.write_text(json.dumps({'tokens': 500}))
-
-            with patch.object(hook, 'get_session_startup_marker_path', return_value=marker_path):
-                with patch.object(hook.__class__.__bases__[0], '_get_current_context_size', return_value=1000):
-                    result = hook.is_session_startup_processed(
-                        'test-session',
-                        {'transcript_path': '/tmp/transcript'}
-                    )
-
-            assert result is True
-
-
-class TestMarkSessionStartupProcessed:
-    """mark_session_startup_processed メソッドのテスト"""
-
-    def test_creates_marker_file(self, tmp_path):
-        """マーカーファイルを作成する"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-
-            marker_path = tmp_path / 'marker'
-            with patch.object(hook, 'get_session_startup_marker_path', return_value=marker_path):
-                result = hook.mark_session_startup_processed('test-session')
-
-        assert result is True
-        assert marker_path.exists()
-
-    def test_marker_contains_session_info(self, tmp_path):
-        """マーカーにセッション情報が含まれる"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-
-            marker_path = tmp_path / 'marker'
-            with patch.object(hook, 'get_session_startup_marker_path', return_value=marker_path):
-                hook.mark_session_startup_processed('test-session-123')
-
-        data = json.loads(marker_path.read_text())
-        assert data['session_id'] == 'test-session-123'
-        assert data['hook_type'] == 'session_startup'
-        assert 'timestamp' in data
-        assert 'tokens' in data
-
-    def test_marker_includes_token_count(self, tmp_path):
-        """マーカーにトークン数が含まれる"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-
-            marker_path = tmp_path / 'marker'
-            with patch.object(hook, 'get_session_startup_marker_path', return_value=marker_path):
-                with patch.object(hook.__class__.__bases__[0], '_get_current_context_size', return_value=5000):
-                    hook.mark_session_startup_processed(
-                        'test-session',
-                        {'transcript_path': '/tmp/transcript'}
-                    )
-
-        data = json.loads(marker_path.read_text())
-        assert data['tokens'] == 5000
-
-    def test_mark_failure_returns_false(self):
-        """マーク失敗時はFalse"""
-        with patch.object(SessionStartupHook, '_load_config', return_value={}):
-            hook = SessionStartupHook()
-
-            with patch.object(hook, 'get_session_startup_marker_path', side_effect=Exception('error')):
-                result = hook.mark_session_startup_processed('test-session')
-
-        assert result is False
-
-
 class TestShouldProcess:
-    """should_process メソッドのテスト"""
+    """should_process メソッドのテスト（DBベース）"""
 
     def test_disabled_returns_false(self):
         """無効化されている場合はFalse"""
@@ -253,24 +117,42 @@ class TestShouldProcess:
         assert result is False
 
     def test_already_processed_returns_false(self):
-        """処理済みの場合はFalse"""
-        config = {'enabled': True, 'behavior': {'once_per_session': True}}
+        """処理済みの場合はFalse（DBベース）"""
+        config = {'enabled': True, 'behavior': {'once_per_session': True, 'token_threshold': 50000}}
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
             hook = SessionStartupHook()
 
-            with patch.object(hook, 'is_session_startup_processed', return_value=True):
-                result = hook.should_process({'session_id': 'test'})
+            # DBモック
+            mock_db = MagicMock()
+            mock_session_repo = MagicMock()
+            mock_subagent_repo = MagicMock()
+            mock_subagent_repo.is_any_active.return_value = False
+            mock_session_repo.is_processed_context_aware.return_value = True
+
+            with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+                with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                    with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                        result = hook.should_process({'session_id': 'test'})
 
         assert result is False
 
     def test_new_session_returns_true(self):
-        """新規セッションはTrue"""
-        config = {'enabled': True, 'behavior': {'once_per_session': True}}
+        """新規セッションはTrue（DBベース）"""
+        config = {'enabled': True, 'behavior': {'once_per_session': True, 'token_threshold': 50000}}
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
             hook = SessionStartupHook()
 
-            with patch.object(hook, 'is_session_startup_processed', return_value=False):
-                result = hook.should_process({'session_id': 'new-session'})
+            # DBモック
+            mock_db = MagicMock()
+            mock_session_repo = MagicMock()
+            mock_subagent_repo = MagicMock()
+            mock_subagent_repo.is_any_active.return_value = False
+            mock_session_repo.is_processed_context_aware.return_value = False
+
+            with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+                with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                    with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                        result = hook.should_process({'session_id': 'new-session'})
 
         assert result is True
 
@@ -279,7 +161,17 @@ class TestShouldProcess:
         config = {'enabled': True, 'behavior': {'once_per_session': False}}
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
             hook = SessionStartupHook()
-            result = hook.should_process({'session_id': 'test'})
+
+            # DBモック
+            mock_db = MagicMock()
+            mock_subagent_repo = MagicMock()
+            mock_subagent_repo.is_any_active.return_value = False
+            mock_session_repo = MagicMock()
+
+            with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+                with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                    with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                        result = hook.should_process({'session_id': 'test'})
 
         assert result is True
 
@@ -296,60 +188,134 @@ class TestShouldProcess:
         assert result is False
 
 
+class TestShouldProcessSubagent:
+    """should_process メソッドのsubagent検出テスト（DBベース）"""
+
+    def test_subagent_detected_new(self):
+        """新規subagent検出時にTrueを返す"""
+        config = {'enabled': True, 'behavior': {'once_per_session': True}}
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+
+            # DBモック
+            mock_db = MagicMock()
+            mock_subagent_repo = MagicMock()
+            mock_session_repo = MagicMock()
+
+            # subagentが存在し、未処理のものがある
+            mock_subagent_repo.is_any_active.return_value = True
+            mock_record = MagicMock()
+            mock_record.agent_type = 'Task'
+            mock_record.agent_id = 'agent-123'
+            mock_record.role = None
+            mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+
+            with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+                with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                    with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                        result = hook.should_process({'session_id': 'test'})
+
+        assert result is True
+        assert hook._is_subagent is True
+        assert hook._current_agent_id == 'agent-123'
+
+    def test_subagent_all_processed_returns_false(self):
+        """全subagent処理済みの場合はFalse"""
+        config = {'enabled': True, 'behavior': {'once_per_session': True}}
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+
+            # DBモック
+            mock_db = MagicMock()
+            mock_subagent_repo = MagicMock()
+            mock_session_repo = MagicMock()
+
+            # subagentが存在するが、全て処理済み
+            mock_subagent_repo.is_any_active.return_value = True
+            mock_subagent_repo.claim_next_unprocessed.return_value = None
+
+            with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+                with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                    with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                        result = hook.should_process({'session_id': 'test'})
+
+        assert result is False
+
+
 class TestProcess:
-    """process メソッドのテスト"""
+    """process メソッドのテスト（DBベース）"""
 
     def test_returns_block_decision(self):
         """blockの決定を返す"""
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
+            hook._is_subagent = False
+            hook._session_repo = MagicMock()
 
-            with patch.object(hook, 'mark_session_startup_processed', return_value=True):
-                with patch.object(hook, '_build_message', return_value='Test message'):
+            with patch.object(hook, '_build_message', return_value='Test message'):
+                with patch.object(hook, '_get_current_context_size', return_value=1000):
                     result = hook.process({'session_id': 'test'})
 
         assert result['decision'] == 'block'
         assert result['reason'] == 'Test message'
 
-    def test_marks_session_processed(self):
-        """処理済みとしてマークする"""
+    def test_main_agent_registers_session_in_db(self):
+        """main agentはSessionRepositoryに処理済みを登録する"""
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
+            hook._is_subagent = False
+            mock_session_repo = MagicMock()
+            hook._session_repo = mock_session_repo
 
-            with patch.object(hook, 'mark_session_startup_processed', return_value=True) as mock_mark:
-                with patch.object(hook, '_build_message', return_value=''):
-                    hook.process({'session_id': 'test'})
+            with patch.object(hook, '_build_message', return_value=''):
+                with patch.object(hook, '_get_current_context_size', return_value=5000):
+                    hook.process({'session_id': 'test-session', 'transcript_path': '/tmp/t.jsonl'})
 
-            mock_mark.assert_called_once()
+            mock_session_repo.register.assert_called_once_with('test-session', 'SessionStartupHook', 5000)
+
+    def test_subagent_no_additional_processing(self):
+        """subagentはclaim_next_unprocessed()で既に処理済みマーク済みのため追加処理不要"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            hook._is_subagent = True
+            hook._current_agent_id = 'agent-123'
+            mock_session_repo = MagicMock()
+            hook._session_repo = mock_session_repo
+
+            with patch.object(hook, '_build_message', return_value=''):
+                hook.process({'session_id': 'test'})
+
+            # subagentの場合はregisterが呼ばれない
+            mock_session_repo.register.assert_not_called()
 
 
 class TestGetExecutionCount:
-    """_get_execution_count メソッドのテスト"""
+    """_get_execution_count メソッドのテスト（DBベース）"""
 
-    def test_first_execution(self, tmp_path):
-        """初回実行時は1"""
+    def test_first_execution_returns_1(self):
+        """DB未初期化時は1を返す"""
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
-
-            marker_path = tmp_path / 'marker'
-            with patch.object(hook, 'get_session_startup_marker_path', return_value=marker_path):
-                count = hook._get_execution_count('test')
+            hook._db = None
+            count = hook._get_execution_count('test')
 
         assert count == 1
 
-    def test_second_execution(self, tmp_path):
-        """マーカー存在時は2回目以降"""
+    def test_counts_from_db(self):
+        """DBからカウントを取得する"""
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
 
-            # マーカーファイルを作成
-            marker_path = tmp_path / 'claude_session_startup_test'
-            marker_path.touch()
+            mock_db = MagicMock()
+            mock_cursor = MagicMock()
+            mock_cursor.fetchone.return_value = (2,)  # 2件のレコード
+            mock_db.conn.execute.return_value = mock_cursor
+            hook._db = mock_db
 
-            with patch.object(hook, 'get_session_startup_marker_path', return_value=marker_path):
-                count = hook._get_execution_count('test')
+            count = hook._get_execution_count('test')
 
-        assert count == 2
+        # 2件 + 1 = 3回目
+        assert count == 3
 
 
 class TestBuildMessage:
@@ -403,6 +369,32 @@ class TestBuildMessage:
 
         assert 'セッション開始時の確認' in message
 
+    def test_subagent_uses_resolved_config(self):
+        """subagentの場合は解決済み設定を使用"""
+        config = {
+            'messages': {
+                'first_time': {
+                    'title': 'メインエージェントタイトル',
+                    'main_text': 'メイン本文'
+                }
+            }
+        }
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+            hook._is_subagent = True
+            hook._resolved_config = {
+                'messages': {
+                    'first_time': {
+                        'title': 'サブエージェントタイトル',
+                        'main_text': 'サブ本文'
+                    }
+                }
+            }
+
+            message = hook._build_message('test')
+
+        assert 'サブエージェントタイトル' in message
+        assert 'サブ本文' in message
 
 
 class TestGetSuggestedRulesPath:
@@ -655,9 +647,11 @@ class TestProcessWithSuggestedRules:
 
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
+            hook._is_subagent = False
+            hook._session_repo = MagicMock()
 
             with patch.object(hook, '_load_suggested_rules', return_value=rules_data):
-                with patch.object(hook, 'mark_session_startup_processed', return_value=True):
+                with patch.object(hook, '_get_current_context_size', return_value=0):
                     with patch.object(hook, '_build_message', return_value='msg'):
                         with patch.object(hook, '_archive_suggested_rules') as mock_archive:
                             hook.process({'session_id': 'test'})
@@ -668,9 +662,11 @@ class TestProcessWithSuggestedRules:
         """suggested_rules.yamlロードがNone時はアーカイブしない"""
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
+            hook._is_subagent = False
+            hook._session_repo = MagicMock()
 
             with patch.object(hook, '_load_suggested_rules', return_value=None):
-                with patch.object(hook, 'mark_session_startup_processed', return_value=True):
+                with patch.object(hook, '_get_current_context_size', return_value=0):
                     with patch.object(hook, '_build_message', return_value='msg'):
                         with patch.object(hook, '_archive_suggested_rules') as mock_archive:
                             hook.process({'session_id': 'test'})

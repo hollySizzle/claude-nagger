@@ -1,6 +1,7 @@
 """SessionStart[compact]イベント処理フック
 
 compact検知時にマーカーファイルをリネームし、既存フローを再発火させる。
+DBベースのセッション状態もexpire_allで期限切れにする。
 """
 
 import tempfile
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 from .base_hook import BaseHook, MarkerPatterns
+from infrastructure.db import NaggerStateDB, SessionRepository
 
 
 class CompactDetectedHook(BaseHook):
@@ -45,23 +47,30 @@ class CompactDetectedHook(BaseHook):
         return True
 
     def process(self, input_data: Dict[str, Any]) -> Dict[str, str]:
-        """compact検知時の処理: マーカーファイルをリセット
-        
+        """compact検知時の処理: DBセッション期限切れ + マーカーファイルリセット
+
         Args:
             input_data: 入力データ
-            
+
         Returns:
             処理結果
         """
         session_id = input_data.get("session_id", "")
-        
+
         self.log_info(f"🎯 Processing compact for session: {session_id}")
-        
-        # マーカーファイルをリネーム（履歴保持）
+
+        # DBベースのセッション状態を期限切れに
+        db = NaggerStateDB(NaggerStateDB.resolve_db_path())
+        session_repo = SessionRepository(db)
+        session_repo.expire_all(session_id, reason='compact_expired')
+        self.log_info(f"✅ Expired all sessions in DB for compact: {session_id}")
+        db.close()
+
+        # 旧マーカーファイルのリネーム（互換性のため残す）
         renamed_count = self._rename_markers_for_compact(session_id)
-        
+
         self.log_info(f"✅ Renamed {renamed_count} marker files for compact")
-        
+
         return {"decision": "approve", "reason": ""}
 
     def _rename_markers_for_compact(self, session_id: str) -> int:

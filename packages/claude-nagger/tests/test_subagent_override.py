@@ -1,10 +1,10 @@
-"""subagent override機構のテスト
+"""subagent override機構のテスト（DB移行後）
 
 #5620: SessionStartup hookのsub-agent別override機構
-- SubagentMarkerManager: マーカーCRUD、並行subagent対応、クリーンアップ
+- SubagentRepository/SessionRepository: DB based state management
 - config.yaml overrides: 解決順序（base → subagent_default → subagent_types）、enabled: false
 - SessionStartupHook: main agent時は従来通り、subagent時はoverridesメッセージ
-- SubagentEventHook: マーカー作成・削除
+- SubagentEventHook: DB登録・削除
 - 統合: SubagentStart → PreToolUse（subagent用メッセージ） → SubagentStop
 """
 
@@ -22,7 +22,6 @@ from src.domain.hooks.session_startup_hook import (
     _deep_merge,
 )
 from src.domain.hooks.subagent_event_hook import main as subagent_event_main
-import domain.services.subagent_marker_manager as _hook_marker_module
 
 
 def _load_real_config():
@@ -115,11 +114,11 @@ class TestDeepMerge:
 
 
 # ============================================================
-# SubagentMarkerManager テスト
+# SubagentMarkerManager テスト（レガシー互換性）
 # ============================================================
 
 class TestSubagentMarkerManager:
-    """SubagentMarkerManagerのテスト"""
+    """SubagentMarkerManagerのテスト（レガシー互換性確認）"""
 
     @pytest.fixture
     def tmp_marker_dir(self, tmp_path):
@@ -149,28 +148,6 @@ class TestSubagentMarkerManager:
         assert data["startup_processed"] is False
         assert data["startup_processed_at"] is None
 
-    def test_create_marker_new_fields(self, tmp_marker_dir):
-        """マーカー作成時にrole, startup_processed, startup_processed_atが含まれる"""
-        mgr = self._make_manager()
-        mgr.create_marker("agent-new", "Bash")
-        marker_path = tmp_marker_dir / "test-session-123" / "subagents" / "agent-new.json"
-        data = json.loads(marker_path.read_text())
-        assert "role" in data
-        assert "startup_processed" in data
-        assert "startup_processed_at" in data
-
-    def test_update_marker_role(self, tmp_marker_dir):
-        """update_markerでroleを設定できる"""
-        mgr = self._make_manager()
-        mgr.create_marker("agent-abc", "general-purpose")
-        mgr.update_marker("agent-abc", role="coder")
-        marker_path = tmp_marker_dir / "test-session-123" / "subagents" / "agent-abc.json"
-        data = json.loads(marker_path.read_text())
-        assert data["role"] == "coder"
-        # 他のフィールドは変更されない
-        assert data["agent_type"] == "general-purpose"
-        assert data["startup_processed"] is False
-
     def test_delete_marker(self, tmp_marker_dir):
         """マーカー削除の基本動作"""
         mgr = self._make_manager()
@@ -181,12 +158,6 @@ class TestSubagentMarkerManager:
         assert result is True
         assert not mgr.is_subagent_active()
 
-    def test_delete_nonexistent_marker(self, tmp_marker_dir):
-        """存在しないマーカーの削除は冪等（True）"""
-        mgr = self._make_manager()
-        result = mgr.delete_marker("nonexistent")
-        assert result is True
-
     def test_is_subagent_active(self, tmp_marker_dir):
         """subagentアクティブ判定"""
         mgr = self._make_manager()
@@ -195,61 +166,9 @@ class TestSubagentMarkerManager:
         mgr.create_marker("agent-1", "Explore")
         assert mgr.is_subagent_active() is True
 
-    def test_get_active_subagent(self, tmp_marker_dir):
-        """最新のアクティブsubagent取得"""
-        mgr = self._make_manager()
-        assert mgr.get_active_subagent() is None
-
-        mgr.create_marker("agent-1", "Explore")
-        active = mgr.get_active_subagent()
-        assert active is not None
-        assert active["agent_id"] == "agent-1"
-        assert active["agent_type"] == "Explore"
-
-    def test_concurrent_subagents(self, tmp_marker_dir):
-        """並行subagent対応"""
-        mgr = self._make_manager()
-        mgr.create_marker("agent-1", "Explore")
-        mgr.create_marker("agent-2", "Bash")
-        mgr.create_marker("agent-3", "Plan")
-
-        assert mgr.get_active_count() == 3
-        assert mgr.is_subagent_active() is True
-
-        all_active = mgr.get_all_active_subagents()
-        types = {a["agent_type"] for a in all_active}
-        assert types == {"Explore", "Bash", "Plan"}
-
-    def test_partial_deletion(self, tmp_marker_dir):
-        """一部のsubagent削除後もアクティブ判定が正しい"""
-        mgr = self._make_manager()
-        mgr.create_marker("agent-1", "Explore")
-        mgr.create_marker("agent-2", "Bash")
-
-        mgr.delete_marker("agent-1")
-        assert mgr.get_active_count() == 1
-        active = mgr.get_active_subagent()
-        assert active["agent_type"] == "Bash"
-
-    def test_cleanup(self, tmp_marker_dir):
-        """全マーカーのクリーンアップ"""
-        mgr = self._make_manager()
-        mgr.create_marker("agent-1", "Explore")
-        mgr.create_marker("agent-2", "Bash")
-
-        count = mgr.cleanup()
-        assert count == 2
-        assert mgr.get_active_count() == 0
-
-    def test_cleanup_empty(self, tmp_marker_dir):
-        """空の状態でのクリーンアップ"""
-        mgr = self._make_manager()
-        count = mgr.cleanup()
-        assert count == 0
-
 
 # ============================================================
-# SessionStartupHook subagent override テスト
+# SessionStartupHook subagent override テスト（DBベース）
 # ============================================================
 
 class TestSessionStartupHookSubagentOverride:
@@ -458,33 +377,9 @@ class TestIsSessionProcessedContextAwareBypass:
             if marker_path.exists():
                 marker_path.unlink()
 
-    def test_always_false_with_subagent_marker(self, tmp_path):
-        """subagentマーカー存在時でもFalse"""
-        hook = self._make_hook()
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr = SubagentMarkerManager("session-sub")
-            mgr.create_marker("agent-abc", "general-purpose")
-            result = hook.is_session_processed_context_aware("session-sub", {})
-            assert result is False
-
-    def test_always_false_with_both_markers(self, tmp_path):
-        """セッションマーカー + subagentマーカー両方存在時でもFalse"""
-        hook = self._make_hook()
-        hook.mark_session_processed("session-both", context_tokens=500)
-        try:
-            with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
-                mgr = SubagentMarkerManager("session-both")
-                mgr.create_marker("agent-xyz", "general-purpose")
-                result = hook.is_session_processed_context_aware("session-both", {})
-                assert result is False
-        finally:
-            marker_path = hook.get_session_marker_path("session-both")
-            if marker_path.exists():
-                marker_path.unlink()
-
 
 class TestSessionStartupHookShouldProcessSubagent:
-    """should_processのsubagent検出テスト"""
+    """should_processのsubagent検出テスト（DBベース）"""
 
     BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
 
@@ -494,24 +389,24 @@ class TestSessionStartupHookShouldProcessSubagent:
             return SessionStartupHook()
 
     def test_subagent_detected_new(self):
-        """新規subagent検出時はTrue"""
+        """新規subagent検出時はTrue（DBベース）"""
         hook = self._make_hook()
-        marker_data = {
-            "agent_id": "agent-abc",
-            "agent_type": "general-purpose",
-            "session_id": "test-session",
-            "created_at": "2026-01-27T00:00:00",
-            "role": None,
-            "startup_processed": False,
-            "startup_processed_at": None,
-        }
 
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            mock_instance.is_subagent_active.return_value = True
-            mock_instance.get_active_subagent.return_value = marker_data
-            mock_instance.is_startup_processed.return_value = False
-            result = hook.should_process({"session_id": "test-session"})
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-abc"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({"session_id": "test-session"})
 
         assert result is True
         assert hook._is_subagent is True
@@ -519,42 +414,42 @@ class TestSessionStartupHookShouldProcessSubagent:
         assert hook._current_agent_id == "agent-abc"
 
     def test_subagent_already_processed(self):
-        """処理済みsubagentはFalse"""
+        """処理済みsubagentはFalse（claim_next_unprocessedがNone）"""
         hook = self._make_hook()
-        marker_data = {
-            "agent_id": "agent-abc",
-            "agent_type": "general-purpose",
-            "session_id": "test-session",
-            "created_at": "2026-01-27T00:00:00",
-            "role": None,
-            "startup_processed": True,
-            "startup_processed_at": "2026-01-27T00:01:00",
-        }
 
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            mock_instance.is_subagent_active.return_value = True
-            mock_instance.get_active_subagent.return_value = marker_data
-            mock_instance.is_startup_processed.return_value = True
-            result = hook.should_process({"session_id": "test-session"})
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_subagent_repo.claim_next_unprocessed.return_value = None
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({"session_id": "test-session"})
 
         assert result is False
 
     def test_subagent_disabled_type(self):
         """enabled: falseのsubagent種別はFalse"""
         hook = self._make_hook()
-        marker_data = {
-            "agent_id": "agent-xyz",
-            "agent_type": "Explore",
-            "session_id": "test-session",
-            "created_at": "2026-01-27T00:00:00",
-        }
 
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            mock_instance.is_subagent_active.return_value = True
-            mock_instance.get_active_subagent.return_value = marker_data
-            result = hook.should_process({"session_id": "test-session"})
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "Explore"
+        mock_record.agent_id = "agent-xyz"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({"session_id": "test-session"})
 
         assert result is False
 
@@ -562,18 +457,24 @@ class TestSessionStartupHookShouldProcessSubagent:
         """subagentなしの場合はmain agentフロー"""
         hook = self._make_hook()
 
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            mock_instance.is_subagent_active.return_value = False
-            with patch.object(hook, 'is_session_startup_processed', return_value=False):
-                result = hook.should_process({"session_id": "new-session"})
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = False
+        mock_session_repo.is_processed_context_aware.return_value = False
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({"session_id": "new-session"})
 
         assert result is True
         assert hook._is_subagent is False
 
 
 class TestSessionStartupHookProcessSubagent:
-    """processのsubagent override テスト"""
+    """processのsubagent override テスト（DBベース）"""
 
     BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
 
@@ -589,9 +490,7 @@ class TestSessionStartupHookProcessSubagent:
         hook._current_agent_id = "agent-abc"
         hook._current_agent_type = "general-purpose"
         hook._resolved_config = hook._resolve_subagent_config("general-purpose")
-        mock_mgr = MagicMock()
-        mock_mgr.update_marker.return_value = True
-        hook._subagent_marker_manager = mock_mgr
+        hook._session_repo = MagicMock()
 
         result = hook.process({"session_id": "test-session"})
 
@@ -606,9 +505,7 @@ class TestSessionStartupHookProcessSubagent:
         hook._current_agent_id = "agent-bash"
         hook._current_agent_type = "Bash"
         hook._resolved_config = hook._resolve_subagent_config("Bash")
-        mock_mgr = MagicMock()
-        mock_mgr.update_marker.return_value = True
-        hook._subagent_marker_manager = mock_mgr
+        hook._session_repo = MagicMock()
 
         result = hook.process({"session_id": "test-session"})
 
@@ -620,120 +517,50 @@ class TestSessionStartupHookProcessSubagent:
         hook = self._make_hook()
         hook._is_subagent = False
         hook._resolved_config = None
+        hook._session_repo = MagicMock()
 
-        with patch.object(hook, 'mark_session_startup_processed', return_value=True):
-            with patch.object(hook, '_get_execution_count', return_value=1):
+        with patch.object(hook, '_get_execution_count', return_value=1):
+            with patch.object(hook, '_get_current_context_size', return_value=0):
                 result = hook.process({"session_id": "test-session"})
 
         assert result["decision"] == "block"
         assert "プロジェクトセットアップ" in result["reason"]
 
-    def test_subagent_updates_lifecycle_marker(self):
-        """subagent処理時はライフサイクルマーカーのstartup_processedを更新"""
+    def test_subagent_no_register_call(self):
+        """subagent処理時はSessionRepository.registerが呼ばれない"""
         hook = self._make_hook()
         hook._is_subagent = True
         hook._current_agent_id = "agent-abc"
         hook._current_agent_type = "general-purpose"
         hook._resolved_config = hook._resolve_subagent_config("general-purpose")
-        mock_mgr = MagicMock()
-        mock_mgr.update_marker.return_value = True
-        hook._subagent_marker_manager = mock_mgr
+        mock_session_repo = MagicMock()
+        hook._session_repo = mock_session_repo
 
         hook.process({"session_id": "test-session"})
 
-        mock_mgr.update_marker.assert_called_once()
-        call_kwargs = mock_mgr.update_marker.call_args
-        assert call_kwargs[0][0] == "agent-abc"
-        assert call_kwargs[1]["startup_processed"] is True
-        assert "startup_processed_at" in call_kwargs[1]
+        mock_session_repo.register.assert_not_called()
 
-    def test_main_agent_creates_main_marker(self):
-        """main agent処理時は従来のマーカーを作成"""
+    def test_main_agent_creates_db_record(self):
+        """main agent処理時はSessionRepository.registerが呼ばれる"""
         hook = self._make_hook()
         hook._is_subagent = False
         hook._resolved_config = None
+        mock_session_repo = MagicMock()
+        hook._session_repo = mock_session_repo
 
-        with patch.object(hook, 'mark_session_startup_processed', return_value=True) as mock_mark:
-            with patch.object(hook, '_get_execution_count', return_value=1):
+        with patch.object(hook, '_get_execution_count', return_value=1):
+            with patch.object(hook, '_get_current_context_size', return_value=5000):
                 hook.process({"session_id": "test-session"})
 
-        mock_mark.assert_called_once()
-
-
-class TestSubagentStartupMarkerUnified:
-    """統一マーカーによるstartup処理済み判定のテスト"""
-
-    @pytest.fixture
-    def tmp_marker_dir(self, tmp_path):
-        session_id = "test-session"
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr = SubagentMarkerManager(session_id)
-        return mgr
-
-    def test_is_startup_processed_default_false(self, tmp_marker_dir):
-        """作成直後のマーカーはstartup_processed=False"""
-        mgr = tmp_marker_dir
-        mgr.create_marker("a1", "Bash")
-        assert mgr.is_startup_processed("a1") is False
-
-    def test_update_marker_sets_startup_processed(self, tmp_marker_dir):
-        """update_markerでstartup_processedをTrueに更新"""
-        mgr = tmp_marker_dir
-        mgr.create_marker("a1", "Bash")
-        mgr.update_marker("a1", startup_processed=True, startup_processed_at="2026-01-27T00:00:00")
-        assert mgr.is_startup_processed("a1") is True
-
-    def test_different_agents_independent(self, tmp_marker_dir):
-        """異なるagent_idのstartup_processedは独立"""
-        mgr = tmp_marker_dir
-        mgr.create_marker("a1", "Bash")
-        mgr.create_marker("a2", "Explore")
-        mgr.update_marker("a1", startup_processed=True)
-        assert mgr.is_startup_processed("a1") is True
-        assert mgr.is_startup_processed("a2") is False
-
-    def test_is_startup_processed_nonexistent_marker(self, tmp_marker_dir):
-        """存在しないマーカーはFalse"""
-        mgr = tmp_marker_dir
-        assert mgr.is_startup_processed("nonexistent") is False
-
-    def test_update_nonexistent_marker_returns_false(self, tmp_marker_dir):
-        """存在しないマーカーの更新はFalse"""
-        mgr = tmp_marker_dir
-        assert mgr.update_marker("nonexistent", startup_processed=True) is False
+        mock_session_repo.register.assert_called_once_with("test-session", "SessionStartupHook", 5000)
 
 
 # ============================================================
-# SubagentEventHook テスト
+# SubagentEventHook テスト（DBベース）
 # ============================================================
 
 class TestSubagentEventHook:
-    """SubagentEventHookのテスト（SubagentMarkerManager直接呼び出し確認）"""
-
-    def test_subagent_start_creates_marker(self, tmp_path):
-        """SubagentStartイベントでマーカーが作成される"""
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr = SubagentMarkerManager("session-123")
-            mgr.create_marker("agent-abc", "general-purpose")
-
-            assert mgr.is_subagent_active()
-            active = mgr.get_active_subagent()
-            assert active["agent_id"] == "agent-abc"
-            assert active["agent_type"] == "general-purpose"
-
-    def test_subagent_stop_deletes_marker(self, tmp_path):
-        """SubagentStopイベントでマーカーが削除される"""
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr = SubagentMarkerManager("session-123")
-            mgr.create_marker("agent-abc", "general-purpose")
-            assert mgr.is_subagent_active()
-
-            mgr.delete_marker("agent-abc")
-            assert not mgr.is_subagent_active()
-
-
-class TestSubagentEventHookMain:
-    """SubagentEventHook main()のstdin mock経由テスト（#5631）"""
+    """SubagentEventHookのテスト（DBベース）"""
 
     def _run_main_with_stdin(self, input_data):
         """stdin経由でmain()を実行するヘルパー。SystemExit例外をキャッチ。"""
@@ -743,491 +570,42 @@ class TestSubagentEventHookMain:
                 subagent_event_main()
         return exc_info.value.code
 
-    def test_start_event_calls_create_marker(self):
-        """SubagentStartイベントでcreate_markerが呼ばれる"""
+    def test_start_event_calls_register(self):
+        """SubagentStartイベントでSubagentRepository.registerが呼ばれる"""
         input_data = {
             "hook_event_name": "SubagentStart",
             "session_id": "session-123",
             "agent_id": "agent-abc",
             "agent_type": "general-purpose",
         }
-        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            exit_code = self._run_main_with_stdin(input_data)
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+
+        with patch('src.domain.hooks.subagent_event_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.subagent_event_hook.SubagentRepository', return_value=mock_subagent_repo):
+                exit_code = self._run_main_with_stdin(input_data)
 
         assert exit_code == 0
-        MockMgr.assert_called_once_with("session-123")
-        mock_instance.create_marker.assert_called_once_with("agent-abc", "general-purpose")
-        mock_instance.delete_marker.assert_not_called()
+        mock_subagent_repo.register.assert_called_once()
 
-    def test_stop_event_calls_delete_marker(self):
-        """SubagentStopイベントでdelete_markerが呼ばれる"""
+    def test_stop_event_calls_unregister(self):
+        """SubagentStopイベントでSubagentRepository.unregisterが呼ばれる"""
         input_data = {
             "hook_event_name": "SubagentStop",
             "session_id": "session-123",
             "agent_id": "agent-abc",
         }
-        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            exit_code = self._run_main_with_stdin(input_data)
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+
+        with patch('src.domain.hooks.subagent_event_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.subagent_event_hook.SubagentRepository', return_value=mock_subagent_repo):
+                exit_code = self._run_main_with_stdin(input_data)
 
         assert exit_code == 0
-        MockMgr.assert_called_once_with("session-123")
-        mock_instance.delete_marker.assert_called_once_with("agent-abc")
-        mock_instance.create_marker.assert_not_called()
-
-    def test_invalid_json_exits_cleanly(self):
-        """不正JSONは正常終了（exit 0）"""
-        exit_code = self._run_main_with_stdin("{invalid json!!!")
-
-        # create_marker/delete_markerは呼ばれない（JSONDecodeErrorでexit）
-        assert exit_code == 0
-
-    def test_empty_stdin_exits_cleanly(self):
-        """空stdinは正常終了（exit 0）"""
-        with patch('sys.stdin', io.StringIO("")):
-            with pytest.raises(SystemExit) as exc_info:
-                subagent_event_main()
-        assert exc_info.value.code == 0
-
-    def test_missing_session_id_exits_early(self):
-        """session_id欠損は早期終了（マーカー操作なし）"""
-        input_data = {
-            "hook_event_name": "SubagentStart",
-            "agent_id": "agent-abc",
-            "agent_type": "general-purpose",
-        }
-        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
-            exit_code = self._run_main_with_stdin(input_data)
-
-        assert exit_code == 0
-        MockMgr.assert_not_called()
-
-    def test_missing_agent_id_exits_early(self):
-        """agent_id欠損は早期終了（マーカー操作なし）"""
-        input_data = {
-            "hook_event_name": "SubagentStart",
-            "session_id": "session-123",
-            "agent_type": "general-purpose",
-        }
-        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
-            exit_code = self._run_main_with_stdin(input_data)
-
-        assert exit_code == 0
-        MockMgr.assert_not_called()
-
-    def test_unknown_event_no_marker_operation(self):
-        """未知のイベント名ではマーカー操作なし"""
-        input_data = {
-            "hook_event_name": "UnknownEvent",
-            "session_id": "session-123",
-            "agent_id": "agent-abc",
-        }
-        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            exit_code = self._run_main_with_stdin(input_data)
-
-        assert exit_code == 0
-        # SubagentMarkerManagerはインスタンス化されるがマーカー操作は無い
-        MockMgr.assert_called_once_with("session-123")
-        mock_instance.create_marker.assert_not_called()
-        mock_instance.delete_marker.assert_not_called()
-
-    def test_start_event_missing_agent_type_defaults_unknown(self):
-        """agent_type欠損時は"unknown"がデフォルト"""
-        input_data = {
-            "hook_event_name": "SubagentStart",
-            "session_id": "session-123",
-            "agent_id": "agent-abc",
-        }
-        with patch('src.domain.hooks.subagent_event_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            exit_code = self._run_main_with_stdin(input_data)
-
-        assert exit_code == 0
-        mock_instance.create_marker.assert_called_once_with("agent-abc", "unknown")
-
-
-# ============================================================
-# 統合テスト
-# ============================================================
-
-class TestSubagentOverrideIntegration:
-    """SubagentStart → PreToolUse → SubagentStop の統合テスト"""
-
-    CONFIG = {
-        "enabled": True,
-        "messages": {
-            "first_time": {
-                "title": "プロジェクト規約",
-                "main_text": "[ ] テスト必須",
-            }
-        },
-        "behavior": {"once_per_session": True},
-        "overrides": {
-            "subagent_default": {
-                "messages": {
-                    "first_time": {
-                        "title": "subagent規約",
-                        "main_text": "[ ] スコープ外編集禁止",
-                    }
-                }
-            },
-            "subagent_types": {
-                "Explore": {"enabled": False},
-            },
-        },
-    }
-
-    def _run_subagent_event_main(self, input_data, tmp_path):
-        """subagent_event_main()をstdin/sys.exit/BASE_DIRパッチ付きで実行"""
-        stdin_text = json.dumps(input_data) if isinstance(input_data, dict) else input_data
-        # subagent_event_hookが別モジュールパスのSubagentMarkerManagerを使用するため両方パッチ
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            with patch('sys.stdin', io.StringIO(stdin_text)):
-                with pytest.raises(SystemExit) as exc_info:
-                    subagent_event_main()
-        return exc_info.value.code
-
-    def _write_transcript(self, tmp_path, lines):
-        """JSONL形式のトランスクリプトファイルを作成"""
-        tmp_path.mkdir(parents=True, exist_ok=True)
-        transcript = tmp_path / "transcript.jsonl"
-        with open(transcript, 'w', encoding='utf-8') as f:
-            for entry in lines:
-                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-        return str(transcript)
-
-    def test_full_flow_general_purpose(self, tmp_path):
-        """一般subagentのフルフロー: Start→PreToolUse(block)→Stop（実マーカー操作）"""
-        session_id = "integration-session"
-        agent_id = "agent-gp"
-        agent_type = "general-purpose"
-
-        # transcriptフィクスチャ作成（[ROLE:coder]パターン含む）
-        transcript_path = self._write_transcript(tmp_path / "transcripts", [
-            {"type": "user", "message": {"content": "[ROLE:coder] あなたはcoderです"}},
-        ])
-
-        # Step 1: subagent_event_main()経由でマーカー作成
-        start_input = {
-            "hook_event_name": "SubagentStart",
-            "session_id": session_id,
-            "agent_id": agent_id,
-            "agent_type": agent_type,
-            "agent_transcript_path": transcript_path,
-        }
-        exit_code = self._run_subagent_event_main(start_input, tmp_path)
-        assert exit_code == 0
-
-        # マーカーが作成され、roleが保存されていることを検証
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr = SubagentMarkerManager(session_id)
-            assert mgr.is_subagent_active()
-            assert mgr.is_startup_processed(agent_id) is False
-            # agent_transcript_pathからroleが解析・保存されている
-            active = mgr.get_active_subagent()
-            assert active["role"] == "coder"
-
-        # Step 2: PreToolUse → SessionStartupHook発火（実マーカー操作）
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            with patch.object(SessionStartupHook, '_load_config', return_value=self.CONFIG):
-                hook = SessionStartupHook()
-                input_data = {"session_id": session_id, "tool_name": "Read"}
-
-                # should_process: subagent検出 → True
-                result = hook.should_process(input_data)
-                assert result is True
-                assert hook._is_subagent is True
-                assert hook._current_agent_type == agent_type
-
-                # process: subagent用メッセージでblock + startup_processed更新
-                process_result = hook.process(input_data)
-                assert process_result["decision"] == "block"
-                assert "subagent規約" in process_result["reason"]
-
-                # マーカーのstartup_processedが実際にTrueに更新されている
-                mgr2 = SubagentMarkerManager(session_id)
-                assert mgr2.is_startup_processed(agent_id) is True
-
-                # 2回目のPreToolUse → startup_processed=Trueで処理済みスキップ
-                hook2 = SessionStartupHook()
-                result2 = hook2.should_process(input_data)
-                assert result2 is False
-
-        # Step 3: SubagentStop → マーカー削除
-        stop_input = {
-            "hook_event_name": "SubagentStop",
-            "session_id": session_id,
-            "agent_id": agent_id,
-        }
-        exit_code = self._run_subagent_event_main(stop_input, tmp_path)
-        assert exit_code == 0
-
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr3 = SubagentMarkerManager(session_id)
-            assert not mgr3.is_subagent_active()
-
-    def test_full_flow_explore_disabled(self, tmp_path):
-        """Exploresubagentは無効化: Start→PreToolUse(skip)→Stop"""
-        session_id = "integration-session"
-        agent_id = "agent-explore"
-        agent_type = "Explore"
-
-        # SubagentStart（subagent_event_main経由）
-        start_input = {
-            "hook_event_name": "SubagentStart",
-            "session_id": session_id,
-            "agent_id": agent_id,
-            "agent_type": agent_type,
-        }
-        exit_code = self._run_subagent_event_main(start_input, tmp_path)
-        assert exit_code == 0
-
-        # PreToolUse → should_processがFalse（disabled）
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            with patch.object(SessionStartupHook, '_load_config', return_value=self.CONFIG):
-                hook = SessionStartupHook()
-                result = hook.should_process({"session_id": session_id})
-                assert result is False
-
-        # SubagentStop
-        stop_input = {
-            "hook_event_name": "SubagentStop",
-            "session_id": session_id,
-            "agent_id": agent_id,
-        }
-        exit_code = self._run_subagent_event_main(stop_input, tmp_path)
-        assert exit_code == 0
-
-    def test_main_agent_unaffected(self, tmp_path):
-        """subagentがいない場合はmain agentの従来動作"""
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            with patch.object(SessionStartupHook, '_load_config', return_value=self.CONFIG):
-                hook = SessionStartupHook()
-
-                with patch.object(hook, 'is_session_startup_processed', return_value=False):
-                    result = hook.should_process({"session_id": "main-session"})
-
-                assert result is True
-                assert hook._is_subagent is False
-
-
-# ============================================================
-# hook間連携テスト (#5931)
-# ============================================================
-
-class TestCrossHookRolePropagation:
-    """SubagentStart(hook) → PreToolUse(hook) 間のrole伝播テスト"""
-
-    CONFIG_WITH_ROLES = {
-        "enabled": True,
-        "messages": {
-            "first_time": {
-                "title": "プロジェクト規約",
-                "main_text": "[ ] テスト必須",
-            }
-        },
-        "behavior": {"once_per_session": True},
-        "overrides": {
-            "subagent_default": {
-                "messages": {
-                    "first_time": {
-                        "title": "subagent規約",
-                        "main_text": "[ ] スコープ外編集禁止",
-                    }
-                }
-            },
-            "subagent_types": {
-                "Explore": {"enabled": False},
-                "coder": {
-                    "messages": {
-                        "first_time": {
-                            "title": "coder規約",
-                            "main_text": "[ ] コーディング規約遵守",
-                        }
-                    }
-                },
-                "conductor": {
-                    "messages": {
-                        "first_time": {
-                            "title": "conductor規約",
-                            "main_text": "[ ] 直接作業禁止",
-                        }
-                    }
-                },
-            },
-        },
-    }
-
-    def _run_subagent_event_main(self, input_data, tmp_path):
-        """subagent_event_main()をstdin/sys.exit/BASE_DIRパッチ付きで実行"""
-        stdin_text = json.dumps(input_data)
-        # subagent_event_hookが別モジュールパスのSubagentMarkerManagerを使用するため両方パッチ
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            with patch('sys.stdin', io.StringIO(stdin_text)):
-                with pytest.raises(SystemExit) as exc_info:
-                    subagent_event_main()
-        return exc_info.value.code
-
-    def _write_transcript(self, tmp_path, lines):
-        """JSONL形式のトランスクリプトファイルを作成"""
-        transcript_dir = tmp_path / "transcripts"
-        transcript_dir.mkdir(parents=True, exist_ok=True)
-        transcript = transcript_dir / "transcript.jsonl"
-        with open(transcript, 'w', encoding='utf-8') as f:
-            for entry in lines:
-                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
-        return str(transcript)
-
-    def test_subagent_start_sets_role_pretooluse_resolves_config(self, tmp_path):
-        """SubagentStartでrole付きマーカー作成 → PreToolUseでroleに基づくconfig解決"""
-        session_id = "cross-hook-session"
-        agent_id = "agent-coder"
-        agent_type = "general-purpose"
-
-        # transcriptにROLE:coderを含む
-        transcript_path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "[ROLE:coder] コーディングタスクを実行"}},
-        ])
-
-        # Step 1: SubagentStart → マーカー作成（role=coder）
-        start_input = {
-            "hook_event_name": "SubagentStart",
-            "session_id": session_id,
-            "agent_id": agent_id,
-            "agent_type": agent_type,
-            "agent_transcript_path": transcript_path,
-        }
-        exit_code = self._run_subagent_event_main(start_input, tmp_path)
-        assert exit_code == 0
-
-        # マーカーにrole=coderが保存されている
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr = SubagentMarkerManager(session_id)
-            active = mgr.get_active_subagent()
-            assert active["role"] == "coder"
-
-        # Step 2: PreToolUse → roleに基づくcoder規約が解決される
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            with patch.object(SessionStartupHook, '_load_config', return_value=self.CONFIG_WITH_ROLES):
-                hook = SessionStartupHook()
-                input_data = {"session_id": session_id, "tool_name": "Read"}
-
-                result = hook.should_process(input_data)
-                assert result is True
-                assert hook._is_subagent is True
-
-                # coder規約が解決されている（role優先でsubagent_types.coderにマッチ）
-                assert hook._resolved_config["messages"]["first_time"]["title"] == "coder規約"
-                assert "コーディング規約遵守" in hook._resolved_config["messages"]["first_time"]["main_text"]
-
-                # processでcoder規約メッセージがブロック理由に含まれる
-                process_result = hook.process(input_data)
-                assert process_result["decision"] == "block"
-                assert "coder規約" in process_result["reason"]
-
-    def test_subagent_start_no_role_pretooluse_uses_agent_type(self, tmp_path):
-        """roleなしの場合、agent_typeでconfig解決"""
-        session_id = "cross-hook-no-role"
-        agent_id = "agent-norole"
-        agent_type = "general-purpose"
-
-        # transcriptにROLEパターンなし
-        transcript_path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "通常のタスクを実行してください"}},
-        ])
-
-        # SubagentStart（roleなし）
-        start_input = {
-            "hook_event_name": "SubagentStart",
-            "session_id": session_id,
-            "agent_id": agent_id,
-            "agent_type": agent_type,
-            "agent_transcript_path": transcript_path,
-        }
-        exit_code = self._run_subagent_event_main(start_input, tmp_path)
-        assert exit_code == 0
-
-        # マーカーにroleが設定されていない
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr = SubagentMarkerManager(session_id)
-            active = mgr.get_active_subagent()
-            assert active["role"] is None
-
-        # PreToolUse → agent_type(general-purpose)でsubagent_defaultにフォールバック
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            with patch.object(SessionStartupHook, '_load_config', return_value=self.CONFIG_WITH_ROLES):
-                hook = SessionStartupHook()
-                input_data = {"session_id": session_id, "tool_name": "Read"}
-
-                result = hook.should_process(input_data)
-                assert result is True
-
-                # subagent_defaultの規約が解決されている（general-purposeは個別定義なし）
-                assert hook._resolved_config["messages"]["first_time"]["title"] == "subagent規約"
-                assert "スコープ外編集禁止" in hook._resolved_config["messages"]["first_time"]["main_text"]
-
-    def test_role_priority_over_agent_type(self, tmp_path):
-        """role(conductor)とagent_type(general-purpose)が異なる場合、roleが優先"""
-        session_id = "cross-hook-priority"
-        agent_id = "agent-conductor"
-        agent_type = "general-purpose"
-
-        # transcriptにROLE:conductorを含む
-        transcript_path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "[ROLE:conductor] サブタスクを管理してください"}},
-        ])
-
-        # SubagentStart → マーカー作成（role=conductor）
-        start_input = {
-            "hook_event_name": "SubagentStart",
-            "session_id": session_id,
-            "agent_id": agent_id,
-            "agent_type": agent_type,
-            "agent_transcript_path": transcript_path,
-        }
-        exit_code = self._run_subagent_event_main(start_input, tmp_path)
-        assert exit_code == 0
-
-        # マーカーにrole=conductorが保存されている
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            mgr = SubagentMarkerManager(session_id)
-            active = mgr.get_active_subagent()
-            assert active["role"] == "conductor"
-            # agent_typeはgeneral-purposeのまま
-            assert active["agent_type"] == "general-purpose"
-
-        # PreToolUse → roleのconductor規約が優先（agent_typeのgeneral-purposeではなく）
-        with patch.object(SubagentMarkerManager, 'BASE_DIR', tmp_path), \
-             patch.object(_hook_marker_module.SubagentMarkerManager, 'BASE_DIR', tmp_path):
-            with patch.object(SessionStartupHook, '_load_config', return_value=self.CONFIG_WITH_ROLES):
-                hook = SessionStartupHook()
-                input_data = {"session_id": session_id, "tool_name": "Read"}
-
-                result = hook.should_process(input_data)
-                assert result is True
-
-                # conductor規約が解決されている（roleがagent_typeより優先）
-                assert hook._resolved_config["messages"]["first_time"]["title"] == "conductor規約"
-                assert "直接作業禁止" in hook._resolved_config["messages"]["first_time"]["main_text"]
-
-                # processでconductor規約メッセージがブロック理由に含まれる
-                process_result = hook.process(input_data)
-                assert process_result["decision"] == "block"
-                assert "conductor規約" in process_result["reason"]
+        mock_subagent_repo.unregister.assert_called_once_with("agent-abc")
 
 
 # ============================================================
@@ -1332,7 +710,7 @@ class TestParseRoleFromTranscript:
 
 
 class TestShouldProcessRoleParsing:
-    """should_processでのROLE解析統合テスト"""
+    """should_processでのROLE解析統合テスト（DBベース）"""
 
     BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
 
@@ -1341,8 +719,8 @@ class TestShouldProcessRoleParsing:
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
             return SessionStartupHook()
 
-    def test_role_parsed_and_stored_in_marker(self, tmp_path):
-        """transcript解析でroleがマーカーに保存される"""
+    def test_role_parsed_and_stored_in_db(self, tmp_path):
+        """transcript解析でroleがDBに保存される"""
         hook = self._make_hook()
 
         # トランスクリプトファイル作成
@@ -1350,30 +728,28 @@ class TestShouldProcessRoleParsing:
         with open(transcript, 'w') as f:
             f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:coder]\nFix bug."}}) + '\n')
 
-        marker_data = {
-            "agent_id": "agent-role-test",
-            "agent_type": "general-purpose",
-            "session_id": "test-session",
-            "created_at": "2026-01-27T00:00:00",
-            "role": None,
-            "startup_processed": False,
-            "startup_processed_at": None,
-        }
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
 
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            mock_instance.is_subagent_active.return_value = True
-            mock_instance.get_active_subagent.return_value = marker_data
-            mock_instance.is_startup_processed.return_value = False
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-role-test"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
-            result = hook.should_process({
-                "session_id": "test-session",
-                "transcript_path": str(transcript),
-            })
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "transcript_path": str(transcript),
+                    })
 
         assert result is True
-        # update_markerがrole=coderで呼ばれたことを確認
-        mock_instance.update_marker.assert_called_once_with("agent-role-test", role="coder")
+        # update_roleがrole=coderで呼ばれたことを確認
+        mock_subagent_repo.update_role.assert_called_once_with("agent-role-test", "coder", "transcript_parse")
 
     def test_existing_role_not_overwritten(self, tmp_path):
         """マーカーに既存roleがある場合はtranscript解析しない"""
@@ -1383,62 +759,58 @@ class TestShouldProcessRoleParsing:
         with open(transcript, 'w') as f:
             f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:reviewer]\nReview."}}) + '\n')
 
-        marker_data = {
-            "agent_id": "agent-existing-role",
-            "agent_type": "general-purpose",
-            "session_id": "test-session",
-            "created_at": "2026-01-27T00:00:00",
-            "role": "coder",  # 既にroleがある
-            "startup_processed": False,
-            "startup_processed_at": None,
-        }
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
 
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            mock_instance.is_subagent_active.return_value = True
-            mock_instance.get_active_subagent.return_value = marker_data
-            mock_instance.is_startup_processed.return_value = False
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-existing-role"
+        mock_record.role = "coder"  # 既にroleがある
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
-            result = hook.should_process({
-                "session_id": "test-session",
-                "transcript_path": str(transcript),
-            })
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "transcript_path": str(transcript),
+                    })
 
         assert result is True
-        # update_markerはroleで呼ばれない（roleが既にある）
-        mock_instance.update_marker.assert_not_called()
+        # update_roleはroleで呼ばれない（roleが既にある）
+        mock_subagent_repo.update_role.assert_not_called()
 
     def test_no_role_in_transcript_no_update(self, tmp_path):
-        """transcriptにROLEがない場合はupdate_marker呼ばれない"""
+        """transcriptにROLEがない場合はupdate_role呼ばれない"""
         hook = self._make_hook()
 
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
             f.write(json.dumps({"type": "user", "message": {"content": "No role here."}}) + '\n')
 
-        marker_data = {
-            "agent_id": "agent-no-role",
-            "agent_type": "general-purpose",
-            "session_id": "test-session",
-            "created_at": "2026-01-27T00:00:00",
-            "role": None,
-            "startup_processed": False,
-            "startup_processed_at": None,
-        }
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
 
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            mock_instance.is_subagent_active.return_value = True
-            mock_instance.get_active_subagent.return_value = marker_data
-            mock_instance.is_startup_processed.return_value = False
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-no-role"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
-            result = hook.should_process({
-                "session_id": "test-session",
-                "transcript_path": str(transcript),
-            })
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "transcript_path": str(transcript),
+                    })
 
         assert result is True
-        mock_instance.update_marker.assert_not_called()
+        mock_subagent_repo.update_role.assert_not_called()
 
     def test_role_passed_to_resolve_subagent_config(self, tmp_path):
         """解析されたroleが_resolve_subagent_configに渡される"""
@@ -1448,27 +820,25 @@ class TestShouldProcessRoleParsing:
         with open(transcript, 'w') as f:
             f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:coder]\nWork."}}) + '\n')
 
-        marker_data = {
-            "agent_id": "agent-resolve-test",
-            "agent_type": "general-purpose",
-            "session_id": "test-session",
-            "created_at": "2026-01-27T00:00:00",
-            "role": None,
-            "startup_processed": False,
-            "startup_processed_at": None,
-        }
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
 
-        with patch('src.domain.hooks.session_startup_hook.SubagentMarkerManager') as MockMgr:
-            mock_instance = MockMgr.return_value
-            mock_instance.is_subagent_active.return_value = True
-            mock_instance.get_active_subagent.return_value = marker_data
-            mock_instance.is_startup_processed.return_value = False
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-resolve-test"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
-            with patch.object(hook, '_resolve_subagent_config', return_value={"enabled": True, "messages": {}, "behavior": {}}) as mock_resolve:
-                hook.should_process({
-                    "session_id": "test-session",
-                    "transcript_path": str(transcript),
-                })
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    with patch.object(hook, '_resolve_subagent_config', return_value={"enabled": True, "messages": {}, "behavior": {}}) as mock_resolve:
+                        hook.should_process({
+                            "session_id": "test-session",
+                            "transcript_path": str(transcript),
+                        })
 
-            # roleがresolve_subagent_configに渡される
-            mock_resolve.assert_called_once_with("general-purpose", role="coder")
+                    # roleがresolve_subagent_configに渡される
+                    mock_resolve.assert_called_once_with("general-purpose", role="coder")
