@@ -296,7 +296,7 @@ class SessionStartupHook(BaseHook):
                 return False
 
             # subagentコンテキストを保存して後続processで使用
-            # claim_next_unprocessedで既にstartup_processed=1に更新済み
+            # 2フェーズ方式: claim_next_unprocessed()は取得のみ、process()完了後にmark_processed()
             self._is_subagent = True
             self._resolved_config = resolved
             self._current_agent_id = agent_id
@@ -353,9 +353,10 @@ class SessionStartupHook(BaseHook):
         self.log_info(f"📋 SESSION STARTUP BLOCKING: Session '{session_id}' requires startup confirmation")
 
         if self._is_subagent:
-            # subagent: claim_next_unprocessed()で既にstartup_processed=1に更新済み
-            # 追加処理不要
-            self.log_info(f"✅ Subagent {self._current_agent_id} startup_processed already marked via claim_next_unprocessed")
+            # subagent: process完了後にmark_processed()でマーク
+            # 2フェーズ方式: claim_next_unprocessed()は取得のみ、ここでマーク
+            self._subagent_repo.mark_processed(self._current_agent_id)
+            self.log_info(f"✅ Subagent {self._current_agent_id} marked as startup_processed after process completion")
         else:
             # main agent: SessionRepositoryで処理済みマーク
             current_tokens = self._get_current_context_size(input_data.get('transcript_path')) or 0

@@ -203,23 +203,22 @@ class SubagentRepository:
 
     # === Claimパターン（Phase 2） ===
     def claim_next_unprocessed(self, session_id: str) -> Optional[SubagentRecord]:
-        """PreToolUse時。未処理(startup_processed=0)の最古subagentを取得。
+        """PreToolUse時。未処理(startup_processed=0)の最古subagentを取得（マークしない）。
+
+        2フェーズ方式: 取得のみ行い、マークはmark_processed()で別途実行する。
+        これにより、process()完了前にDBがマークされてしまう問題を防ぐ。
 
         アルゴリズム:
         1. BEGIN EXCLUSIVE
-        2. SELECT * FROM subagents WHERE session_id = ? AND startup_processed = 0 ORDER BY created_at ASC
-        3. count = len(results)
-           - 0件: COMMIT, return None
-           - 1件以上: results[0]を選択
-        4. UPDATE subagents SET startup_processed = 1, startup_processed_at = ? WHERE agent_id = ?
-        5. COMMIT
-        6. return SubagentRecord(target)  # UPDATE前の状態（startup_processed=False）を返却
+        2. SELECT * FROM subagents WHERE session_id = ? AND startup_processed = 0 ORDER BY created_at ASC LIMIT 1
+        3. 0件ならNone、1件以上なら最古を返却
+        4. COMMIT（UPDATEなし）
 
         Args:
             session_id: セッションID
 
         Returns:
-            SubagentRecord（UPDATE前の状態、startup_processed=False）、存在しない場合None
+            SubagentRecord（startup_processed=False）、存在しない場合None
         """
         self._db.conn.execute("BEGIN EXCLUSIVE")
         try:
@@ -230,20 +229,17 @@ class SubagentRepository:
                 FROM subagents
                 WHERE session_id = ? AND startup_processed = 0
                 ORDER BY created_at ASC
+                LIMIT 1
                 """,
                 (session_id,),
             )
-            rows = cursor.fetchall()
+            row = cursor.fetchone()
 
-            if not rows:
+            if not row:
                 self._db.conn.commit()
                 return None
 
-            # 最古のレコードを選択
-            row = rows[0]
-            agent_id = row[0]
-
-            # UPDATE前の状態でSubagentRecordを作成
+            # SubagentRecordを作成（UPDATEなし）
             record = SubagentRecord(
                 agent_id=row[0],
                 session_id=row[1],
@@ -256,22 +252,34 @@ class SubagentRepository:
                 task_match_index=row[8],
             )
 
-            # 処理済みに更新
-            now = datetime.now(timezone.utc).isoformat()
-            self._db.conn.execute(
-                """
-                UPDATE subagents
-                SET startup_processed = 1, startup_processed_at = ?
-                WHERE agent_id = ?
-                """,
-                (now, agent_id),
-            )
-
             self._db.conn.commit()
             return record
         except Exception:
             self._db.conn.rollback()
             raise
+
+    def mark_processed(self, agent_id: str) -> bool:
+        """subagentをstartup_processed=1にマーク。
+
+        process()完了後に呼び出すこと。
+
+        Args:
+            agent_id: エージェントID
+
+        Returns:
+            更新成功時True、対象レコードなし時False
+        """
+        now = datetime.now(timezone.utc).isoformat()
+        cursor = self._db.conn.execute(
+            """
+            UPDATE subagents
+            SET startup_processed = 1, startup_processed_at = ?
+            WHERE agent_id = ? AND startup_processed = 0
+            """,
+            (now, agent_id),
+        )
+        self._db.conn.commit()
+        return cursor.rowcount > 0
 
     # === クエリ ===
     def get(self, agent_id: str) -> Optional[SubagentRecord]:

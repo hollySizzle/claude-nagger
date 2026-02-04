@@ -436,12 +436,15 @@ class TestSessionStartupHookProcessSubagent:
         hook._current_agent_type = "general-purpose"
         hook._resolved_config = hook._resolve_subagent_config("general-purpose")
         hook._session_repo = MagicMock()
+        hook._subagent_repo = MagicMock()
 
         result = hook.process({"session_id": "test-session"})
 
         assert result["decision"] == "block"
         assert "subagent規約" in result["reason"]
         assert "スコープ外のファイルを編集しないこと" in result["reason"]
+        # mark_processedが呼ばれたことを確認
+        hook._subagent_repo.mark_processed.assert_called_once_with("agent-abc")
 
     def test_bash_subagent_message(self):
         """Bash subagentは種別固有メッセージを使用"""
@@ -451,6 +454,7 @@ class TestSessionStartupHookProcessSubagent:
         hook._current_agent_type = "Bash"
         hook._resolved_config = hook._resolve_subagent_config("Bash")
         hook._session_repo = MagicMock()
+        hook._subagent_repo = MagicMock()
 
         result = hook.process({"session_id": "test-session"})
 
@@ -480,10 +484,14 @@ class TestSessionStartupHookProcessSubagent:
         hook._resolved_config = hook._resolve_subagent_config("general-purpose")
         mock_session_repo = MagicMock()
         hook._session_repo = mock_session_repo
+        mock_subagent_repo = MagicMock()
+        hook._subagent_repo = mock_subagent_repo
 
         hook.process({"session_id": "test-session"})
 
         mock_session_repo.register.assert_not_called()
+        # mark_processedが呼ばれたことを確認
+        mock_subagent_repo.mark_processed.assert_called_once_with("agent-abc")
 
     def test_main_agent_creates_db_record(self):
         """main agent処理時はSessionRepository.registerが呼ばれる"""

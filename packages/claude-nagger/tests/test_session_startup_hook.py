@@ -281,12 +281,16 @@ class TestProcess:
             hook._current_agent_id = 'agent-123'
             mock_session_repo = MagicMock()
             hook._session_repo = mock_session_repo
+            mock_subagent_repo = MagicMock()
+            hook._subagent_repo = mock_subagent_repo
 
             with patch.object(hook, '_build_message', return_value=''):
                 hook.process({'session_id': 'test'})
 
             # subagentの場合はregisterが呼ばれない
             mock_session_repo.register.assert_not_called()
+            # 代わりにmark_processedが呼ばれる
+            mock_subagent_repo.mark_processed.assert_called_once_with('agent-123')
 
 
 class TestGetExecutionCount:
