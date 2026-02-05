@@ -21,14 +21,7 @@ from infrastructure.db.hook_log_repository import HookLogRepository
 
 
 # === フィクスチャ ===
-@pytest.fixture
-def db(tmp_path):
-    """テスト用NaggerStateDBインスタンス"""
-    db_path = tmp_path / ".claude-nagger" / "state.db"
-    db = NaggerStateDB(db_path)
-    db.connect()
-    yield db
-    db.close()
+# db フィクスチャは conftest.py で統一定義（issue_5955: テスト分離）
 
 
 @pytest.fixture

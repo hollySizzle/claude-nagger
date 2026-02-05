@@ -5,6 +5,8 @@ import sys
 import warnings
 from pathlib import Path
 
+import pytest
+
 # プロジェクトルートとsrcディレクトリのパス
 project_root = Path(__file__).parent.parent
 src_dir = project_root / "src"
@@ -49,3 +51,21 @@ def pytest_sessionstart(session):
                 )
     except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
         pass  # CI環境等でclaude-naggerが未インストールの場合は無視
+
+
+# === 統一フィクスチャ ===
+@pytest.fixture
+def db(tmp_path):
+    """テスト用NaggerStateDBインスタンス（テスト分離）
+
+    tmp_pathを使用してテスト専用DBを作成。
+    本番DBを汚染せず、テスト間で独立した環境を提供。
+    issue_5955: テストデータが本番DBを汚染する問題の対策
+    """
+    from infrastructure.db.nagger_state_db import NaggerStateDB
+
+    db_path = tmp_path / ".claude-nagger" / "state.db"
+    db = NaggerStateDB(db_path)
+    db.connect()
+    yield db
+    db.close()
