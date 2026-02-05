@@ -127,6 +127,10 @@ context_management:
     medium_warning: 60000
     critical_warning: 100000
 
+# suggest-rules設定（セッション終了時の規約提案機能）
+suggest_rules:
+  enabled: true  # false: 規約提案機能を無効化
+
 # デバッグ設定
 debug:
   enable_logging: true

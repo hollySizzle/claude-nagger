@@ -544,7 +544,7 @@ class TestArchiveSuggestedRules:
     """_archive_suggested_rules メソッドのテスト"""
 
     def test_archive_renames_file(self, tmp_path):
-        """ファイルをリネームする"""
+        """ファイルをリネームする（タイムスタンプなし単一ファイル）"""
         rules_file = tmp_path / "suggested_rules.yaml"
         rules_file.write_text("rules: []", encoding='utf-8')
 
@@ -552,13 +552,12 @@ class TestArchiveSuggestedRules:
             hook = SessionStartupHook()
 
             with patch.object(hook, '_get_suggested_rules_path', return_value=rules_file):
-                with patch('src.domain.hooks.session_startup_hook.datetime') as mock_dt:
-                    mock_dt.now.return_value.strftime.return_value = '20260127_120000'
-                    result = hook._archive_suggested_rules()
+                result = hook._archive_suggested_rules()
 
         assert result is True
         assert not rules_file.exists()
-        archived = tmp_path / ".suggested_rules.yaml.notified_20260127_120000"
+        # タイムスタンプなし単一ファイルにアーカイブ
+        archived = tmp_path / "suggested_rules.yaml.notified"
         assert archived.exists()
 
     def test_archive_returns_false_when_no_file(self):

@@ -1,7 +1,8 @@
 """共通定数"""
 
-# suggest-rules機能で使用するファイル名
+# suggest-rules機能で使用するファイル名・ディレクトリ名
 SUGGESTED_RULES_FILENAME = "suggested_rules.yaml"
+SUGGESTED_RULES_DIRNAME = "suggested_rules"
 
 # フォールバックマッチングのTTL（分）
 # 古いtask_spawnエントリが誤マッチするのを防ぐ（issue_5955）

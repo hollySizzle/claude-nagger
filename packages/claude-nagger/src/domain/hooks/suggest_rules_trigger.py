@@ -11,10 +11,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+import yaml
+
 from domain.hooks.base_hook import BaseHook
 from domain.services.rule_suggester import RuleSuggester, PatternSuggestion
 from shared.structured_logging import DEFAULT_LOG_DIR
-from shared.constants import SUGGESTED_RULES_FILENAME
+from shared.constants import SUGGESTED_RULES_FILENAME, SUGGESTED_RULES_DIRNAME
 
 logger = logging.getLogger(__name__)
 
@@ -45,9 +47,28 @@ class SuggestRulesTrigger(BaseHook):
         super().__init__(debug=True)
         self.min_inputs = min_inputs or self.DEFAULT_MIN_INPUTS
         self.model = model or self.DEFAULT_MODEL
+        self._config = self._load_config()
+
+    def _load_config(self) -> Dict[str, Any]:
+        """config.yamlからsuggest_rules設定を読み込む"""
+        config_path = Path.cwd() / ".claude-nagger" / "config.yaml"
+        if not config_path.exists():
+            return {}
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            return data.get('suggest_rules', {}) if data else {}
+        except Exception as e:
+            logger.warning(f"設定ファイル読み込み失敗: {e}")
+            return {}
 
     def should_process(self, input_data: Dict[str, Any]) -> bool:
-        """hook_input件数が閾値以上か確認"""
+        """hook_input件数が閾値以上か確認（enabled設定も考慮）"""
+        # suggest_rules.enabled設定で無効化されている場合はスキップ
+        if not self._config.get('enabled', True):
+            self.log_info("suggest_rules機能が無効化されています (enabled: false)")
+            return False
+
         count = self._count_hook_inputs()
         if count < self.min_inputs:
             self.log_info(
@@ -243,8 +264,8 @@ def _fallback_yaml(
 
 def _save_suggested_rules(content: str, header: str = "") -> Path:
     """suggested_rules.yamlに保存"""
-    output_dir = Path.cwd() / ".claude-nagger"
-    output_dir.mkdir(exist_ok=True)
+    output_dir = Path.cwd() / ".claude-nagger" / SUGGESTED_RULES_DIRNAME
+    output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / SUGGESTED_RULES_FILENAME
 
     full_content = header + content if header else content

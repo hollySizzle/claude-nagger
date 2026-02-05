@@ -59,11 +59,48 @@ class TestInit:
         assert hook.min_inputs == 5
         assert hook.model == "haiku"
 
+    def test_config読み込み(self, tmp_path):
+        """config.yamlからsuggest_rules設定を読み込む"""
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+        config_file = config_dir / "config.yaml"
+        config_file.write_text("suggest_rules:\n  enabled: false\n")
+
+        with patch("domain.hooks.suggest_rules_trigger.Path.cwd", return_value=tmp_path):
+            hook = SuggestRulesTrigger()
+            assert hook._config.get('enabled') is False
+
+    def test_config存在しない場合は空dict(self, tmp_path):
+        """config.yamlが存在しない場合は空dictを返す"""
+        with patch("domain.hooks.suggest_rules_trigger.Path.cwd", return_value=tmp_path):
+            hook = SuggestRulesTrigger()
+            assert hook._config == {}
+
 
 # === should_processテスト ===
 
 class TestShouldProcess:
     """should_processメソッドのテスト"""
+
+    def test_enabled設定falseでFalse(self, tmp_log_dir):
+        """suggest_rules.enabled: falseの場合False"""
+        _create_hook_inputs(tmp_log_dir, 15)  # 閾値以上
+        hook = SuggestRulesTrigger(min_inputs=10)
+        hook.log_dir = tmp_log_dir
+        hook._config = {'enabled': False}
+
+        result = hook.should_process({})
+        assert result is False
+
+    def test_enabled設定なしでTrue(self, tmp_log_dir):
+        """enabled設定がない場合はデフォルトTrue（閾値以上時）"""
+        _create_hook_inputs(tmp_log_dir, 15)
+        hook = SuggestRulesTrigger(min_inputs=10)
+        hook.log_dir = tmp_log_dir
+        hook._config = {}  # enabled設定なし
+
+        result = hook.should_process({})
+        assert result is True
 
     def test_閾値未満でFalse(self, tmp_log_dir):
         """hook_input件数が閾値未満の場合False"""

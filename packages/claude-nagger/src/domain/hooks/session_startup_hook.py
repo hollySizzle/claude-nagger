@@ -13,7 +13,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from domain.hooks.base_hook import BaseHook
 from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository
-from shared.constants import SUGGESTED_RULES_FILENAME
+from shared.constants import SUGGESTED_RULES_FILENAME, SUGGESTED_RULES_DIRNAME
 
 
 def _deep_copy_dict(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -460,7 +460,7 @@ class SessionStartupHook(BaseHook):
 
     def _get_suggested_rules_path(self) -> Path:
         """suggested_rules.yamlのパスを返す"""
-        return Path.cwd() / ".claude-nagger" / SUGGESTED_RULES_FILENAME
+        return Path.cwd() / ".claude-nagger" / SUGGESTED_RULES_DIRNAME / SUGGESTED_RULES_FILENAME
 
     def _load_suggested_rules(self) -> Optional[Dict[str, Any]]:
         """suggested_rules.yamlを読み込む。存在しない場合はNone"""
@@ -518,13 +518,13 @@ class SessionStartupHook(BaseHook):
         return "\n".join(lines)
 
     def _archive_suggested_rules(self) -> bool:
-        """通知済みのsuggested_rules.yamlをリネーム"""
+        """通知済みのsuggested_rules.yamlをリネーム（タイムスタンプなし単一ファイル）"""
         rules_path = self._get_suggested_rules_path()
         if not rules_path.exists():
             return False
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        archived_name = f".suggested_rules.yaml.notified_{timestamp}"
+        # タイムスタンプなし単一アーカイブファイル（上書き）
+        archived_name = f"{SUGGESTED_RULES_FILENAME}.notified"
         archived_path = rules_path.parent / archived_name
 
         try:
