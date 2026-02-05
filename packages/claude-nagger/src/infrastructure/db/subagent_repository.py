@@ -9,6 +9,7 @@ from typing import List, Optional
 
 from domain.models.records import SubagentRecord
 from infrastructure.db.nagger_state_db import NaggerStateDB
+from shared.constants import TASK_SPAWN_TTL_MINUTES, VALID_ROLE_VALUES
 from shared.structured_logging import DEFAULT_LOG_DIR, StructuredLogger
 
 _logger = StructuredLogger(name="SubagentRepository", log_dir=DEFAULT_LOG_DIR)
@@ -322,12 +323,16 @@ class SubagentRepository:
         try:
             row = None
 
+            # TTLチェック用のSQL条件（古いエントリを除外、issue_5955）
+            ttl_condition = f"AND created_at > datetime('now', '-{TASK_SPAWN_TTL_MINUTES} minutes')"
+
             # Step 1: roleが指定されている場合、roleで完全一致マッチ
             if role:
                 cursor = self._db.conn.execute(
-                    """
+                    f"""
                     SELECT id, role, transcript_index FROM task_spawns
                     WHERE session_id = ? AND role = ? AND matched_agent_id IS NULL
+                    {ttl_condition}
                     ORDER BY transcript_index ASC LIMIT 1
                     """,
                     (session_id, role),
@@ -337,9 +342,10 @@ class SubagentRepository:
             # Step 2: roleマッチなければsubagent_typeでマッチ（ROLEありエントリのみ）
             if row is None:
                 cursor = self._db.conn.execute(
-                    """
+                    f"""
                     SELECT id, role, transcript_index FROM task_spawns
                     WHERE session_id = ? AND subagent_type = ? AND role IS NOT NULL AND matched_agent_id IS NULL
+                    {ttl_condition}
                     ORDER BY transcript_index ASC LIMIT 1
                     """,
                     (session_id, agent_type),
