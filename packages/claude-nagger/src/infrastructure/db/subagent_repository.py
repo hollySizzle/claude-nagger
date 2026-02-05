@@ -3,7 +3,7 @@
 import hashlib
 import json
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import List, Optional
 
@@ -323,32 +323,33 @@ class SubagentRepository:
         try:
             row = None
 
-            # TTLチェック用のSQL条件（古いエントリを除外、issue_5955）
-            ttl_condition = f"AND created_at > datetime('now', '-{TASK_SPAWN_TTL_MINUTES} minutes')"
+            # TTLチェック用の閾値時刻を計算（issue_5955）
+            # SQLiteのdatetime()とPythonのISO8601形式が異なるため、Pythonで計算
+            ttl_threshold = (datetime.now(timezone.utc) - timedelta(minutes=TASK_SPAWN_TTL_MINUTES)).isoformat()
 
             # Step 1: roleが指定されている場合、roleで完全一致マッチ
             if role:
                 cursor = self._db.conn.execute(
-                    f"""
+                    """
                     SELECT id, role, transcript_index FROM task_spawns
                     WHERE session_id = ? AND role = ? AND matched_agent_id IS NULL
-                    {ttl_condition}
+                    AND created_at > ?
                     ORDER BY transcript_index ASC LIMIT 1
                     """,
-                    (session_id, role),
+                    (session_id, role, ttl_threshold),
                 )
                 row = cursor.fetchone()
 
             # Step 2: roleマッチなければsubagent_typeでマッチ（ROLEありエントリのみ）
             if row is None:
                 cursor = self._db.conn.execute(
-                    f"""
+                    """
                     SELECT id, role, transcript_index FROM task_spawns
                     WHERE session_id = ? AND subagent_type = ? AND role IS NOT NULL AND matched_agent_id IS NULL
-                    {ttl_condition}
+                    AND created_at > ?
                     ORDER BY transcript_index ASC LIMIT 1
                     """,
-                    (session_id, agent_type),
+                    (session_id, agent_type, ttl_threshold),
                 )
                 row = cursor.fetchone()
 
