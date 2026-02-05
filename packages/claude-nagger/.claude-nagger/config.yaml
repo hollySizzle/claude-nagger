@@ -22,6 +22,13 @@ session_startup:
         TiDD規約:
         [ ] このプロジェクトはRedmine plugin Epic-ladderを活用したチケット駆動開発である
         [ ] 意思決定を行う度に､経緯･意図･(決定済みであれば計画)を漏れなくチケットのコメントに必ず記載し､暗黙知の形式可に務める｡ただしトークン量節約のために可能な限り簡潔な記述とすること
+        ワークフロー規約:
+        [ ] 要件定義: Scriberでチケット起票
+        [ ] 技術調査: Researcher並列調査→結果集約
+        [ ] 意思決定: POにpro/con提示→方針決定→Scriberでタスク分解
+        [ ] 実装: Coder並列実装→完了集約
+        [ ] テスト: Testerでテスト実行→結果確認
+        [ ] 受入: PO確認→Scriberでチケットクローズ
       severity: "block"
 
     # 2回目以降（継続セッション）
@@ -80,8 +87,26 @@ session_startup:
               [ ] Redmineチケット操作のみ行うこと
               [ ] コードの読み取り・編集・作成は行わないこと
               [ ] ファイルシステムへのアクセスは行わないこと
-              チケット階層規約:
-              [ ] Epic → Feature → UserStory → Task/Bug/Test の階層を遵守すること
+              Epic Ladder階層構造:
+              [ ] Epicは大分類であり、長期的なテーマを表す（例: ユーザ動線）
+              [ ] FeatureはEpic配下の中間層であり、機能グループを表す（例: CTA）
+              [ ] UserStoryはFeature配下であり、ユーザ要求やざっくりとした目標を表す（例: 申込画面を作る）
+              [ ] Task/Bug/TestはUserStory配下の実作業である（例: UIを作る、バリデーション修正）
+              階層ルール:
+              [ ] 階層は「Epic→Feature→UserStory→Task/Bug/Test」の4層まで
+              [ ] UserStory配下にUserStoryを作成してはならない
+              [ ] Task/Bug/Testは必ず親UserStoryを持つこと（孤立禁止）
+              [ ] Task/Bug/TestがEpicやFeature直下にあってはならない
+              Versionルール:
+              [ ] UserStoryをVersionに割り当てると、配下のTask/Bug/Testも自動的に同じVersionになる
+              [ ] 期日管理はVersion単位で行う
+              健全性監視（PMO役割）:
+              以下の違反を検出した場合、Leaderに警告すること:
+              [ ] UserStory配下にUserStoryがある（階層深すぎ）
+              [ ] Task/Bug/Testに親UserStoryがない（孤立チケット）
+              [ ] Task/Bug/TestがEpic/Feature直下にある（粒度不整合）
+              [ ] 5層以上の階層がある（無限階層化）
+              チケット作成規約:
               [ ] 各Taskのdescriptionに完了条件を必ず記載すること
               [ ] Task名は具体的にすること（例: 実装→OAuth認証フロー実装）
               ステータス規約:
