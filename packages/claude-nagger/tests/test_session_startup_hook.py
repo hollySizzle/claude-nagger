@@ -657,9 +657,11 @@ class TestProcessWithSuggestedRules:
                 with patch.object(hook, '_get_current_context_size', return_value=0):
                     with patch.object(hook, '_build_message', return_value='msg'):
                         with patch.object(hook, '_archive_suggested_rules') as mock_archive:
-                            hook.process({'session_id': 'test'})
+                            with patch.object(hook, '_archive_hook_inputs') as mock_archive_inputs:
+                                hook.process({'session_id': 'test'})
 
             mock_archive.assert_called_once()
+            mock_archive_inputs.assert_called_once()
 
     def test_no_archive_when_no_suggested_rules(self):
         """suggested_rules.yamlロードがNone時はアーカイブしない"""
@@ -672,9 +674,104 @@ class TestProcessWithSuggestedRules:
                 with patch.object(hook, '_get_current_context_size', return_value=0):
                     with patch.object(hook, '_build_message', return_value='msg'):
                         with patch.object(hook, '_archive_suggested_rules') as mock_archive:
-                            hook.process({'session_id': 'test'})
+                            with patch.object(hook, '_archive_hook_inputs') as mock_archive_inputs:
+                                hook.process({'session_id': 'test'})
 
             mock_archive.assert_not_called()
+            mock_archive_inputs.assert_not_called()
+
+
+class TestArchiveHookInputs:
+    """_archive_hook_inputs メソッドのテスト（issue_5964）"""
+
+    def test_moves_hook_inputs_to_archive_dir(self, tmp_path):
+        """hook_input_*.jsonをアーカイブディレクトリに移動する"""
+        # テスト用hook_inputファイルを作成
+        for i in range(3):
+            (tmp_path / f"hook_input_sess_{i}.json").write_text('{}', encoding='utf-8')
+
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+
+            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
+                count = hook._archive_hook_inputs()
+
+        # 3件移動されたことを確認
+        assert count == 3
+        # 元の場所にファイルがないこと
+        assert len(list(tmp_path.glob("hook_input_*.json"))) == 0
+        # アーカイブディレクトリに移動されたこと
+        archive_dir = tmp_path / "archived_hook_inputs"
+        assert archive_dir.exists()
+        assert len(list(archive_dir.glob("hook_input_*.json"))) == 3
+
+    def test_returns_zero_when_no_hook_inputs(self, tmp_path):
+        """hook_inputがない場合は0を返す"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+
+            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
+                count = hook._archive_hook_inputs()
+
+        assert count == 0
+
+    def test_handles_archive_dir_creation_error(self, tmp_path):
+        """アーカイブディレクトリ作成エラー時は0を返す"""
+        (tmp_path / "hook_input_test.json").write_text('{}', encoding='utf-8')
+
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+
+            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
+                with patch.object(Path, 'mkdir', side_effect=OSError("mkdir error")):
+                    count = hook._archive_hook_inputs()
+
+        assert count == 0
+
+    def test_handles_individual_file_move_error(self, tmp_path):
+        """個別ファイル移動エラー時も他のファイルは処理継続"""
+        for i in range(3):
+            (tmp_path / f"hook_input_sess_{i}.json").write_text('{}', encoding='utf-8')
+
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+
+            # 最初のファイルだけ移動エラー
+            original_move = __import__('shutil').move
+            call_count = [0]
+
+            def mock_move(src, dst):
+                call_count[0] += 1
+                if call_count[0] == 1:
+                    raise OSError("move error")
+                return original_move(src, dst)
+
+            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
+                with patch('shutil.move', side_effect=mock_move):
+                    count = hook._archive_hook_inputs()
+
+        # 2件は成功
+        assert count == 2
+
+    def test_only_matches_hook_input_pattern(self, tmp_path):
+        """hook_input_*.jsonパターンのみ対象とする"""
+        # 対象ファイル
+        (tmp_path / "hook_input_test.json").write_text('{}', encoding='utf-8')
+        # 非対象ファイル
+        (tmp_path / "other_file.json").write_text('{}', encoding='utf-8')
+        (tmp_path / "hook_input.txt").write_text('not json', encoding='utf-8')
+
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+
+            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
+                count = hook._archive_hook_inputs()
+
+        # hook_input_*.jsonのみ移動
+        assert count == 1
+        # 非対象ファイルは元の場所に残る
+        assert (tmp_path / "other_file.json").exists()
+        assert (tmp_path / "hook_input.txt").exists()
 
 
 class TestMain:

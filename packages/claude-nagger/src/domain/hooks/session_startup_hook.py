@@ -14,6 +14,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from domain.hooks.base_hook import BaseHook
 from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository
 from shared.constants import SUGGESTED_RULES_FILENAME, SUGGESTED_RULES_DIRNAME
+from shared.structured_logging import DEFAULT_LOG_DIR
 
 
 def _deep_copy_dict(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -377,6 +378,8 @@ class SessionStartupHook(BaseHook):
         # 通知済みのsuggested_rules.yamlをアーカイブ
         if suggested_rules_data is not None:
             self._archive_suggested_rules()
+            # 分析済みhook_inputもアーカイブ（再生成防止: issue_5964）
+            self._archive_hook_inputs()
 
         # JSON応答でブロック
         return {
@@ -534,6 +537,50 @@ class SessionStartupHook(BaseHook):
         except Exception as e:
             self.log_error(f"❌ suggested_rules.yaml アーカイブ失敗: {e}")
             return False
+
+    def _archive_hook_inputs(self) -> int:
+        """通知済みのhook_input_*.jsonをアーカイブディレクトリに移動
+
+        suggested_rules通知後に呼び出し、分析済みhook_inputを隔離することで
+        閾値再到達による再生成を防止する（issue_5964）
+
+        Returns:
+            移動したファイル数
+        """
+        import glob
+        import shutil
+
+        log_dir = DEFAULT_LOG_DIR
+        archive_dir = log_dir / "archived_hook_inputs"
+
+        # hook_input_*.jsonを検索
+        pattern = str(log_dir / "hook_input_*.json")
+        files = glob.glob(pattern)
+
+        if not files:
+            self.log_debug("アーカイブ対象のhook_inputなし")
+            return 0
+
+        # アーカイブディレクトリ作成
+        try:
+            archive_dir.mkdir(parents=True, exist_ok=True)
+        except Exception as e:
+            self.log_error(f"❌ アーカイブディレクトリ作成失敗: {e}")
+            return 0
+
+        # ファイル移動
+        moved_count = 0
+        for filepath in files:
+            try:
+                src = Path(filepath)
+                dst = archive_dir / src.name
+                shutil.move(str(src), str(dst))
+                moved_count += 1
+            except Exception as e:
+                self.log_error(f"❌ hook_input移動失敗: {filepath} - {e}")
+
+        self.log_info(f"📦 hook_input {moved_count}件をアーカイブ: {archive_dir}")
+        return moved_count
 
 
 def main():
