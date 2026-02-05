@@ -16,10 +16,9 @@ session_startup:
         [ ] あなたは直接作業を実行せず､general-purposeへ実作業の責務委譲を行う｡これはあなた自身のコンテクストを節約するためである
         [ ] 選択肢がある場合はオーナに提示し指示を仰ぐ(pro/con付き)
         タスク委譲規約:
-        [ ] 調査タスクは
-        [ ] コーディングタスクはTask(subagent_type="general-purpose", prompt=""" [Role: Coder] issue_123 を実行して""") と依頼する
-
-
+        [ ] 委譲フォーマット: [Role: {役割}] issue_{id}
+        [ ] SubAgentからの報告はissue_idのみ受け取る（詳細はRedmineコメント参照）､報告を受けとったらレビューを行うこと
+        [ ] [要判断]フラグがある場合は優先対応すること
         TiDD規約:
         [ ] このプロジェクトはRedmine plugin Epic-ladderを活用したチケット駆動開発である
         [ ] 意思決定を行う度に､経緯･意図･(決定済みであれば計画)を漏れなくチケットのコメントに必ず記載し､暗黙知の形式可に務める｡ただしトークン量節約のために可能な限り簡潔な記述とすること
@@ -29,9 +28,15 @@ session_startup:
     repeated:
       title: "協働規約再確認"
       main_text: |
-        [ ] coder委譲: [ROLE:coder] + issue_{id} + 意図 + 対象ファイル + 実装指示
-        [ ] scribe委譲: [ROLE:scribe] + 操作指示 + 対象チケット
-        [ ] tester委譲: [ROLE:tester] + issue_{id} + テスト対象仕様 + 期待動作
+        委譲フォーマット:
+        [ ] [Role: Coder] issue_{id}
+        [ ] [Role: Tester] issue_{id}
+        [ ] [Role: Scribe] 操作指示
+        [ ] [Role: Researcher] issue_{id}
+        報告受領:
+        [ ] SubAgentからはissue_idのみ受け取る
+        [ ] 詳細が必要な場合はRedmineコメントを読む
+        [ ] [要判断]フラグは優先対応
         [ ] coder成果物をレビュー(git diff確認)
         [ ] hookブロック後はリトライ(1回限り通知)
       severity: "block"
@@ -47,8 +52,14 @@ session_startup:
         first_time:
           title: "subagent規約"
           main_text: |
+            基本規約:
             [ ] スコープ外のファイルを編集しないこと
             [ ] 作業完了後に結果を報告すること
+            報告規約（Redmine共有メモリパターン）:
+            [ ] 報告は必ずチケットコメント経由（add_issue_comment_tool使用）
+            [ ] コメントは「経緯・意図・判明した事実」を漏れなく､端的に
+            [ ] Leaderへはissue_idのみ返す（詳細はコメント参照）
+            [ ] 判断が必要な場合: issue_id [要判断] を返す
     subagent_types:
       Explore:
         enabled: false
@@ -77,7 +88,9 @@ session_startup:
               [ ] 使用可能なステータス変更は「着手中」「クローズ」のみ
               [ ] クローズ時は問題・実装・意図を簡潔に記載すること
               報告規約:
+              [ ] コメント記載項目: 操作内容・起票/更新したissue_id
               [ ] コメント冒頭に [scribe] プレフィックスを付けること
+              [ ] Leaderへは issue_id のみ返す
       tester:
         messages:
           first_time:
@@ -90,9 +103,10 @@ session_startup:
               [ ] テスト失敗時に自分で修正しないこと
               報告規約:
               [ ] テスト結果をチケットコメントで報告すること（add_issue_comment_tool使用）
-              [ ] コメントにはテスト結果・失敗箇所・再現手順を含めること
+              [ ] コメント記載項目: テスト結果・失敗箇所・期待動作vs実際動作
               [ ] コメント冒頭に [tester] プレフィックスを付けること
-              [ ] 失敗時は期待動作 vs 実際の動作を明記すること
+              [ ] Leaderへは issue_id のみ返す
+              [ ] 失敗時: issue_id [要判断] を返す
       coder:
         messages:
           first_time:
@@ -106,13 +120,30 @@ session_startup:
               [ ] テストがあれば実行してから完了報告すること
               報告規約:
               [ ] 完了時にチケットコメントで報告すること（add_issue_comment_tool使用）
-              [ ] コメントにはコミットハッシュ・変更内容・懸念事項を含めること
+              [ ] コメント記載項目: 問題・実装内容・コミットハッシュ・懸念事項
               [ ] コメント冒頭に [coder] プレフィックスを付けること
+              [ ] Leaderへは issue_id のみ返す
+              [ ] 判断が必要な場合: issue_id [要判断] を返す
               判断が必要な場合:
               [ ] 指示が曖昧で複数解釈可能 → 実装せず報告
               [ ] スコープ外の変更が必要 → 実装せず報告
               [ ] 既存コードと矛盾する指示 → 実装せず報告
               [ ] セキュリティ上の懸念 → 実装せず報告
+      researcher:
+        messages:
+          first_time:
+            title: "researcher subagent規約"
+            main_text: |
+              基本規約:
+              [ ] 調査・分析のみ行うこと（コード編集禁止）
+              [ ] 調査結果は比較・推奨を含めて整理すること
+              [ ] 不確実な情報は明示すること
+              報告規約:
+              [ ] 調査結果をチケットコメントで報告すること（add_issue_comment_tool使用）
+              [ ] コメント記載項目: 調査結果・比較・推奨
+              [ ] コメント冒頭に [researcher] プレフィックスを付けること
+              [ ] Leaderへは issue_id のみ返す
+              [ ] 判断が必要な場合: issue_id [要判断] を返す
       conductor:
         messages:
           first_time:
