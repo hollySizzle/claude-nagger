@@ -19,6 +19,7 @@
 - [[TODO: 機能名]仕様書](@docs/specs/_template.md)
 - [アーキテクチャ仕様書](@docs/specs/architecture.md)
 - [claude-naggerテスト仕様書](@docs/specs/claude_nagger_test.md)
+- [並列subagent状態管理 設計仕様書](@docs/specs/parallel_subagent_state_management.md)
 
 ### logics - ビジネスロジック
 - [[TODO: ロジック名]](@docs/logics/_template.md)

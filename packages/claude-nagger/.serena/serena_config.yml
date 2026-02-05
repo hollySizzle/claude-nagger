@@ -1,0 +1,5 @@
+# Webダッシュボード機能を有効/無効にする
+web_dashboard: false
+
+# Webダッシュボードの自動起動を制御（web_dashboardがtrueの場合のみ有効）
+web_dashboard_open_on_launch: false

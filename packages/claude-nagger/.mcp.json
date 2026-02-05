@@ -13,10 +13,14 @@
         "--from",
         "git+https://github.com/oraios/serena",
         "serena",
-        "start-mcp-server"
+        "start-mcp-server",
+        "--context",
+        "ide-assistant",
+        "--project",
+        ".",
+        "--enable-web-dashboard=false"
       ],
-      "env": {},
-      "disabled": false
+      "cwd": "."
     },
     "redmine_epic_grid": {
       "type": "http",
