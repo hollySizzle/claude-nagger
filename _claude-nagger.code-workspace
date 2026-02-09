@@ -1,14 +1,17 @@
 {
   "folders": [
     {
-      "path": "/workspace/docs/"
+      "path": "/workspace/docs/",
     },
     {
-      "path": "/workspace/packages/claude-nagger/"
+      "path": "/workspace/packages/claude-nagger/",
     },
     {
-      "path": "/workspace/"
-    }
+      "path": "/workspace/packages/ticket-tasuki/",
+    },
+    {
+      "path": "/workspace/",
+    },
   ],
   "settings": {
     "terminal.integrated.scrollback": 10000,
@@ -16,6 +19,6 @@
     "editor.tabSize": 2,
     "redmine.apiKey": "${REDMINE_API_KEY}",
     "redmine.url": "${READMINE_PROJECT_URL}",
-    "redmine.defaultProject": "${REDMINE_X_DEFAULT_PROJECT}"
-  }
+    "redmine.defaultProject": "${REDMINE_X_DEFAULT_PROJECT}",
+  },
 }
