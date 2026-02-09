@@ -28,7 +28,7 @@ leader（メインエージェント）
   │
   ├── coder subagent → コード実装・単体テスト
   ├── tester subagent → 受入テスト・E2Eテスト
-  ├── scribe subagent → チケット読み取り（コンテキスト削減）
+  ├── scribe subagent → Redmineチケット管理（CRUD・階層管理・バージョン管理）
   ├── Explore subagent → コード調査
   ├── Bash subagent → コマンド実行
   └── general-purpose subagent → Web調査
@@ -134,8 +134,9 @@ coderはsubagentであり、`tools:`制限でClaude Code本体が物理的に強
 **対象**: `agents/scribe.md`
 **内容**:
 - ticket-managerからリネーム（leader/coder/scribeの命名一貫性）
-- `tools:`でRedmine MCPツールのみに制限（既存実装と同等）
-- チケット読み取りによるleaderのコンテキスト削減が主目的
+- `tools:`でRedmine MCPツールのみに制限（コード関連操作は一切不可）
+- Redmineチケット管理（CRUD・階層管理・バージョン管理）が主責務
+- leaderのコンテキスト削減にも寄与（チケット操作の委譲先）
 
 ### REQ-4: 却下案テンプレート追加
 **対象**: `docs/rules/redmine_driven_dev.yaml`

@@ -1,6 +1,6 @@
 ---
 name: scribe
-description: Redmineチケット読み取り専門エージェント。チケットの検索・構造確認・詳細取得を行う。
+description: Redmineチケット管理専門エージェント。チケット(Epic/Feature/UserStory/Task/Bug/Test)の作成・更新・検索、プロジェクト構造の確認、バージョン管理を行う。
 tools:
   - mcp__redmine_epic_grid__list_epics_tool
   - mcp__redmine_epic_grid__list_versions_tool

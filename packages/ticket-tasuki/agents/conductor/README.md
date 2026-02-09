@@ -10,6 +10,7 @@ Task tool経由でgeneral-purpose subagentを呼び出す際に参照する。
 | coder.md | coder subagent規約 |
 | tester.md | tester subagent規約 |
 | scribe.md | scribe subagent規約 |
+| researcher.md | researcher subagent規約 |
 | prompt-templates.md | 呼び出しテンプレート・タスク遷移フロー |
 
 ## 使い方
