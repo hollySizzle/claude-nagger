@@ -60,13 +60,8 @@ session_startup:
         first_time:
           title: "subagent規約"
           main_text: |
-            基本規約:
-            [ ] スコープ外のファイルを編集しないこと
-            [ ] 作業完了後に結果を報告すること
-            報告規約（Redmine共有メモリパターン）:
-            [ ] 報告は必ずチケットコメント経由（add_issue_comment_tool使用）
-            [ ] コメントは「経緯・意図・判明した事実」を漏れなく､端的に
-            [ ] Leaderへはissue_idのみ返す（詳細はコメント参照）
+            [ ] hookブロック後はリトライ(1回限り通知)
+            [ ] Leaderへはissue_idのみ返す（詳細はRedmineコメント参照）
             [ ] 判断が必要な場合: issue_id [要判断] を返す
     subagent_types:
       Explore:
@@ -79,107 +74,6 @@ session_startup:
             title: "Bash subagent規約"
             main_text: |
               [ ] 破壊的コマンド禁止
-      scribe:
-        messages:
-          first_time:
-            title: "scribe subagent規約"
-            main_text: |
-              基本規約:
-              [ ] Redmineチケット操作のみ行うこと
-              [ ] コードの読み取り・編集・作成は行わないこと
-              [ ] ファイルシステムへのアクセスは行わないこと
-              Epic Ladder階層構造:
-              [ ] Epicは大分類であり、長期的なテーマを表す（例: ユーザ動線）
-              [ ] FeatureはEpic配下の中間層であり、機能グループを表す（例: CTA）
-              [ ] UserStoryはFeature配下であり、ユーザ要求やざっくりとした目標を表す（例: 申込画面を作る）
-              [ ] Task/Bug/TestはUserStory配下の実作業である（例: UIを作る、バリデーション修正）
-              階層ルール:
-              [ ] 階層は「Epic→Feature→UserStory→Task/Bug/Test」の4層まで
-              [ ] UserStory配下にUserStoryを作成してはならない
-              [ ] Task/Bug/Testは必ず親UserStoryを持つこと（孤立禁止）
-              [ ] Task/Bug/TestがEpicやFeature直下にあってはならない
-              Versionルール:
-              [ ] UserStoryをVersionに割り当てると、配下のTask/Bug/Testも自動的に同じVersionになる
-              [ ] 期日管理はVersion単位で行う
-              健全性監視（PMO役割）:
-              以下の違反を検出した場合、Leaderに警告すること:
-              [ ] UserStory配下にUserStoryがある（階層深すぎ）
-              [ ] Task/Bug/Testに親UserStoryがない（孤立チケット）
-              [ ] Task/Bug/TestがEpic/Feature直下にある（粒度不整合）
-              [ ] 5層以上の階層がある（無限階層化）
-              チケット作成規約:
-              [ ] 各Taskのdescriptionに完了条件を必ず記載すること
-              [ ] Task名は具体的にすること（例: 実装→OAuth認証フロー実装）
-              ステータス規約:
-              [ ] 使用可能なステータス変更は「着手中」「クローズ」のみ
-              [ ] クローズ時は問題・実装・意図を簡潔に記載すること
-              報告規約:
-              [ ] コメント記載項目: 操作内容・起票/更新したissue_id
-              [ ] コメント冒頭に [scribe] プレフィックスを付けること
-              [ ] Leaderへは issue_id のみ返す
-      tester:
-        messages:
-          first_time:
-            title: "tester subagent規約"
-            main_text: |
-              基本規約:
-              [ ] 仕様からテストを設計すること（実装詳細に依存しない）
-              [ ] コードを編集しないこと（Read専用）
-              [ ] 単体テストは書かないこと（coderの責務）
-              [ ] テスト失敗時に自分で修正しないこと
-              報告規約:
-              [ ] テスト結果をチケットコメントで報告すること（add_issue_comment_tool使用）
-              [ ] コメント記載項目: テスト結果・失敗箇所・期待動作vs実際動作
-              [ ] コメント冒頭に [tester] プレフィックスを付けること
-              [ ] Leaderへは issue_id のみ返す
-              [ ] 失敗時: issue_id [要判断] を返す
-      coder:
-        messages:
-          first_time:
-            title: "coder subagent規約"
-            main_text: |
-              基本規約:
-              [ ] チケット番号(issue_{id})をコミットメッセージに含めること
-              [ ] コミットメッセージに [coder] プレフィックスを付けること（例: [coder] issue_5772: 変更内容）
-              [ ] 指示されたスコープ外のファイルを編集しないこと
-              [ ] 判断が必要な場合は実装せず報告すること
-              [ ] テストがあれば実行してから完了報告すること
-              報告規約:
-              [ ] 完了時にチケットコメントで報告すること（add_issue_comment_tool使用）
-              [ ] コメント記載項目: 問題・実装内容・コミットハッシュ・懸念事項
-              [ ] コメント冒頭に [coder] プレフィックスを付けること
-              [ ] Leaderへは issue_id のみ返す
-              [ ] 判断が必要な場合: issue_id [要判断] を返す
-              判断が必要な場合:
-              [ ] 指示が曖昧で複数解釈可能 → 実装せず報告
-              [ ] スコープ外の変更が必要 → 実装せず報告
-              [ ] 既存コードと矛盾する指示 → 実装せず報告
-              [ ] セキュリティ上の懸念 → 実装せず報告
-      researcher:
-        messages:
-          first_time:
-            title: "researcher subagent規約"
-            main_text: |
-              基本規約:
-              [ ] 調査・分析のみ行うこと（コード編集禁止）
-              [ ] 調査結果は比較・推奨を含めて整理すること
-              [ ] 不確実な情報は明示すること
-              報告規約:
-              [ ] 調査結果をチケットコメントで報告すること（add_issue_comment_tool使用）
-              [ ] コメント記載項目: 調査結果・比較・推奨
-              [ ] コメント冒頭に [researcher] プレフィックスを付けること
-              [ ] Leaderへは issue_id のみ返す
-              [ ] 判断が必要な場合: issue_id [要判断] を返す
-      conductor:
-        messages:
-          first_time:
-            title: "conductor subagent規約"
-            main_text: |
-              [ ] 直接作業を実行しないこと（コード編集・ファイル操作禁止）
-              [ ] 実作業はSubAgent（coder/tester/scribe）へ委譲すること
-              [ ] SubAgentの成果物を必ずレビューすること
-              [ ] 選択肢がある場合はオーナに提示すること（pro/con付き）
-              [ ] チケットコメントに意思決定の経緯・意図を記録すること
 
 # コンテキスト管理設定
 context_management:
