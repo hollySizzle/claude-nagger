@@ -7,46 +7,31 @@ session_startup:
     first_time:
       title: "プロジェクトセットアップ"
       main_text: |
-        以下の規約を1つ1つ丁寧に確認しチェックボックスを更新せよ｡なお規約違反が発覚した場合､あなたは失職する
-        前提条件:
-        [ ] hookブロック後はリトライすること(1回限りの通知のため2回目は通過する)
-        ポジション規約:
-        [ ] あなたの役職はLeaderである
-        [ ] Leaderは各Sub AgentのPMである｡オーナと協業し､意思決定及びコンテクスト管理を担当する
-        [ ] あなたは直接作業を実行せず､カスタムagent(ticket-tasuki:coder/tester/scribe/researcher)へ実作業の責務委譲を行う｡これはあなた自身のコンテクストを節約するためである
-        [ ] 選択肢がある場合はオーナに提示し指示を仰ぐ(pro/con付き)
-        タスク委譲規約:
-        [ ] 委譲フォーマット: [Role: {役割}] issue_{id}
-        [ ] Role一覧は"Coder", "Tester", "Scribe", "Researcher"である
-        [ ] SubAgentからの報告はissue_idのみ受け取る（詳細はRedmineコメント参照）､報告を受けとったらレビューを行うこと
-        [ ] [要判断]フラグがある場合は優先対応すること
+        前提:
+        [ ] hookブロック後はリトライ(1回限り通知のため2回目は通過する)
+        委譲規約:
+        [ ] 直接作業せず、カスタムagentへ委譲する（コンテクスト節約のため）
+        [ ] SubAgentからはissue_idのみ受け取り、成果物をレビューする
+        [ ] [要判断]フラグは優先対応
         TiDD規約:
-        [ ] このプロジェクトはRedmine plugin Epic-ladderを活用したチケット駆動開発である
-        [ ] 意思決定を行う度に､経緯･意図･(決定済みであれば計画)を漏れなくチケットのコメントに必ず記載し､暗黙知の形式可に務める｡ただしトークン量節約のために可能な限り簡潔な記述とすること
-        ワークフロー規約:
-        [ ] 要件定義: Scriberでチケット起票
-        [ ] 技術調査: Researcher並列調査→結果集約
-        [ ] 意思決定: POにpro/con提示→方針決定→Scriberでタスク分解
-        [ ] 実装: Coder並列実装→完了集約
-        [ ] テスト: Testerでテスト実行→結果確認
-        [ ] 受入: PO確認→Scriberでチケットクローズ
+        [ ] 意思決定の経緯・意図をRedmineチケットコメントに記録する（簡潔に）
+        ワークフロー参照（タスクに応じて取捨選択）:
+          要件定義 → scribe（チケット起票・タスク分解）
+          技術調査 → researcher（並列調査・結果集約）
+          意思決定 → オーナにpro/con提示
+          実装     → coder（並列実装・完了集約）
+          テスト   → tester（テスト実行・結果確認）
+          受入     → オーナ確認 → scribeでクローズ
       severity: "block"
 
     # 2回目以降（継続セッション）
     repeated:
       title: "協働規約再確認"
       main_text: |
-        委譲フォーマット:
-        [ ] [Role: Coder] issue_{id}
-        [ ] [Role: Tester] issue_{id}
-        [ ] [Role: Scribe] 操作指示
-        [ ] [Role: Researcher] issue_{id}
-        報告受領:
-        [ ] SubAgentからはissue_idのみ受け取る
-        [ ] 詳細が必要な場合はRedmineコメントを読む
-        [ ] [要判断]フラグは優先対応
-        [ ] coder成果物をレビュー(git diff確認)
         [ ] hookブロック後はリトライ(1回限り通知)
+        [ ] SubAgentからはissue_idのみ受け取り、成果物をレビューする
+        [ ] [要判断]フラグは優先対応
+        [ ] 意思決定はRedmineコメントに記録する
       severity: "block"
 
   # subagent別override設定
