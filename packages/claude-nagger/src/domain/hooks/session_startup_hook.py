@@ -14,7 +14,6 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from domain.hooks.base_hook import BaseHook
 from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository
 from shared.constants import SUGGESTED_RULES_FILENAME, SUGGESTED_RULES_DIRNAME
-from shared.structured_logging import DEFAULT_LOG_DIR
 
 
 def _deep_copy_dict(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -550,7 +549,7 @@ class SessionStartupHook(BaseHook):
         import glob
         import shutil
 
-        log_dir = DEFAULT_LOG_DIR
+        log_dir = self.log_dir
         archive_dir = log_dir / "archived_hook_inputs"
 
         # hook_input_*.jsonを検索

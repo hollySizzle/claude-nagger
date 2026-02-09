@@ -692,9 +692,8 @@ class TestArchiveHookInputs:
 
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
-
-            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
-                count = hook._archive_hook_inputs()
+            hook.log_dir = tmp_path
+            count = hook._archive_hook_inputs()
 
         # 3件移動されたことを確認
         assert count == 3
@@ -709,9 +708,8 @@ class TestArchiveHookInputs:
         """hook_inputがない場合は0を返す"""
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
-
-            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
-                count = hook._archive_hook_inputs()
+            hook.log_dir = tmp_path
+            count = hook._archive_hook_inputs()
 
         assert count == 0
 
@@ -721,10 +719,10 @@ class TestArchiveHookInputs:
 
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
+            hook.log_dir = tmp_path
 
-            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
-                with patch.object(Path, 'mkdir', side_effect=OSError("mkdir error")):
-                    count = hook._archive_hook_inputs()
+            with patch.object(Path, 'mkdir', side_effect=OSError("mkdir error")):
+                count = hook._archive_hook_inputs()
 
         assert count == 0
 
@@ -735,6 +733,7 @@ class TestArchiveHookInputs:
 
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
+            hook.log_dir = tmp_path
 
             # 最初のファイルだけ移動エラー
             original_move = __import__('shutil').move
@@ -746,9 +745,8 @@ class TestArchiveHookInputs:
                     raise OSError("move error")
                 return original_move(src, dst)
 
-            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
-                with patch('shutil.move', side_effect=mock_move):
-                    count = hook._archive_hook_inputs()
+            with patch('shutil.move', side_effect=mock_move):
+                count = hook._archive_hook_inputs()
 
         # 2件は成功
         assert count == 2
@@ -763,9 +761,8 @@ class TestArchiveHookInputs:
 
         with patch.object(SessionStartupHook, '_load_config', return_value={}):
             hook = SessionStartupHook()
-
-            with patch('src.domain.hooks.session_startup_hook.DEFAULT_LOG_DIR', tmp_path):
-                count = hook._archive_hook_inputs()
+            hook.log_dir = tmp_path
+            count = hook._archive_hook_inputs()
 
         # hook_input_*.jsonのみ移動
         assert count == 1
