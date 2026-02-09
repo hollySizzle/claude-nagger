@@ -126,6 +126,58 @@ class TestCreateClaudeNaggerDir:
         finally:
             os.chdir(original_cwd)
 
+    def test_creates_dotcn_gitignore(self, temp_dir):
+        """.claude-nagger/.gitignoreが生成される"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            cmd = InstallHooksCommand()
+            cmd._create_claude_nagger_dir()
+
+            gitignore = temp_dir / ".claude-nagger" / ".gitignore"
+            assert gitignore.exists()
+            content = gitignore.read_text(encoding="utf-8")
+            assert "state.db" in content
+            assert "suggested_rules/" in content
+        finally:
+            os.chdir(original_cwd)
+
+    def test_dotcn_gitignore_contains_wal_and_shm(self, temp_dir):
+        """.claude-nagger/.gitignoreにWAL/SHMエントリが含まれる"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+            cmd = InstallHooksCommand()
+            cmd._create_claude_nagger_dir()
+
+            gitignore = temp_dir / ".claude-nagger" / ".gitignore"
+            content = gitignore.read_text(encoding="utf-8")
+            assert "state.db-wal" in content
+            assert "state.db-shm" in content
+        finally:
+            os.chdir(original_cwd)
+
+    def test_dotcn_gitignore_not_overwritten_without_force(self, temp_dir):
+        """--forceなしで既存の.claude-nagger/.gitignoreが上書きされない"""
+        original_cwd = os.getcwd()
+        try:
+            os.chdir(temp_dir)
+
+            # 既存の.gitignoreを作成
+            nagger_dir = temp_dir / ".claude-nagger"
+            nagger_dir.mkdir()
+            existing_content = "# カスタム設定\n*.log\n"
+            (nagger_dir / ".gitignore").write_text(existing_content, encoding="utf-8")
+
+            cmd = InstallHooksCommand(force=False)
+            cmd._create_claude_nagger_dir()
+
+            # 既存ファイルが変更されていないことを確認
+            gitignore = nagger_dir / ".gitignore"
+            assert gitignore.read_text(encoding="utf-8") == existing_content
+        finally:
+            os.chdir(original_cwd)
+
     def test_skips_existing_files_without_force(self, temp_dir):
         """既存ファイルがある場合、forceなしではスキップされる"""
         original_cwd = os.getcwd()
@@ -760,6 +812,17 @@ class TestEnsureConfigExists:
         assert (temp_dir / ".claude-nagger" / "vault").exists()
         assert (temp_dir / ".claude-nagger" / "vault" / "secrets.yaml").exists()
         assert (temp_dir / ".claude-nagger" / "vault" / ".gitignore").exists()
+
+    def test_creates_dotcn_gitignore(self, temp_dir):
+        """.claude-nagger/.gitignoreがensure_config_existsで生成される"""
+        result = ensure_config_exists(temp_dir)
+
+        assert result is True
+        gitignore = temp_dir / ".claude-nagger" / ".gitignore"
+        assert gitignore.exists()
+        content = gitignore.read_text(encoding="utf-8")
+        assert "state.db" in content
+        assert "suggested_rules/" in content
 
     def test_returns_false_if_config_exists(self, temp_dir):
         """設定ファイルが既に存在する場合、Falseを返す"""

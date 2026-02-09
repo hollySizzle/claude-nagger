@@ -169,6 +169,15 @@ discord:
 !.gitignore
 """
 
+    # .claude-nagger/直下の.gitignoreテンプレート
+    DOTCN_GITIGNORE_TEMPLATE = """\
+# ランタイム生成ファイル（自動生成: claude-nagger install-hooks）
+state.db
+state.db-wal
+state.db-shm
+suggested_rules/
+"""
+
     # デフォルトのPreToolUseフック設定
     # サブコマンド形式（claude-nagger hook <name>）を使用
     # uv tool install / pip install 両環境で動作
@@ -379,6 +388,9 @@ discord:
         for filename, content in files.items():
             file_path = nagger_dir / filename
             self._write_file(file_path, content)
+
+        # .claude-nagger/.gitignore 生成（ランタイムファイル除外用）
+        self._write_file(nagger_dir / ".gitignore", self.DOTCN_GITIGNORE_TEMPLATE)
 
         # vault/ ディレクトリと機密ファイル生成
         self._create_vault_dir(nagger_dir)
@@ -597,7 +609,13 @@ def ensure_config_exists(project_root: Path = None) -> bool:
         if not file_path.exists():
             file_path.write_text(content, encoding="utf-8")
             generated = True
-    
+
+    # .claude-nagger/.gitignore 生成（ランタイムファイル除外用）
+    gitignore_path = nagger_dir / ".gitignore"
+    if not gitignore_path.exists():
+        gitignore_path.write_text(InstallHooksCommand.DOTCN_GITIGNORE_TEMPLATE, encoding="utf-8")
+        generated = True
+
     # 自動生成時の警告出力
     if generated:
         print("警告: 設定ファイルを自動生成しました (.claude-nagger/)", file=sys.stderr)
