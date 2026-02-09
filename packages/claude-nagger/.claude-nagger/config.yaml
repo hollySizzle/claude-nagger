@@ -61,6 +61,7 @@ session_startup:
           title: "subagent規約"
           main_text: |
             [ ] hookブロック後はリトライ(1回限り通知)
+            [ ] 作業結果は必ずRedmineチケットコメントに報告すること（add_issue_comment_tool使用）※報告なき完了は完了と認めない
             [ ] Leaderへはissue_idのみ返す（詳細はRedmineコメント参照）
             [ ] 判断が必要な場合: issue_id [要判断] を返す
     subagent_types:
