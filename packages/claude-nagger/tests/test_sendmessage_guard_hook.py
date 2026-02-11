@@ -1,3 +1,5 @@
+# 方式E統合テスト実施記録 (issue_6050/issue_6051)
+# Agent Teams + sendmessage_guard 動作確認
 """sendmessage_guard_hook.py のテスト"""
 
 import json
