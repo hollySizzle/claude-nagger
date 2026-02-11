@@ -110,6 +110,13 @@ sendmessage_guard:
     - shutdown_request
     - shutdown_response
     - plan_approval_response
+  # block_message: ブロック時メッセージテンプレート（カスタマイズ可）
+  # プレースホルダー: {violation} {pattern} {max_length}
+  # リテラル波括弧は {{ }} でエスケープ
+  # block_message: |
+  #   SendMessage規約違反
+  #   違反: {violation}
+  #   パターン: {pattern}, 最大文字数: {max_length}
 
 # コンテキスト管理設定
 context_management:

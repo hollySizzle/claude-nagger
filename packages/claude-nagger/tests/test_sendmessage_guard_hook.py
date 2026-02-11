@@ -15,7 +15,7 @@ from src.domain.hooks.sendmessage_guard_hook import (
     DEFAULT_PATTERN,
     DEFAULT_MAX_CONTENT_LENGTH,
     DEFAULT_EXEMPT_TYPES,
-    BLOCK_REASON_TEMPLATE,
+    DEFAULT_BLOCK_REASON_TEMPLATE,
 )
 
 
@@ -278,13 +278,59 @@ class TestBlockReasonTemplate:
 
     def test_template_format(self):
         """テンプレートが正しくフォーマットされる"""
-        reason = BLOCK_REASON_TEMPLATE.format(violation="テスト違反")
+        reason = DEFAULT_BLOCK_REASON_TEMPLATE.format(violation="テスト違反")
         assert "テスト違反" in reason
         assert "SendMessage規約" in reason
         assert "Redmine基盤通信" in reason
 
     def test_template_contains_instructions(self):
         """テンプレートに対処法が含まれる"""
-        reason = BLOCK_REASON_TEMPLATE.format(violation="test")
+        reason = DEFAULT_BLOCK_REASON_TEMPLATE.format(violation="test")
         assert "add_issue_comment_tool" in reason
         assert 'issue_{id}' in reason or "issue_6041" in reason
+
+
+# === block_message カスタマイズテスト ===
+
+class TestBlockMessageCustomization:
+    """block_message カスタマイズ機能のテスト"""
+
+    def test_custom_block_message(self, hook_with_config):
+        """config.yaml に block_message 設定時、カスタムメッセージが使用される"""
+        custom_msg = "カスタム違反通知: {violation}"
+        h = hook_with_config({"block_message": custom_msg})
+        input_data = {
+            "tool_input": {"content": "issue_idなし"},
+        }
+        result = h.process(input_data)
+        assert result["decision"] == "block"
+        assert "カスタム違反通知:" in result["reason"]
+        # デフォルトテンプレートの内容が含まれないことを確認
+        assert "SendMessage規約" not in result["reason"]
+
+    def test_default_block_message_fallback(self, hook):
+        """block_message 未設定時にデフォルトテンプレートが使用される"""
+        input_data = {
+            "tool_input": {"content": "issue_idなし"},
+        }
+        result = hook.process(input_data)
+        assert result["decision"] == "block"
+        assert "SendMessage規約" in result["reason"]
+        assert "Redmine基盤通信" in result["reason"]
+
+    def test_block_message_placeholders(self, hook_with_config):
+        """{violation}, {pattern}, {max_length} が正しく展開される"""
+        custom_msg = "違反={violation} パターン={pattern} 上限={max_length}"
+        h = hook_with_config({
+            "block_message": custom_msg,
+            "pattern": "issue_\\d+",
+            "max_content_length": 200,
+        })
+        input_data = {
+            "tool_input": {"content": "no issue id here"},
+        }
+        result = h.process(input_data)
+        assert result["decision"] == "block"
+        assert "違反=issue_idが含まれていない" in result["reason"]
+        assert "パターン=issue_\\d+" in result["reason"]
+        assert "上限=200" in result["reason"]

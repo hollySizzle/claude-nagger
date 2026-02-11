@@ -25,7 +25,7 @@ DEFAULT_EXEMPT_TYPES = [
 ]
 
 # block reason テンプレート
-BLOCK_REASON_TEMPLATE = """\
+DEFAULT_BLOCK_REASON_TEMPLATE = """\
 SendMessage規約: Redmine基盤通信
 ━━━━━━━━━━━━━━━━━
 違反: {violation}
@@ -62,12 +62,16 @@ class SendMessageGuardHook(BaseHook):
             ガード設定辞書
         """
         raw = self._config_manager.config.get("sendmessage_guard", {})
-        return {
+        config = {
             "enabled": raw.get("enabled", True),
             "pattern": raw.get("pattern", DEFAULT_PATTERN),
             "max_content_length": raw.get("max_content_length", DEFAULT_MAX_CONTENT_LENGTH),
             "exempt_types": raw.get("exempt_types", DEFAULT_EXEMPT_TYPES),
         }
+        # block_message: 設定されていればカスタムテンプレートを使用
+        if "block_message" in raw:
+            config["block_message"] = raw["block_message"]
+        return config
 
     # --- 判定ロジック（テスト容易性のためメソッド切り出し） ---
 
@@ -163,7 +167,15 @@ class SendMessageGuardHook(BaseHook):
         result = self.validate_content(content)
 
         if not result["valid"]:
-            reason = BLOCK_REASON_TEMPLATE.format(violation=result["violation"])
+            # block_message テンプレート: config指定があればそちらを使用
+            template = self._guard_config.get(
+                "block_message", DEFAULT_BLOCK_REASON_TEMPLATE
+            )
+            reason = template.format(
+                violation=result["violation"],
+                pattern=self._guard_config["pattern"],
+                max_length=self._guard_config["max_content_length"],
+            )
             self.log_info(f"BLOCK: {result['violation']}")
             return {"decision": "block", "reason": reason}
 
