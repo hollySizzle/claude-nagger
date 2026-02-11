@@ -284,13 +284,16 @@ class TestSessionStartupHookSubagentOverride:
         assert result is False
 
 
-class TestIsSessionProcessedContextAwareBypass:
-    """is_session_processed_context_awareが常にFalseを返し、run()のセッションチェックをバイパスするテスト
+class TestShouldSkipSessionBypass:
+    """should_skip_sessionが常にFalseを返し、run()のセッションチェックをバイパスするテスト
 
     根拠: SessionStartupHookはshould_process()内に独自の重複排除ロジックを持つため、
     BaseHookのセッション処理済みチェックは常にバイパスする必要がある。
     SubagentStartはfire-and-forget(非同期)のため、マーカー依存の条件付きバイパスは
     レースコンディションを引き起こす(issue #5862)。
+
+    リファクタリング(issue #5933): is_session_processed_context_awareオーバーライドから
+    should_skip_sessionオーバーライドに移行。run()はshould_skip_session()を呼び出す。
     """
 
     BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
@@ -303,7 +306,7 @@ class TestIsSessionProcessedContextAwareBypass:
     def test_always_false_without_markers(self):
         """マーカーなし状態で常にFalse"""
         hook = self._make_hook()
-        result = hook.is_session_processed_context_aware("session-123", {})
+        result = hook.should_skip_session("session-123", {})
         assert result is False
 
     def test_always_false_with_session_marker(self):
@@ -312,8 +315,8 @@ class TestIsSessionProcessedContextAwareBypass:
         # BaseHookのセッションマーカーを作成
         hook.mark_session_processed("session-with-marker", context_tokens=1000)
         try:
-            # SessionStartupHookのオーバーライドは常にFalse
-            result = hook.is_session_processed_context_aware("session-with-marker", {})
+            # SessionStartupHookのshould_skip_sessionは常にFalse
+            result = hook.should_skip_session("session-with-marker", {})
             assert result is False
         finally:
             # マーカー削除

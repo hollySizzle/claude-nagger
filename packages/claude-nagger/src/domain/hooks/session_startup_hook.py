@@ -83,7 +83,7 @@ class SessionStartupHook(BaseHook):
             self.log_error(f"❌ Failed to load config: {e}")
             return {}
 
-    def is_session_processed_context_aware(self, session_id: str, input_data: Dict[str, Any]) -> bool:
+    def should_skip_session(self, session_id: str, input_data: Dict[str, Any]) -> bool:
         """SessionStartupHookは独自のセッション管理機構(should_process内)を使用するため、
         BaseHookのセッション処理済みチェックを常にバイパスしてshould_processに委ねる。
 

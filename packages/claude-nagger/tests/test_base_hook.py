@@ -403,6 +403,74 @@ class TestContextAwareProcessing:
         assert result is True  # マーカーが存在するのでTrue
 
 
+class TestShouldSkipSession:
+    """should_skip_session メソッドのテスト"""
+
+    def test_default_delegates_to_context_aware(self):
+        """デフォルト実装はis_session_processed_context_awareに委譲"""
+        hook = ConcreteHook()
+
+        with patch.object(hook, 'is_session_processed_context_aware', return_value=True) as mock_ctx:
+            result = hook.should_skip_session('session-123', {'key': 'val'})
+
+        assert result is True
+        mock_ctx.assert_called_once_with('session-123', {'key': 'val'})
+
+    def test_default_returns_false_when_not_processed(self):
+        """未処理セッションの場合はFalse"""
+        hook = ConcreteHook()
+
+        with patch.object(hook, 'is_session_processed_context_aware', return_value=False):
+            result = hook.should_skip_session('session-456', {})
+
+        assert result is False
+
+    def test_subclass_override(self):
+        """サブクラスでオーバーライド可能であること"""
+
+        class CustomHook(BaseHook):
+            def should_process(self, input_data):
+                return True
+
+            def process(self, input_data):
+                return {'decision': 'approve', 'reason': 'test'}
+
+            def should_skip_session(self, session_id, input_data):
+                # subagent対応: 常にFalseを返してshould_processに委ねる
+                return False
+
+        hook = CustomHook()
+        # is_session_processed_context_awareがTrueを返す状況でもFalseになる
+        with patch.object(hook, 'is_session_processed_context_aware', return_value=True):
+            result = hook.should_skip_session('session-789', {})
+
+        assert result is False
+
+    def test_run_uses_should_skip_session(self):
+        """run()がshould_skip_sessionを使用していること"""
+        hook = ConcreteHook()
+
+        with patch.object(hook, 'read_input', return_value={'session_id': 'test-session'}):
+            with patch.object(hook, 'should_skip_session', return_value=True) as mock_skip:
+                with patch('application.install_hooks.ensure_config_exists'):
+                    result = hook.run()
+
+        assert result == 0
+        mock_skip.assert_called_once_with('test-session', {'session_id': 'test-session'})
+
+    def test_run_proceeds_when_should_skip_returns_false(self, capsys):
+        """should_skip_sessionがFalseの場合、処理が継続されること"""
+        hook = ConcreteHook()
+
+        with patch.object(hook, 'read_input', return_value={'session_id': 'test-session', 'should_process': True}):
+            with patch.object(hook, 'should_skip_session', return_value=False):
+                with patch('application.install_hooks.ensure_config_exists'):
+                    result = hook.run()
+
+        # process()が実行され正常終了
+        assert result == 0
+
+
 class TestReadMarkerData:
     """_read_marker_data メソッドのテスト"""
 
@@ -572,11 +640,11 @@ class TestRun:
         assert result == 0
 
     def test_run_session_already_processed(self):
-        """処理済みセッションはスキップ"""
+        """処理済みセッションはスキップ（should_skip_session経由）"""
         hook = ConcreteHook()
 
         with patch.object(hook, 'read_input', return_value={'session_id': 'test'}):
-            with patch.object(hook, 'is_session_processed_context_aware', return_value=True):
+            with patch.object(hook, 'should_skip_session', return_value=True):
                 with patch('application.install_hooks.ensure_config_exists'):
                     result = hook.run()
 

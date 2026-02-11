@@ -786,3 +786,34 @@ class TestMain:
                         main()
 
                 mock_exit.assert_called_once_with(0)
+
+
+class TestShouldSkipSessionOverride:
+    """SessionStartupHookのshould_skip_sessionオーバーライドテスト"""
+
+    def test_should_skip_session_always_returns_false(self):
+        """should_skip_sessionが常にFalseを返すこと（BaseHookの判定をバイパス）"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            # session_idやinput_dataに関わらず常にFalse
+            result = hook.should_skip_session('any-session-id', {'session_id': 'any-session-id'})
+            assert result is False
+
+    def test_should_skip_session_does_not_call_base_context_aware(self):
+        """should_skip_sessionがBaseHookのis_session_processed_context_awareを呼ばないこと"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            with patch.object(hook, 'is_session_processed_context_aware') as mock_ctx:
+                hook.should_skip_session('session-123', {})
+                mock_ctx.assert_not_called()
+
+    def test_run_delegates_to_should_process_not_context_aware(self):
+        """run()実行時、should_skip_sessionがFalseを返すことでshould_processに到達すること"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={'enabled': False}):
+            hook = SessionStartupHook()
+            with patch.object(hook, 'read_input', return_value={'session_id': 'test', 'tool_name': 'Edit'}):
+                with patch('application.install_hooks.ensure_config_exists'):
+                    # should_processが呼ばれることを確認（enabled=Falseなのでスキップされる）
+                    with patch.object(hook, 'should_process', return_value=False) as mock_sp:
+                        result = hook.run()
+                    mock_sp.assert_called_once()

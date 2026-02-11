@@ -697,6 +697,23 @@ class BaseHook(ABC):
             self.log_error(f"Error in context-aware session check: {e}")
             # エラー時は単純にマーカ存在チェックのみ
             return self.is_session_processed(session_id)
+
+    def should_skip_session(self, session_id: str, input_data: Dict[str, Any]) -> bool:
+        """
+        セッション処理済み判定（run()から呼ばれるオーバーライドポイント）
+
+        デフォルト実装: is_session_processed_context_awareに委譲。
+        サブクラスでオーバーライドすることで独自のセッションスキップ判定が可能。
+        例: subagent対応hookは常にFalseを返し、should_process()内で独自判定を行う。
+
+        Args:
+            session_id: セッションID
+            input_data: 入力データ
+
+        Returns:
+            スキップすべき場合True
+        """
+        return self.is_session_processed_context_aware(session_id, input_data)
     
     def _read_marker_data(self, marker_path: Path) -> Optional[Dict[str, Any]]:
         """マーカーファイルからデータを読み取り"""
@@ -875,9 +892,9 @@ class BaseHook(ABC):
             if session_id:
                 self.log_debug(f"Session ID: {session_id}")
 
-                # 既に処理済みかをコンテキストベースで確認
-                if self.is_session_processed_context_aware(session_id, input_data):
-                    self.log_debug("Session already processed and within context threshold, skipping")
+                # セッション処理済み判定（サブクラスでオーバーライド可能）
+                if self.should_skip_session(session_id, input_data):
+                    self.log_debug("Session already processed, skipping (via should_skip_session)")
                     return ExitCode.SUCCESS
 
             # 処理対象かチェック
