@@ -139,6 +139,7 @@ session_startup:
               [ ] SubAgentの成果物を必ずレビューすること
 
 # SendMessageガード設定（Redmine基盤通信強制）
+# 毎回検査。違反時のみblock、合格時は無通知通過
 sendmessage_guard:
   enabled: true
   pattern: "issue_\\\\d+"

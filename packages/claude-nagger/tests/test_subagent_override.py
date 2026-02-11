@@ -134,7 +134,7 @@ class TestSessionStartupHookSubagentOverride:
 
         assert resolved["enabled"] is True
         assert resolved["messages"]["first_time"]["title"] == "subagent規約"
-        assert "スコープ外のファイルを編集しないこと" in resolved["messages"]["first_time"]["main_text"]
+        assert "hookブロック後はリトライ" in resolved["messages"]["first_time"]["main_text"]
         assert "作業完了後に結果を報告すること" in resolved["messages"]["first_time"]["main_text"]
 
     def test_resolve_subagent_config_type_specific(self):
@@ -261,22 +261,21 @@ class TestSessionStartupHookSubagentOverride:
         assert resolved["messages"]["first_time"]["title"] == "Bash subagent規約"
 
     def test_resolve_conductor_role(self):
-        """conductor roleがsubagent_typesにマッチし専用設定を返す"""
+        """conductor roleがsubagent_typesに未定義の場合subagent_defaultにフォールバック"""
         hook = self._make_hook()
         resolved = hook._resolve_subagent_config("general-purpose", role="conductor")
 
-        assert resolved["messages"]["first_time"]["title"] == "conductor subagent規約"
-        assert "直接作業を実行しない" in resolved["messages"]["first_time"]["main_text"]
+        # conductorはsubagent_typesに未定義 → subagent_default
+        assert resolved["messages"]["first_time"]["title"] == "subagent規約"
 
-    def test_resolve_conductor_role_contains_delegation_rule(self):
-        """conductor設定に委譲規約が含まれる"""
+    def test_resolve_conductor_role_contains_default_rules(self):
+        """conductor未定義時はsubagent_defaultの規約が含まれる"""
         hook = self._make_hook()
         resolved = hook._resolve_subagent_config("general-purpose", role="conductor")
 
         main_text = resolved["messages"]["first_time"]["main_text"]
-        assert "SubAgent" in main_text
-        assert "レビュー" in main_text
-        assert "オーナ" in main_text
+        assert "作業完了後に結果を報告すること" in main_text
+        assert "判断が必要な場合は実装せず報告すること" in main_text
 
     def test_is_session_processed_context_aware_always_false(self):
         """BaseHookのセッションチェックを常にバイパス"""
@@ -442,7 +441,7 @@ class TestSessionStartupHookProcessSubagent:
 
         assert result["decision"] == "block"
         assert "subagent規約" in result["reason"]
-        assert "スコープ外のファイルを編集しないこと" in result["reason"]
+        assert "作業完了後に結果を報告すること" in result["reason"]
         # mark_processedが呼ばれたことを確認
         hook._subagent_repo.mark_processed.assert_called_once_with("agent-abc")
 

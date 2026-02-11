@@ -79,6 +79,15 @@
             "command": "claude-nagger hook implementation-design"
           }
         ]
+      },
+      {
+        "matcher": "SendMessage",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook sendmessage-guard"
+          }
+        ]
       }
     ],
     "Notification": [
