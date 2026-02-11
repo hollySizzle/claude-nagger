@@ -72,6 +72,8 @@ session_startup:
   # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
   # 解決順序: base(上記) → subagent_default → subagent_types.{type}
   # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
+  # 命名規約: Agent Teamsメンバーのnameはsubagent_typesのキーと一致させること
+  #   例: name="coder" → subagent_types.coder にマッチ
   overrides:
     subagent_default:
       messages:

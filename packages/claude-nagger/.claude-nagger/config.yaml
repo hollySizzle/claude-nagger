@@ -11,6 +11,8 @@ session_startup:
         違反が発生した場合あなたは失職する
         前提:
         [ ] hookブロック後はリトライ(1回限り通知のため2回目は通過する)
+        コミュニケーション規約:
+        あなたは選択肢がある場合は必ずオーナに選択肢を提示し､オーナーの指示を仰ぐこと｡その際は各選択肢のpro/conを提示すること
         委譲規約:
         [ ] あなたは実作業を行わず､直接作業せず、カスタムagentへ委譲する（コンテクスト節約のため）
         [ ] SubAgentからはissue_idのみ受け取り、成果物をレビューする
@@ -31,6 +33,8 @@ session_startup:
     repeated:
       title: "協働規約再確認"
       main_text: |
+        以下の規約を確認し遵守することを宣言せよ｡規約違反が発覚した場合､あなたは失職する
+        [ ] あなたは選択肢がある場合は必ずオーナに選択肢を提示し､オーナーの指示を仰ぐこと｡その際は各選択肢のpro/conを提示すること
         [ ] hookブロック後はリトライ(1回限り通知)
         [ ] SubAgentからはissue_idのみ受け取り、成果物をレビューする
         [ ] [要判断]フラグは優先対応
@@ -43,6 +47,8 @@ session_startup:
   # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
   # 解決順序: base(上記) → subagent_default → subagent_types.{type}
   # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
+  # 命名規約: Agent Teamsメンバーのnameはsubagent_typesのキーと一致させること
+  #   例: name="coder" → subagent_types.coder にマッチ
   overrides:
     subagent_default:
       messages:
@@ -50,8 +56,8 @@ session_startup:
           title: "subagent規約"
           main_text: |
             [ ] hookブロック後はリトライ(1回限り通知)
-            [ ] Leaderへはissue_idのみ返す（詳細はRedmineコメント参照）
-            [ ] 判断が必要な場合: issue_id [要判断] を返す
+            [ ] 作業完了後に結果を報告すること
+            [ ] 判断が必要な場合は実装せず報告すること
     subagent_types:
       Explore:
         enabled: false
@@ -63,6 +69,36 @@ session_startup:
             title: "Bash subagent規約"
             main_text: |
               [ ] 破壊的コマンド禁止
+      coder:
+        messages:
+          first_time:
+            title: "coder subagent規約"
+            main_text: |
+              [ ] チケット番号(issue_{id})をコミットメッセージに含めること
+              [ ] 指示されたスコープ外のファイルを編集しないこと
+              [ ] 判断が必要な場合は実装せず報告すること
+              [ ] 完了時に変更内容・コミットハッシュを報告すること
+              [ ] 報告=チケットコメント（add_issue_comment_tool使用）
+              ツール規約:
+              [ ] ファイル操作にはserena MCPツールを優先使用すること
+      scribe:
+        messages:
+          first_time:
+            title: "scribe subagent規約"
+            main_text: |
+              [ ] Redmineチケット操作のみ行うこと
+              [ ] コード変更は行わないこと
+      tester:
+        messages:
+          first_time:
+            title: "tester subagent規約"
+            main_text: |
+              [ ] 仕様からテストを設計すること（実装詳細に依存しない）
+              [ ] テスト結果・失敗箇所・再現手順を報告すること
+              [ ] プロダクションコードを編集しないこと（テストコード・manual_specのみ編集可）
+              [ ] 報告=チケットコメント（add_issue_comment_tool使用）
+              ツール規約:
+              [ ] ファイル操作にはserena MCPツールを優先使用すること
 
 # コンテキスト管理設定
 context_management:
