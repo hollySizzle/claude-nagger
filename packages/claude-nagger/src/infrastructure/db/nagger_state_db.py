@@ -1,19 +1,22 @@
 """NaggerStateDB - 状態管理データベース"""
 
+import logging
 import os
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
 
-# スキーマ定義（v1）
+
+# 最新スキーマ定義 - IF NOT EXISTSで冪等性保証（issue_6058）
 _SCHEMA_V1 = """
-CREATE TABLE schema_version (
+CREATE TABLE IF NOT EXISTS schema_version (
     version INTEGER PRIMARY KEY,
     applied_at TEXT NOT NULL
 );
 
-CREATE TABLE subagents (
+CREATE TABLE IF NOT EXISTS subagents (
     agent_id            TEXT PRIMARY KEY,
     session_id          TEXT NOT NULL,
     agent_type          TEXT NOT NULL DEFAULT 'unknown',
@@ -22,10 +25,11 @@ CREATE TABLE subagents (
     created_at          TEXT NOT NULL,
     startup_processed   INTEGER NOT NULL DEFAULT 0,
     startup_processed_at TEXT,
-    task_match_index    INTEGER
+    task_match_index    INTEGER,
+    leader_transcript_path TEXT
 );
 
-CREATE TABLE task_spawns (
+CREATE TABLE IF NOT EXISTS task_spawns (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id          TEXT NOT NULL,
     transcript_index    INTEGER NOT NULL,
@@ -38,7 +42,7 @@ CREATE TABLE task_spawns (
     UNIQUE(session_id, transcript_index)
 );
 
-CREATE TABLE sessions (
+CREATE TABLE IF NOT EXISTS sessions (
     session_id          TEXT NOT NULL,
     hook_name           TEXT NOT NULL,
     created_at          TEXT NOT NULL,
@@ -48,7 +52,7 @@ CREATE TABLE sessions (
     PRIMARY KEY (session_id, hook_name)
 );
 
-CREATE TABLE hook_log (
+CREATE TABLE IF NOT EXISTS hook_log (
     id                  INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id          TEXT NOT NULL,
     hook_name           TEXT NOT NULL,
@@ -60,20 +64,20 @@ CREATE TABLE hook_log (
     duration_ms         INTEGER
 );
 
-CREATE INDEX idx_subagents_session ON subagents(session_id);
-CREATE INDEX idx_subagents_unprocessed ON subagents(session_id, startup_processed) WHERE startup_processed = 0;
-CREATE INDEX idx_task_spawns_session ON task_spawns(session_id);
-CREATE INDEX idx_task_spawns_unmatched ON task_spawns(session_id, matched_agent_id) WHERE matched_agent_id IS NULL;
-CREATE INDEX idx_task_spawns_tool_use_id ON task_spawns(tool_use_id);
-CREATE INDEX idx_sessions_status ON sessions(status);
-CREATE INDEX idx_hook_log_session ON hook_log(session_id, timestamp);
+CREATE INDEX IF NOT EXISTS idx_subagents_session ON subagents(session_id);
+CREATE INDEX IF NOT EXISTS idx_subagents_unprocessed ON subagents(session_id, startup_processed) WHERE startup_processed = 0;
+CREATE INDEX IF NOT EXISTS idx_task_spawns_session ON task_spawns(session_id);
+CREATE INDEX IF NOT EXISTS idx_task_spawns_unmatched ON task_spawns(session_id, matched_agent_id) WHERE matched_agent_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_task_spawns_tool_use_id ON task_spawns(tool_use_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+CREATE INDEX IF NOT EXISTS idx_hook_log_session ON hook_log(session_id, timestamp);
 """
 
 
 class NaggerStateDB:
     """状態管理SQLiteデータベース"""
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
 
     def __init__(self, db_path: Path):
         """初期化
@@ -89,6 +93,7 @@ class NaggerStateDB:
 
         未接続の場合のみ新規接続を作成。
         WALモード有効化、外部キー制約有効化、タイムアウト5秒。
+        破損DB検出時は削除して再作成（issue_6058）。
 
         Returns:
             sqlite3.Connection: データベース接続
@@ -100,9 +105,25 @@ class NaggerStateDB:
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
 
         self._conn = sqlite3.connect(str(self._db_path), timeout=5)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        self._ensure_schema()
+        try:
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._ensure_schema()
+        except sqlite3.DatabaseError as e:
+            # 破損DBの場合は削除して再作成（issue_6058）
+            logger.warning("破損DB検出、削除して再作成: %s (%s)", self._db_path, e)
+            self._conn.close()
+            self._conn = None
+            self._db_path.unlink(missing_ok=True)
+            # WALファイルも削除
+            wal_path = self._db_path.with_suffix(".db-wal")
+            shm_path = self._db_path.with_suffix(".db-shm")
+            wal_path.unlink(missing_ok=True)
+            shm_path.unlink(missing_ok=True)
+            self._conn = sqlite3.connect(str(self._db_path), timeout=5)
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._ensure_schema()
         return self._conn
 
     def close(self) -> None:
@@ -131,6 +152,7 @@ class NaggerStateDB:
         """スキーマの確認と作成
 
         schema_versionテーブルが存在しない場合はスキーマ全体を作成。
+        IF NOT EXISTSで並列プロセスの競合にも安全（issue_6058）。
         バージョン差異がある場合はマイグレーションを実行。
         """
         assert self._conn is not None
@@ -140,11 +162,11 @@ class NaggerStateDB:
             "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
         )
         if cursor.fetchone() is None:
-            # 初回: スキーマ全体を作成
+            # 初回: スキーマ全体を作成（IF NOT EXISTSで並列安全）
             self._conn.executescript(_SCHEMA_V1)
             now = datetime.now(timezone.utc).isoformat()
             self._conn.execute(
-                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (self.SCHEMA_VERSION, now),
             )
             self._conn.commit()
@@ -181,6 +203,19 @@ class NaggerStateDB:
             self._conn.execute(
                 "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (2, now),
+            )
+            self._conn.commit()
+
+        if from_ver < 3 <= to_ver:
+            # v2 -> v3: subagentsにleader_transcript_pathカラム追加（issue_6057）
+            # leader/subagent区別のため、SubagentStart時のleaderのtranscript_pathを保存
+            self._conn.execute(
+                "ALTER TABLE subagents ADD COLUMN leader_transcript_path TEXT"
+            )
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute(
+                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (3, now),
             )
             self._conn.commit()
 

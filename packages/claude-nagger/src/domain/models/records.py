@@ -17,6 +17,7 @@ class SubagentRecord:
     startup_processed: bool
     startup_processed_at: Optional[str]
     task_match_index: Optional[int]
+    leader_transcript_path: Optional[str] = None
 
 
 @dataclass

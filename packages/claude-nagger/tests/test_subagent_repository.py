@@ -938,3 +938,81 @@ class TestExceptionHandling:
     """
 
     pass  # sqlite3の制限によりrollbackテストはスキップ
+
+
+class TestLeaderTranscriptPath:
+    """leader_transcript_path機能のテスト（issue_6057）
+
+    SubagentStart時にleaderのtranscript_pathをDB保存し、
+    PreToolUseでleader/subagentを区別するための機能。
+    """
+
+    def test_register_with_leader_transcript_path(self, db):
+        """register()でleader_transcript_pathが保存される"""
+        repo = SubagentRepository(db)
+        leader_tp = "/home/user/.claude/projects/test/leader.jsonl"
+
+        repo.register("agent-ltp", "session-ltp", "gp",
+                       leader_transcript_path=leader_tp)
+
+        record = repo.get("agent-ltp")
+        assert record is not None
+        assert record.leader_transcript_path == leader_tp
+
+    def test_register_without_leader_transcript_path(self, db):
+        """leader_transcript_pathなし（後方互換）"""
+        repo = SubagentRepository(db)
+
+        repo.register("agent-no-ltp", "session-no-ltp", "gp")
+
+        record = repo.get("agent-no-ltp")
+        assert record is not None
+        assert record.leader_transcript_path is None
+
+    def test_claim_next_unprocessed_includes_leader_transcript_path(self, db):
+        """claim_next_unprocessedの結果にleader_transcript_pathが含まれる"""
+        repo = SubagentRepository(db)
+        leader_tp = "/home/user/.claude/projects/test/leader-claim.jsonl"
+
+        repo.register("agent-claim-ltp", "session-claim-ltp", "gp",
+                       leader_transcript_path=leader_tp)
+
+        record = repo.claim_next_unprocessed("session-claim-ltp")
+        assert record is not None
+        assert record.leader_transcript_path == leader_tp
+
+    def test_get_active_includes_leader_transcript_path(self, db):
+        """get_activeの結果にleader_transcript_pathが含まれる"""
+        repo = SubagentRepository(db)
+        leader_tp = "/home/user/.claude/projects/test/leader-active.jsonl"
+
+        repo.register("agent-active-ltp", "session-active-ltp", "gp",
+                       leader_transcript_path=leader_tp)
+
+        records = repo.get_active("session-active-ltp")
+        assert len(records) == 1
+        assert records[0].leader_transcript_path == leader_tp
+
+
+class TestSchemaV3Migration:
+    """スキーマv3マイグレーションのテスト（issue_6057）"""
+
+    def test_migration_adds_leader_transcript_path_column(self, tmp_path):
+        """v2→v3マイグレーションでleader_transcript_pathカラムが追加される"""
+        from infrastructure.db.nagger_state_db import NaggerStateDB
+
+        db_path = tmp_path / ".claude-nagger" / "state.db"
+        db = NaggerStateDB(db_path)
+        db.connect()
+
+        # カラムの存在確認
+        cursor = db.conn.execute("PRAGMA table_info(subagents)")
+        columns = {row[1] for row in cursor.fetchall()}
+        assert "leader_transcript_path" in columns
+
+        # スキーマバージョン確認
+        cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
+        version = cursor.fetchone()[0]
+        assert version >= 3
+
+        db.close()

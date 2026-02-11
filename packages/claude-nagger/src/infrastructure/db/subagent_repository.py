@@ -28,7 +28,8 @@ class SubagentRepository:
 
     # === ライフサイクル ===
     def register(
-        self, agent_id: str, session_id: str, agent_type: str, role: str = None
+        self, agent_id: str, session_id: str, agent_type: str, role: str = None,
+        leader_transcript_path: str = None,
     ) -> None:
         """SubagentStart時。INSERT INTO subagents。created_at=現在時刻(ISO8601 UTC)
 
@@ -37,14 +38,15 @@ class SubagentRepository:
             session_id: セッションID
             agent_type: エージェントタイプ
             role: 役割（オプション）
+            leader_transcript_path: leaderのtranscript_path（issue_6057: leader/subagent区別用）
         """
         now = datetime.now(timezone.utc).isoformat()
         self._db.conn.execute(
             """
-            INSERT INTO subagents (agent_id, session_id, agent_type, role, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO subagents (agent_id, session_id, agent_type, role, created_at, leader_transcript_path)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (agent_id, session_id, agent_type, role, now),
+            (agent_id, session_id, agent_type, role, now, leader_transcript_path),
         )
         self._db.conn.commit()
 
@@ -405,7 +407,8 @@ class SubagentRepository:
             cursor = self._db.conn.execute(
                 """
                 SELECT agent_id, session_id, agent_type, role, role_source,
-                       created_at, startup_processed, startup_processed_at, task_match_index
+                       created_at, startup_processed, startup_processed_at, task_match_index,
+                       leader_transcript_path
                 FROM subagents
                 WHERE session_id = ? AND startup_processed = 0
                 ORDER BY created_at ASC
@@ -430,6 +433,7 @@ class SubagentRepository:
                 startup_processed=bool(row[6]),
                 startup_processed_at=row[7],
                 task_match_index=row[8],
+                leader_transcript_path=row[9],
             )
 
             self._db.conn.commit()
@@ -474,7 +478,8 @@ class SubagentRepository:
         cursor = self._db.conn.execute(
             """
             SELECT agent_id, session_id, agent_type, role, role_source,
-                   created_at, startup_processed, startup_processed_at, task_match_index
+                   created_at, startup_processed, startup_processed_at, task_match_index,
+                   leader_transcript_path
             FROM subagents
             WHERE agent_id = ?
             """,
@@ -494,6 +499,7 @@ class SubagentRepository:
             startup_processed=bool(row[6]),
             startup_processed_at=row[7],
             task_match_index=row[8],
+            leader_transcript_path=row[9],
         )
 
     def get_active(self, session_id: str) -> List[SubagentRecord]:
@@ -508,7 +514,8 @@ class SubagentRepository:
         cursor = self._db.conn.execute(
             """
             SELECT agent_id, session_id, agent_type, role, role_source,
-                   created_at, startup_processed, startup_processed_at, task_match_index
+                   created_at, startup_processed, startup_processed_at, task_match_index,
+                   leader_transcript_path
             FROM subagents
             WHERE session_id = ?
             ORDER BY created_at ASC
@@ -528,6 +535,7 @@ class SubagentRepository:
                 startup_processed=bool(row[6]),
                 startup_processed_at=row[7],
                 task_match_index=row[8],
+                leader_transcript_path=row[9],
             )
             for row in rows
         ]

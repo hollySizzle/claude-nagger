@@ -219,15 +219,20 @@ class TestNaggerStateDB:
         db = NaggerStateDB(db_path)
         db.connect()
 
-        # スキーマバージョンが2に更新されていることを確認
+        # 最新バージョンに更新されていることを確認
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
         version = cursor.fetchone()[0]
-        assert version == 2
+        assert version == NaggerStateDB.SCHEMA_VERSION
 
-        # tool_use_idカラムが追加されていることを確認
+        # tool_use_idカラムが追加されていることを確認（v2マイグレーション）
         cursor = db.conn.execute("PRAGMA table_info(task_spawns)")
         columns = [row[1] for row in cursor.fetchall()]
         assert "tool_use_id" in columns
+
+        # leader_transcript_pathカラムが追加されていることを確認（v3マイグレーション）
+        cursor = db.conn.execute("PRAGMA table_info(subagents)")
+        columns = [row[1] for row in cursor.fetchall()]
+        assert "leader_transcript_path" in columns
 
         # 既存データがそのままであることを確認
         cursor = db.conn.execute(
@@ -241,6 +246,112 @@ class TestNaggerStateDB:
         assert row[3] is None  # 新カラムはNULL
 
         db.close()
+
+    def test_0バイトDB復旧(self, tmp_path):
+        """0バイトDBファイルに接続してスキーマ作成（issue_6058）"""
+        db_path = tmp_path / ".claude-nagger" / "state.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 0バイトファイルを手動作成
+        db_path.touch()
+        assert db_path.stat().st_size == 0
+
+        # NaggerStateDB接続でスキーマ作成
+        db = NaggerStateDB(db_path)
+        db.connect()
+
+        # テーブルが作成されていること
+        cursor = db.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        tables = [row[0] for row in cursor.fetchall()]
+        assert "subagents" in tables
+        assert "task_spawns" in tables
+
+        db.close()
+
+        # close後ファイルサイズが0でないこと
+        assert db_path.stat().st_size > 0
+
+    def test_破損DB復旧(self, tmp_path):
+        """破損DBファイルを検出して再作成（issue_6058）"""
+        db_path = tmp_path / ".claude-nagger" / "state.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # 不正なデータでファイル作成（SQLiteヘッダではない）
+        db_path.write_bytes(b"this is not a sqlite database" + b"\x00" * 100)
+
+        # NaggerStateDB接続で復旧
+        db = NaggerStateDB(db_path)
+        db.connect()
+
+        # テーブルが作成されていること
+        cursor = db.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )
+        tables = [row[0] for row in cursor.fetchall()]
+        assert "subagents" in tables
+        assert "task_spawns" in tables
+
+        db.close()
+
+    def test_並列スキーマ作成_安全(self, tmp_path):
+        """並列プロセスの同時スキーマ作成でエラーなし（issue_6058）"""
+        import threading
+
+        db_path = tmp_path / ".claude-nagger" / "state.db"
+        errors = []
+
+        def worker():
+            try:
+                db = NaggerStateDB(db_path)
+                db.connect()
+                # テーブル確認
+                cursor = db.conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name='subagents'"
+                )
+                assert cursor.fetchone() is not None
+                db.close()
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker) for _ in range(5)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"並列スキーマ作成でエラー: {errors}"
+
+    def test_スキーマIF_NOT_EXISTS冪等性(self, tmp_path):
+        """既存DBに対してスキーマ再適用がエラーにならない（issue_6058）"""
+        db_path = tmp_path / ".claude-nagger" / "state.db"
+
+        # DB作成
+        db1 = NaggerStateDB(db_path)
+        db1.connect()
+
+        # データ挿入
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        db1.conn.execute(
+            "INSERT INTO subagents (agent_id, session_id, created_at) VALUES (?, ?, ?)",
+            ("agent-1", "session-1", now)
+        )
+        db1.conn.commit()
+        db1.close()
+
+        # 再接続（スキーマ再確認が走る）
+        db2 = NaggerStateDB(db_path)
+        db2.connect()
+
+        # データが保持されていること
+        cursor = db2.conn.execute("SELECT agent_id FROM subagents")
+        rows = cursor.fetchall()
+        assert len(rows) == 1
+        assert rows[0][0] == "agent-1"
+
+        db2.close()
 
 
 # === SubagentRepository単体テスト ===

@@ -272,6 +272,22 @@ class SessionStartupHook(BaseHook):
                 db.close()
                 return False
 
+            # issue_6057: leader/subagent区別
+            # SubagentStart時にleaderのtranscript_pathを保存済み。
+            # 現在のtranscript_pathがleaderのものと一致 → 呼び出し元はleader → subagent検出スキップ
+            # 一致しない → 呼び出し元はsubagent自身 → ブロッキング対象
+            current_transcript = input_data.get('transcript_path', '')
+            leader_transcript = record.leader_transcript_path
+            if leader_transcript and current_transcript == leader_transcript:
+                self.log_info(
+                    f"⏭️ Skipping subagent blocking: caller is leader "
+                    f"(transcript={current_transcript})"
+                )
+                # leaderのPreToolUseではsubagentをブロックしない
+                # subagent自身のPreToolUseで再度claim_next_unprocessedが呼ばれる
+                db.close()
+                return False
+
             agent_type = record.agent_type
             agent_id = record.agent_id
             role = record.role

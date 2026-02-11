@@ -60,14 +60,20 @@ def main():
         if event_name == "SubagentStart":
             agent_type = agent_type or "unknown"
 
-            # subagent登録
-            repo.register(agent_id, session_id, agent_type)
+            # leader_transcript_path: SubagentStartはleaderコンテキストで発火するため、
+            # ここでのtranscript_pathはleaderのもの（issue_6057: leader/subagent区別用）
+            leader_transcript_path = data.get("transcript_path")
+
+            # subagent登録（leader_transcript_path保存）
+            repo.register(agent_id, session_id, agent_type,
+                          leader_transcript_path=leader_transcript_path)
             _logger.info(
-                f"Subagent registered: session={session_id}, agent={agent_id}, type={agent_type}"
+                f"Subagent registered: session={session_id}, agent={agent_id}, "
+                f"type={agent_type}, leader_transcript={leader_transcript_path}"
             )
 
             # 親セッションのtranscriptからtask_spawnsを登録（共通フィールド）
-            transcript_path = data.get("transcript_path")
+            transcript_path = leader_transcript_path
             if transcript_path:
                 try:
                     count = repo.register_task_spawns(session_id, transcript_path)
