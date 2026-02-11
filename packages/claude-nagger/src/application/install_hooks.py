@@ -138,6 +138,16 @@ session_startup:
               [ ] 実作業はSubAgent（coder/tester/scribe）へ委譲すること
               [ ] SubAgentの成果物を必ずレビューすること
 
+# SendMessageガード設定（Redmine基盤通信強制）
+sendmessage_guard:
+  enabled: true
+  pattern: "issue_\\\\d+"
+  max_content_length: 100
+  exempt_types:
+    - shutdown_request
+    - shutdown_response
+    - plan_approval_response
+
 # コンテキスト管理設定
 context_management:
   reminder_thresholds:
@@ -253,6 +263,15 @@ suggested_rules/
                 {
                     "type": "command",
                     "command": "claude-nagger hook implementation-design"
+                }
+            ]
+        },
+        {
+            "matcher": "SendMessage",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook sendmessage-guard"
                 }
             ]
         }

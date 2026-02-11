@@ -100,6 +100,16 @@ session_startup:
               ツール規約:
               [ ] ファイル操作にはserena MCPツールを優先使用すること
 
+# SendMessageガード設定（Redmine基盤通信強制）
+sendmessage_guard:
+  enabled: true
+  pattern: "issue_\\d+"
+  max_content_length: 100
+  exempt_types:
+    - shutdown_request
+    - shutdown_response
+    - plan_approval_response
+
 # コンテキスト管理設定
 context_management:
   reminder_thresholds:

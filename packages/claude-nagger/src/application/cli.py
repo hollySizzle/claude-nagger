@@ -111,6 +111,12 @@ def main():
         help="サブエージェントStart/Stopイベントハンドラ"
     )
 
+    # hook sendmessage-guard
+    hook_subparsers.add_parser(
+        "sendmessage-guard",
+        help="SendMessageガードフック（Redmine基盤通信強制）"
+    )
+
     # notify サブコマンド（Discord通知）
     notify_parser = subparsers.add_parser(
         "notify",
@@ -228,6 +234,11 @@ def main():
             from domain.hooks.subagent_event_hook import main as subagent_event_main
             subagent_event_main()
             return 0
+
+        if args.hook_name == "sendmessage-guard":
+            from domain.hooks.sendmessage_guard_hook import SendMessageGuardHook
+            hook = SendMessageGuardHook()
+            return hook.run()
 
         # hook名未指定時はhookヘルプ表示
         hook_parser.print_help()

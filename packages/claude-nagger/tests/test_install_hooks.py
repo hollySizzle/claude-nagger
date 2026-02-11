@@ -410,6 +410,15 @@ class TestMergePreToolUseHooks:
                                 "command": "claude-nagger hook implementation-design"
                             }
                         ]
+                    },
+                    {
+                        "matcher": "SendMessage",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook sendmessage-guard"
+                            }
+                        ]
                     }
                 ]
             }
@@ -419,7 +428,7 @@ class TestMergePreToolUseHooks:
 
         # 重複があるため追加されない
         assert result is False
-        assert len(settings["hooks"]["PreToolUse"]) == 8
+        assert len(settings["hooks"]["PreToolUse"]) == 9
 
     def test_bash_matcher_included_in_default_hooks(self):
         """Bashマッチャーがデフォルトフックに含まれる (issue_4032)"""
