@@ -117,6 +117,12 @@ def main():
         help="SendMessageガードフック（Redmine基盤通信強制）"
     )
 
+    # hook leader-constraint
+    hook_subparsers.add_parser(
+        "leader-constraint",
+        help="leader行動制約フック（subagent存在時のleader直接作業ブロック）"
+    )
+
     # notify サブコマンド（Discord通知）
     notify_parser = subparsers.add_parser(
         "notify",
@@ -238,6 +244,11 @@ def main():
         if args.hook_name == "sendmessage-guard":
             from domain.hooks.sendmessage_guard_hook import SendMessageGuardHook
             hook = SendMessageGuardHook()
+            return hook.run()
+
+        if args.hook_name == "leader-constraint":
+            from domain.hooks.leader_constraint_hook import LeaderConstraintHook
+            hook = LeaderConstraintHook()
             return hook.run()
 
         # hook名未指定時はhookヘルプ表示

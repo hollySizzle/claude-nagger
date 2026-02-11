@@ -275,6 +275,51 @@ suggested_rules/
                     "command": "claude-nagger hook sendmessage-guard"
                 }
             ]
+        },
+        {
+            "matcher": "Read",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook leader-constraint"
+                }
+            ]
+        },
+        {
+            "matcher": "Edit",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook leader-constraint"
+                }
+            ]
+        },
+        {
+            "matcher": "Write",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook leader-constraint"
+                }
+            ]
+        },
+        {
+            "matcher": "Grep",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook leader-constraint"
+                }
+            ]
+        },
+        {
+            "matcher": "Glob",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook leader-constraint"
+                }
+            ]
         }
     ]
 
