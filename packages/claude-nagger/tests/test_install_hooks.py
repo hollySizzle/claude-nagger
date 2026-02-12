@@ -421,6 +421,15 @@ class TestMergePreToolUseHooks:
                         ]
                     },
                     {
+                        "matcher": "mcp__redmine_epic_grid__(create|update_issue_status|update_issue_parent|update_issue_assignee|update_custom_fields|update_issue_progress|assign_to_version|move_to_next_version)",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"[claude-nagger] Redmine操作規約: この操作はscribeに委譲してください\"}}'"
+                            }
+                        ]
+                    },
+                    {
                         "matcher": "Read",
                         "hooks": [
                             {
@@ -473,7 +482,7 @@ class TestMergePreToolUseHooks:
 
         # 重複があるため追加されない
         assert result is False
-        assert len(settings["hooks"]["PreToolUse"]) == 14
+        assert len(settings["hooks"]["PreToolUse"]) == 15
 
     def test_bash_matcher_included_in_default_hooks(self):
         """Bashマッチャーがデフォルトフックに含まれる (issue_4032)"""
@@ -496,6 +505,9 @@ class TestMergePreToolUseHooks:
         for hook_entry in cmd.DEFAULT_PRETOOLUSE_HOOKS:
             for hook in hook_entry.get("hooks", []):
                 command = hook.get("command", "")
+                # printfワンライナー（redmine_guard等）はサブコマンド形式対象外
+                if command.startswith("printf "):
+                    continue
                 # claude-nagger hook 形式であること
                 assert command.startswith("claude-nagger hook "), \
                     f"コマンドはサブコマンド形式であるべき: {command}"
