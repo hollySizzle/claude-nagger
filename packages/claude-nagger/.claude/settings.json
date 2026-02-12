@@ -1,8 +1,4 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/statusline.js"
-  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   },
@@ -155,8 +151,12 @@
       }
     ]
   },
+  "statusLine": {
+    "type": "command",
+    "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/statusline.js"
+  },
   "enabledPlugins": {
-    "ticket-tasuki@ticket-tasuki": true
+    "ticket-tasuki@workspace-plugins": true
   },
   "extraKnownMarketplaces": {
     "ticket-tasuki": {
