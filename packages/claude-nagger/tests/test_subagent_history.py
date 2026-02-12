@@ -511,3 +511,137 @@ class TestIntegrationUnregisterAndHistory:
         assert stats["total"] == 2
         assert stats["by_role"]["coder"] == 1
         assert stats["by_role"]["reviewer"] == 1
+
+
+class TestCleanupSessionHistoryCopy:
+    """cleanup_session時のhistoryコピー確認（issue_6090）"""
+
+    def test_cleanup_session_copies_to_history(self, db):
+        """cleanup_session()がDELETE前にsubagent_historyへコピーする"""
+        repo = SubagentRepository(db)
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-cleanup-hist"
+
+        repo.register("a1", session_id, "gp", role="coder")
+        repo.register("a2", session_id, "gp", role="reviewer")
+
+        deleted = repo.cleanup_session(session_id)
+        assert deleted == 2
+
+        # subagentsからは全削除
+        assert repo.get("a1") is None
+        assert repo.get("a2") is None
+
+        # subagent_historyに2件コピーされている
+        history = history_repo.get_by_session(session_id)
+        assert len(history) == 2
+        agent_ids = {h["agent_id"] for h in history}
+        assert agent_ids == {"a1", "a2"}
+
+    def test_cleanup_session_records_stopped_at(self, db):
+        """cleanup_session()がstopped_atを記録する"""
+        repo = SubagentRepository(db)
+        session_id = "session-cleanup-stop"
+
+        repo.register("a1", session_id, "gp")
+
+        before = datetime.now(timezone.utc)
+        repo.cleanup_session(session_id)
+        after = datetime.now(timezone.utc)
+
+        cursor = db.conn.execute(
+            "SELECT stopped_at FROM subagent_history WHERE agent_id = ?",
+            ("a1",),
+        )
+        stopped_at_str = cursor.fetchone()[0]
+        assert stopped_at_str is not None
+
+        stopped_at = datetime.fromisoformat(stopped_at_str)
+        assert before <= stopped_at <= after
+
+    def test_cleanup_session_copies_all_fields(self, db):
+        """cleanup_session()が全フィールドを正しくコピーする"""
+        repo = SubagentRepository(db)
+        session_id = "session-cleanup-fields"
+        leader_tp = "/path/to/leader.jsonl"
+
+        repo.register("a1", session_id, "general-purpose",
+                       role="coder", leader_transcript_path=leader_tp)
+        repo.update_role("a1", "reviewer", "task_match")
+
+        # subagentsのcreated_atを取得
+        record = repo.get("a1")
+        original_created_at = record.created_at
+
+        repo.cleanup_session(session_id)
+
+        cursor = db.conn.execute(
+            """SELECT agent_id, session_id, agent_type, role, role_source,
+                      leader_transcript_path, started_at
+               FROM subagent_history WHERE agent_id = ?""",
+            ("a1",),
+        )
+        row = cursor.fetchone()
+        assert row[0] == "a1"
+        assert row[1] == session_id
+        assert row[2] == "general-purpose"
+        assert row[3] == "reviewer"
+        assert row[4] == "task_match"
+        assert row[5] == leader_tp
+        assert row[6] == original_created_at
+
+    def test_cleanup_session_no_agents_no_history(self, db):
+        """対象agentがない場合はhistoryも作成されない"""
+        repo = SubagentRepository(db)
+        history_repo = SubagentHistoryRepository(db)
+
+        deleted = repo.cleanup_session("nonexistent-session")
+        assert deleted == 0
+
+        history = history_repo.get_by_session("nonexistent-session")
+        assert history == []
+
+    def test_cleanup_session_other_session_unaffected(self, db):
+        """他セッションのsubagentはhistoryにコピーされない"""
+        repo = SubagentRepository(db)
+        history_repo = SubagentHistoryRepository(db)
+        target_session = "session-cleanup-target"
+        other_session = "session-cleanup-other"
+
+        repo.register("a1", target_session, "gp", role="coder")
+        repo.register("a2", other_session, "gp", role="reviewer")
+
+        repo.cleanup_session(target_session)
+
+        # ターゲットのみhistoryにコピー
+        history = history_repo.get_by_session(target_session)
+        assert len(history) == 1
+        assert history[0]["agent_id"] == "a1"
+
+        # 他セッションのsubagentは残っている
+        assert repo.get("a2") is not None
+        # 他セッションのhistoryは空
+        other_history = history_repo.get_by_session(other_session)
+        assert other_history == []
+
+    def test_cleanup_session_already_unregistered_no_duplicate(self, db):
+        """unregister済みのagentはcleanup_sessionで重複コピーしない"""
+        repo = SubagentRepository(db)
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-cleanup-dedup"
+
+        repo.register("a1", session_id, "gp", role="coder")
+        repo.register("a2", session_id, "gp", role="reviewer")
+
+        # a1だけ先にunregister
+        repo.unregister("a1")
+
+        # cleanup_sessionで残りを削除
+        deleted = repo.cleanup_session(session_id)
+        assert deleted == 1  # a2のみ削除
+
+        # historyにはa1とa2が各1件ずつ（重複なし）
+        history = history_repo.get_by_session(session_id)
+        assert len(history) == 2
+        agent_ids = {h["agent_id"] for h in history}
+        assert agent_ids == {"a1", "a2"}

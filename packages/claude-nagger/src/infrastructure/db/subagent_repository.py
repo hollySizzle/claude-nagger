@@ -625,7 +625,10 @@ class SubagentRepository:
 
     # === クリーンアップ ===
     def cleanup_session(self, session_id: str) -> int:
-        """session_idの全subagentを削除。
+        """session_idの全subagentを削除。DELETE前にsubagent_historyへコピーする。
+
+        異常終了時等にunregister()を経由せずcleanup_session()が呼ばれるケースで
+        履歴が消失することを防ぐ（issue_6090）。
 
         Args:
             session_id: セッションID
@@ -633,6 +636,30 @@ class SubagentRepository:
         Returns:
             削除件数
         """
+        # DELETE前に対象レコードをsubagent_historyへコピー
+        cursor = self._db.conn.execute(
+            """
+            SELECT agent_id, session_id, agent_type, role, role_source,
+                   leader_transcript_path, created_at
+            FROM subagents
+            WHERE session_id = ?
+            """,
+            (session_id,),
+        )
+        rows = cursor.fetchall()
+        if rows:
+            now = datetime.now(timezone.utc).isoformat()
+            self._db.conn.executemany(
+                """
+                INSERT INTO subagent_history
+                    (agent_id, session_id, agent_type, role, role_source,
+                     leader_transcript_path, started_at, stopped_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [(row[0], row[1], row[2], row[3], row[4], row[5], row[6], now)
+                 for row in rows],
+            )
+
         cursor = self._db.conn.execute(
             "DELETE FROM subagents WHERE session_id = ?", (session_id,)
         )
