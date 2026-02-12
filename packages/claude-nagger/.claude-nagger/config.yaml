@@ -141,6 +141,18 @@ sendmessage_guard:
 #     ソースコード操作はsubagentに委譲してください。
 #     調査→researcher、実装→coder、テスト→tester
 
+# Task spawnガード設定（ticket-tasuki:*直接起動ブロック）
+# Taskツールでticket-tasuki:*のsubagent_typeが指定された場合にブロック
+# Agent Teams（TeamCreate + SendMessage）経由での起動を誘導
+task_spawn_guard:
+  enabled: true
+  blocked_prefix: "ticket-tasuki:"
+  # block_message: ブロック時メッセージテンプレート（カスタマイズ可）
+  # プレースホルダー: {subagent_type}
+  # block_message: |
+  #   Task spawn規約違反
+  #   検出: subagent_type={subagent_type}
+
 # コンテキスト管理設定
 context_management:
   reminder_thresholds:

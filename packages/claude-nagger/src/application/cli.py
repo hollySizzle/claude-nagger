@@ -123,6 +123,12 @@ def main():
         help="leader行動制約フック（subagent存在時のleader直接作業ブロック）"
     )
 
+    # hook task-spawn-guard
+    hook_subparsers.add_parser(
+        "task-spawn-guard",
+        help="Task spawnガードフック（ticket-tasuki:*直接起動ブロック）"
+    )
+
     # notify サブコマンド（Discord通知）
     notify_parser = subparsers.add_parser(
         "notify",
@@ -249,6 +255,11 @@ def main():
         if args.hook_name == "leader-constraint":
             from domain.hooks.leader_constraint_hook import LeaderConstraintHook
             hook = LeaderConstraintHook()
+            return hook.run()
+
+        if args.hook_name == "task-spawn-guard":
+            from domain.hooks.task_spawn_guard_hook import TaskSpawnGuardHook
+            hook = TaskSpawnGuardHook()
             return hook.run()
 
         # hook名未指定時はhookヘルプ表示
