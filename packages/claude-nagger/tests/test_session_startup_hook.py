@@ -817,3 +817,233 @@ class TestShouldSkipSessionOverride:
                     with patch.object(hook, 'should_process', return_value=False) as mock_sp:
                         result = hook.run()
                     mock_sp.assert_called_once()
+
+
+class TestBuildSubagentHistorySummary:
+    """_build_subagent_history_summary メソッドのテスト（issue_6095）"""
+
+    def test_returns_none_when_no_db(self):
+        """DB未初期化時はNoneを返す"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            hook._db = None
+            result = hook._build_subagent_history_summary('test-session')
+
+        assert result is None
+
+    def test_returns_none_when_no_previous_session(self):
+        """前セッションが存在しない場合はNoneを返す"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            mock_db = MagicMock()
+            hook._db = mock_db
+
+            with patch('src.domain.hooks.session_startup_hook.SubagentHistoryRepository') as MockRepo:
+                mock_repo = MagicMock()
+                MockRepo.return_value = mock_repo
+                mock_repo.get_previous_session_id.return_value = None
+
+                result = hook._build_subagent_history_summary('test-session')
+
+        assert result is None
+
+    def test_returns_none_when_previous_session_has_no_history(self):
+        """前セッションに履歴が0件の場合はNoneを返す"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            mock_db = MagicMock()
+            hook._db = mock_db
+
+            with patch('src.domain.hooks.session_startup_hook.SubagentHistoryRepository') as MockRepo:
+                mock_repo = MagicMock()
+                MockRepo.return_value = mock_repo
+                mock_repo.get_previous_session_id.return_value = 'prev-session'
+                mock_repo.get_stats.return_value = {
+                    'total': 0, 'by_role': {}, 'avg_duration_seconds': None
+                }
+
+                result = hook._build_subagent_history_summary('test-session')
+
+        assert result is None
+
+    def test_builds_summary_with_history(self):
+        """前セッションに履歴がある場合サマリーを構築する"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            mock_db = MagicMock()
+            hook._db = mock_db
+
+            with patch('src.domain.hooks.session_startup_hook.SubagentHistoryRepository') as MockRepo:
+                mock_repo = MagicMock()
+                MockRepo.return_value = mock_repo
+                mock_repo.get_previous_session_id.return_value = 'prev-session'
+                mock_repo.get_stats.return_value = {
+                    'total': 5,
+                    'by_role': {'coder': 3, 'reviewer': 2},
+                    'avg_duration_seconds': 45.3
+                }
+
+                result = hook._build_subagent_history_summary('test-session')
+
+        assert result is not None
+        assert '合計: 5件' in result
+        assert 'coder: 3件' in result
+        assert 'reviewer: 2件' in result
+        assert '平均所要時間: 45.3秒' in result
+
+    def test_summary_role_count_accuracy(self):
+        """role別件数が正確に表示される"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            mock_db = MagicMock()
+            hook._db = mock_db
+
+            with patch('src.domain.hooks.session_startup_hook.SubagentHistoryRepository') as MockRepo:
+                mock_repo = MagicMock()
+                MockRepo.return_value = mock_repo
+                mock_repo.get_previous_session_id.return_value = 'prev-session'
+                mock_repo.get_stats.return_value = {
+                    'total': 4,
+                    'by_role': {'coder': 1, 'tester': 2, '(none)': 1},
+                    'avg_duration_seconds': None
+                }
+
+                result = hook._build_subagent_history_summary('test-session')
+
+        assert result is not None
+        assert 'coder: 1件' in result
+        assert 'tester: 2件' in result
+        assert '(none): 1件' in result
+        # avg_duration_secondsがNoneの場合は表示しない
+        assert '平均所要時間' not in result
+
+    def test_summary_without_avg_duration(self):
+        """平均所要時間がNoneの場合は非表示"""
+        with patch.object(SessionStartupHook, '_load_config', return_value={}):
+            hook = SessionStartupHook()
+            mock_db = MagicMock()
+            hook._db = mock_db
+
+            with patch('src.domain.hooks.session_startup_hook.SubagentHistoryRepository') as MockRepo:
+                mock_repo = MagicMock()
+                MockRepo.return_value = mock_repo
+                mock_repo.get_previous_session_id.return_value = 'prev-session'
+                mock_repo.get_stats.return_value = {
+                    'total': 1,
+                    'by_role': {'coder': 1},
+                    'avg_duration_seconds': None
+                }
+
+                result = hook._build_subagent_history_summary('test-session')
+
+        assert result is not None
+        assert '合計: 1件' in result
+        assert '平均所要時間' not in result
+
+
+class TestBuildMessageWithSubagentHistory:
+    """_build_message メソッドのsubagent履歴サマリ統合テスト（issue_6095）"""
+
+    def test_main_agent_includes_history_summary(self):
+        """mainエージェントの場合、前セッション履歴サマリがメッセージに含まれる"""
+        config = {
+            'messages': {
+                'first_time': {
+                    'title': 'テストタイトル',
+                    'main_text': 'テスト本文'
+                }
+            }
+        }
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+            hook._is_subagent = False
+
+            with patch.object(hook, '_get_execution_count', return_value=1):
+                with patch.object(hook, '_build_subagent_history_summary',
+                                  return_value='---\n前回セッション履歴サマリ') as mock_summary:
+                    message = hook._build_message('test')
+
+        mock_summary.assert_called_once_with('test')
+        assert 'テストタイトル' in message
+        assert 'テスト本文' in message
+        assert '前回セッション履歴サマリ' in message
+
+    def test_subagent_excludes_history_summary(self):
+        """subagentの場合、前セッション履歴サマリは含まれない"""
+        config = {
+            'messages': {
+                'first_time': {
+                    'title': 'サブタイトル',
+                    'main_text': 'サブ本文'
+                }
+            }
+        }
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+            hook._is_subagent = True
+            hook._resolved_config = config
+
+            with patch.object(hook, '_build_subagent_history_summary') as mock_summary:
+                message = hook._build_message('test')
+
+        # subagentでは_build_subagent_history_summaryが呼ばれない
+        mock_summary.assert_not_called()
+        assert 'サブタイトル' in message
+        assert 'サブ本文' in message
+
+    def test_main_agent_no_history_no_extra_content(self):
+        """mainエージェントで前セッション履歴がない場合、余分な内容は追加されない"""
+        config = {
+            'messages': {
+                'first_time': {
+                    'title': 'テストタイトル',
+                    'main_text': 'テスト本文'
+                }
+            }
+        }
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+            hook._is_subagent = False
+
+            with patch.object(hook, '_get_execution_count', return_value=1):
+                with patch.object(hook, '_build_subagent_history_summary', return_value=None):
+                    message = hook._build_message('test')
+
+        assert 'テストタイトル' in message
+        assert 'テスト本文' in message
+        # サマリが追加されていないことを確認
+        assert '前回セッション' not in message
+        assert 'subagent' not in message.lower()
+
+    def test_message_includes_both_rules_and_history(self):
+        """suggested_rulesとsubagent履歴の両方がメッセージに含まれる"""
+        config = {
+            'messages': {
+                'first_time': {
+                    'title': 'タイトル',
+                    'main_text': '本文'
+                }
+            }
+        }
+        rules_data = {
+            'rules': [{
+                'name': 'テスト規約',
+                'patterns': ['*.py'],
+                'severity': 'warn',
+                'message': 'テストメッセージ',
+            }]
+        }
+
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+            hook._is_subagent = False
+
+            with patch.object(hook, '_get_execution_count', return_value=1):
+                with patch.object(hook, '_build_subagent_history_summary',
+                                  return_value='---\n履歴サマリ'):
+                    message = hook._build_message('test', suggested_rules_data=rules_data)
+
+        assert 'タイトル' in message
+        assert '本文' in message
+        assert '規約提案があります' in message
+        assert '履歴サマリ' in message

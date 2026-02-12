@@ -513,6 +513,97 @@ class TestIntegrationUnregisterAndHistory:
         assert stats["by_role"]["reviewer"] == 1
 
 
+class TestGetPreviousSessionId:
+    """get_previous_session_idのテスト（issue_6095）"""
+
+    def _insert_history(self, db, agent_id, session_id, role=None,
+                        started_at=None, stopped_at=None):
+        """テスト用履歴レコードを直接INSERT"""
+        if started_at is None:
+            started_at = datetime.now(timezone.utc).isoformat()
+        db.conn.execute(
+            """
+            INSERT INTO subagent_history
+                (agent_id, session_id, agent_type, role, started_at, stopped_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (agent_id, session_id, "general-purpose", role, started_at, stopped_at),
+        )
+        db.conn.commit()
+
+    def test_returns_previous_session(self, db):
+        """現在セッションより前のセッションIDを返す"""
+        history_repo = SubagentHistoryRepository(db)
+
+        # 前セッションの履歴
+        self._insert_history(db, "a1", "session-prev", role="coder",
+                             started_at="2025-01-01T00:00:00+00:00",
+                             stopped_at="2025-01-01T00:10:00+00:00")
+        # 現在セッションの履歴
+        self._insert_history(db, "a2", "session-current", role="reviewer",
+                             started_at="2025-01-02T00:00:00+00:00",
+                             stopped_at="2025-01-02T00:10:00+00:00")
+
+        result = history_repo.get_previous_session_id("session-current")
+        assert result == "session-prev"
+
+    def test_returns_none_when_no_history(self, db):
+        """履歴が全くない場合はNoneを返す"""
+        history_repo = SubagentHistoryRepository(db)
+        result = history_repo.get_previous_session_id("session-any")
+        assert result is None
+
+    def test_returns_none_when_only_current_session(self, db):
+        """現在セッションの履歴のみの場合はNoneを返す"""
+        history_repo = SubagentHistoryRepository(db)
+
+        self._insert_history(db, "a1", "session-only", role="coder",
+                             started_at="2025-01-01T00:00:00+00:00")
+
+        result = history_repo.get_previous_session_id("session-only")
+        assert result is None
+
+    def test_returns_latest_when_current_has_no_records(self, db):
+        """現在セッションにレコードがない場合は全体の最新セッションIDを返す"""
+        history_repo = SubagentHistoryRepository(db)
+
+        self._insert_history(db, "a1", "session-old", role="coder",
+                             started_at="2025-01-01T00:00:00+00:00")
+        self._insert_history(db, "a2", "session-newer", role="reviewer",
+                             started_at="2025-01-02T00:00:00+00:00")
+
+        # 存在しないセッションIDで問い合わせ
+        result = history_repo.get_previous_session_id("session-nonexistent")
+        assert result == "session-newer"
+
+    def test_multiple_previous_sessions_returns_latest(self, db):
+        """複数の前セッションがある場合は最新のものを返す"""
+        history_repo = SubagentHistoryRepository(db)
+
+        self._insert_history(db, "a1", "session-old", role="coder",
+                             started_at="2025-01-01T00:00:00+00:00")
+        self._insert_history(db, "a2", "session-middle", role="reviewer",
+                             started_at="2025-01-02T00:00:00+00:00")
+        self._insert_history(db, "a3", "session-current", role="tester",
+                             started_at="2025-01-03T00:00:00+00:00")
+
+        result = history_repo.get_previous_session_id("session-current")
+        assert result == "session-middle"
+
+    def test_excludes_current_session_id(self, db):
+        """現在セッション自身は除外される"""
+        history_repo = SubagentHistoryRepository(db)
+
+        # 同一セッションに複数レコード
+        self._insert_history(db, "a1", "session-same", role="coder",
+                             started_at="2025-01-01T00:00:00+00:00")
+        self._insert_history(db, "a2", "session-same", role="reviewer",
+                             started_at="2025-01-01T01:00:00+00:00")
+
+        result = history_repo.get_previous_session_id("session-same")
+        assert result is None
+
+
 class TestCleanupSessionHistoryCopy:
     """cleanup_session時のhistoryコピー確認（issue_6090）"""
 
