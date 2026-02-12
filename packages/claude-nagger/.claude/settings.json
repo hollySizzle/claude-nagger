@@ -84,15 +84,6 @@
             "command": "claude-nagger hook sendmessage-guard"
           }
         ]
-      },
-      {
-        "matcher": "mcp__redmine_epic_grid__(create|update_issue_status|update_issue_parent|update_issue_assignee|update_custom_fields|update_issue_progress|assign_to_version|move_to_next_version)",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "printf '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"[claude-nagger] Redmine操作規約: この操作はscribeに委譲してください\"}}'"
-          }
-        ]
       }
     ],
     "Notification": [
