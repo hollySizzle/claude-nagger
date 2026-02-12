@@ -71,13 +71,29 @@ CREATE INDEX IF NOT EXISTS idx_task_spawns_unmatched ON task_spawns(session_id, 
 CREATE INDEX IF NOT EXISTS idx_task_spawns_tool_use_id ON task_spawns(tool_use_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_hook_log_session ON hook_log(session_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS subagent_history (
+    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id                TEXT NOT NULL,
+    session_id              TEXT NOT NULL,
+    agent_type              TEXT,
+    role                    TEXT,
+    role_source             TEXT,
+    leader_transcript_path  TEXT,
+    started_at              TEXT NOT NULL,
+    stopped_at              TEXT,
+    issue_id                TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_subagent_history_session ON subagent_history(session_id);
+CREATE INDEX IF NOT EXISTS idx_subagent_history_role ON subagent_history(role);
 """
 
 
 class NaggerStateDB:
     """状態管理SQLiteデータベース"""
 
-    SCHEMA_VERSION = 3
+    SCHEMA_VERSION = 4
 
     def __init__(self, db_path: Path):
         """初期化
@@ -216,6 +232,32 @@ class NaggerStateDB:
             self._conn.execute(
                 "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (3, now),
+            )
+            self._conn.commit()
+
+        if from_ver < 4 <= to_ver:
+            # v3 -> v4: subagent_historyテーブル新設（issue_6089）
+            # subagentライフサイクル履歴を永続化
+            self._conn.executescript("""
+                CREATE TABLE IF NOT EXISTS subagent_history (
+                    id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                    agent_id                TEXT NOT NULL,
+                    session_id              TEXT NOT NULL,
+                    agent_type              TEXT,
+                    role                    TEXT,
+                    role_source             TEXT,
+                    leader_transcript_path  TEXT,
+                    started_at              TEXT NOT NULL,
+                    stopped_at              TEXT,
+                    issue_id                TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_subagent_history_session ON subagent_history(session_id);
+                CREATE INDEX IF NOT EXISTS idx_subagent_history_role ON subagent_history(role);
+            """)
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute(
+                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (4, now),
             )
             self._conn.commit()
 

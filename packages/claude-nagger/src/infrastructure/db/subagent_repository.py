@@ -51,11 +51,37 @@ class SubagentRepository:
         self._db.conn.commit()
 
     def unregister(self, agent_id: str) -> None:
-        """SubagentStop時。DELETE FROM subagents + DELETE FROM task_spawns WHERE matched_agent_id = agent_id
+        """SubagentStop時。subagent_historyにコピー後、DELETE FROM subagents + task_spawns
+
+        DELETE前に対象レコードをSELECTし、subagent_historyテーブルにINSERTして
+        ライフサイクル履歴を永続化する（issue_6089）。
 
         Args:
             agent_id: エージェントID
         """
+        # DELETE前に履歴をsubagent_historyへコピー
+        cursor = self._db.conn.execute(
+            """
+            SELECT agent_id, session_id, agent_type, role, role_source,
+                   leader_transcript_path, created_at
+            FROM subagents
+            WHERE agent_id = ?
+            """,
+            (agent_id,),
+        )
+        row = cursor.fetchone()
+        if row is not None:
+            now = datetime.now(timezone.utc).isoformat()
+            self._db.conn.execute(
+                """
+                INSERT INTO subagent_history
+                    (agent_id, session_id, agent_type, role, role_source,
+                     leader_transcript_path, started_at, stopped_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (row[0], row[1], row[2], row[3], row[4], row[5], row[6], now),
+            )
+
         self._db.conn.execute(
             "DELETE FROM task_spawns WHERE matched_agent_id = ?", (agent_id,)
         )

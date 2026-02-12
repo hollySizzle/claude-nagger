@@ -1,0 +1,513 @@
+"""subagent_historyのテスト（issue_6089）
+
+- subagent_historyテーブル生成確認
+- unregister時のhistoryコピー確認
+- stopped_atが正しく記録されること
+- SubagentHistoryRepository.get_by_session, get_by_agent, get_stats の動作確認
+- スキーマv4マイグレーション確認
+"""
+
+import time
+from datetime import datetime, timezone
+
+import pytest
+
+from infrastructure.db.nagger_state_db import NaggerStateDB
+from infrastructure.db.subagent_history_repository import SubagentHistoryRepository
+from infrastructure.db.subagent_repository import SubagentRepository
+
+
+class TestSubagentHistoryTableCreation:
+    """subagent_historyテーブル生成確認"""
+
+    def test_table_exists_on_fresh_db(self, db):
+        """新規DB作成時にsubagent_historyテーブルが存在する"""
+        cursor = db.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='subagent_history'"
+        )
+        assert cursor.fetchone() is not None
+
+    def test_indexes_exist(self, db):
+        """subagent_historyのインデックスが存在する"""
+        cursor = db.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_subagent_history_%'"
+        )
+        indexes = {row[0] for row in cursor.fetchall()}
+        assert "idx_subagent_history_session" in indexes
+        assert "idx_subagent_history_role" in indexes
+
+    def test_schema_version_is_4(self, db):
+        """スキーマバージョンが4"""
+        cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
+        version = cursor.fetchone()[0]
+        assert version == 4
+
+
+class TestUnregisterHistoryCopy:
+    """unregister時のhistoryコピー確認"""
+
+    def test_unregister_creates_history_record(self, db):
+        """unregister()がsubagent_historyにレコードをコピーする"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-hist-1"
+        session_id = "session-hist-1"
+
+        repo.register(agent_id, session_id, "general-purpose", role="coder")
+        repo.unregister(agent_id)
+
+        # subagentsからは削除されている
+        assert repo.get(agent_id) is None
+
+        # subagent_historyにレコードが存在する
+        cursor = db.conn.execute(
+            "SELECT agent_id, session_id, agent_type, role FROM subagent_history WHERE agent_id = ?",
+            (agent_id,),
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == agent_id
+        assert row[1] == session_id
+        assert row[2] == "general-purpose"
+        assert row[3] == "coder"
+
+    def test_unregister_records_stopped_at(self, db):
+        """unregister()がstopped_atを現在時刻(UTC ISO8601)で記録する"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-hist-stop"
+        session_id = "session-hist-stop"
+
+        repo.register(agent_id, session_id, "general-purpose")
+
+        before = datetime.now(timezone.utc)
+        repo.unregister(agent_id)
+        after = datetime.now(timezone.utc)
+
+        cursor = db.conn.execute(
+            "SELECT stopped_at FROM subagent_history WHERE agent_id = ?",
+            (agent_id,),
+        )
+        stopped_at_str = cursor.fetchone()[0]
+        assert stopped_at_str is not None
+
+        # ISO8601パース確認（stopped_atがbefore〜afterの範囲内）
+        stopped_at = datetime.fromisoformat(stopped_at_str)
+        assert before <= stopped_at <= after
+
+    def test_unregister_records_started_at_from_created_at(self, db):
+        """unregister()がstarted_atにsubagentsのcreated_atを使用する"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-hist-start"
+        session_id = "session-hist-start"
+
+        repo.register(agent_id, session_id, "general-purpose")
+
+        # subagentsのcreated_atを取得
+        record = repo.get(agent_id)
+        original_created_at = record.created_at
+
+        repo.unregister(agent_id)
+
+        # subagent_historyのstarted_atがcreated_atと一致
+        cursor = db.conn.execute(
+            "SELECT started_at FROM subagent_history WHERE agent_id = ?",
+            (agent_id,),
+        )
+        started_at = cursor.fetchone()[0]
+        assert started_at == original_created_at
+
+    def test_unregister_copies_role_source(self, db):
+        """unregister()がrole_sourceをコピーする"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-hist-rs"
+        session_id = "session-hist-rs"
+
+        repo.register(agent_id, session_id, "general-purpose", role="coder")
+        repo.update_role(agent_id, "reviewer", "task_match")
+        repo.unregister(agent_id)
+
+        cursor = db.conn.execute(
+            "SELECT role, role_source FROM subagent_history WHERE agent_id = ?",
+            (agent_id,),
+        )
+        row = cursor.fetchone()
+        assert row[0] == "reviewer"
+        assert row[1] == "task_match"
+
+    def test_unregister_copies_leader_transcript_path(self, db):
+        """unregister()がleader_transcript_pathをコピーする"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-hist-ltp"
+        session_id = "session-hist-ltp"
+        leader_tp = "/home/user/.claude/projects/test/leader.jsonl"
+
+        repo.register(agent_id, session_id, "general-purpose",
+                       leader_transcript_path=leader_tp)
+        repo.unregister(agent_id)
+
+        cursor = db.conn.execute(
+            "SELECT leader_transcript_path FROM subagent_history WHERE agent_id = ?",
+            (agent_id,),
+        )
+        row = cursor.fetchone()
+        assert row[0] == leader_tp
+
+    def test_unregister_nonexistent_agent_no_history(self, db):
+        """存在しないagent_idのunregisterではhistoryが作成されない"""
+        repo = SubagentRepository(db)
+        repo.unregister("nonexistent-agent")
+
+        cursor = db.conn.execute(
+            "SELECT COUNT(*) FROM subagent_history WHERE agent_id = ?",
+            ("nonexistent-agent",),
+        )
+        count = cursor.fetchone()[0]
+        assert count == 0
+
+    def test_unregister_still_deletes_subagent(self, db):
+        """unregister()後もsubagentsテーブルからは削除される（既存動作維持）"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-hist-del"
+        session_id = "session-hist-del"
+
+        repo.register(agent_id, session_id, "general-purpose")
+        repo.unregister(agent_id)
+
+        assert repo.get(agent_id) is None
+
+    def test_unregister_still_deletes_task_spawns(self, db):
+        """unregister()後もtask_spawnsのmatched_agent_idレコードは削除される（既存動作維持）"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-hist-ts"
+        session_id = "session-hist-ts"
+
+        repo.register(agent_id, session_id, "general-purpose")
+
+        # task_spawnをマッチ済みにする
+        now = datetime.now(timezone.utc).isoformat()
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, matched_agent_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, 1, "gp", "coder", "hash", agent_id, now),
+        )
+        db.conn.commit()
+
+        repo.unregister(agent_id)
+
+        # task_spawnsからも削除
+        cursor = db.conn.execute(
+            "SELECT COUNT(*) FROM task_spawns WHERE matched_agent_id = ?",
+            (agent_id,),
+        )
+        assert cursor.fetchone()[0] == 0
+
+
+class TestSubagentHistoryRepository:
+    """SubagentHistoryRepositoryのテスト"""
+
+    def _insert_history(self, db, agent_id, session_id, role=None, role_source=None,
+                        started_at=None, stopped_at=None, agent_type="general-purpose"):
+        """テスト用履歴レコードを直接INSERT"""
+        if started_at is None:
+            started_at = datetime.now(timezone.utc).isoformat()
+        db.conn.execute(
+            """
+            INSERT INTO subagent_history
+                (agent_id, session_id, agent_type, role, role_source, started_at, stopped_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (agent_id, session_id, agent_type, role, role_source, started_at, stopped_at),
+        )
+        db.conn.commit()
+
+    def test_get_by_session(self, db):
+        """get_by_sessionでセッション内の全履歴を取得"""
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-by-sess"
+
+        self._insert_history(db, "agent-a", session_id, role="coder")
+        self._insert_history(db, "agent-b", session_id, role="reviewer")
+        self._insert_history(db, "agent-c", "other-session", role="tester")
+
+        results = history_repo.get_by_session(session_id)
+        assert len(results) == 2
+        agent_ids = [r["agent_id"] for r in results]
+        assert "agent-a" in agent_ids
+        assert "agent-b" in agent_ids
+        assert "agent-c" not in agent_ids
+
+    def test_get_by_session_empty(self, db):
+        """該当セッションの履歴がない場合は空リスト"""
+        history_repo = SubagentHistoryRepository(db)
+        results = history_repo.get_by_session("no-such-session")
+        assert results == []
+
+    def test_get_by_agent(self, db):
+        """get_by_agentで特定agentの履歴を取得"""
+        history_repo = SubagentHistoryRepository(db)
+        agent_id = "agent-multi"
+
+        self._insert_history(db, agent_id, "session-1", role="coder")
+        self._insert_history(db, agent_id, "session-2", role="reviewer")
+        self._insert_history(db, "other-agent", "session-1", role="tester")
+
+        results = history_repo.get_by_agent(agent_id)
+        assert len(results) == 2
+        assert all(r["agent_id"] == agent_id for r in results)
+
+    def test_get_by_agent_empty(self, db):
+        """該当agentの履歴がない場合は空リスト"""
+        history_repo = SubagentHistoryRepository(db)
+        results = history_repo.get_by_agent("no-such-agent")
+        assert results == []
+
+    def test_get_stats_total(self, db):
+        """get_statsでtotalが正しい"""
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-stats"
+
+        self._insert_history(db, "a1", session_id, role="coder")
+        self._insert_history(db, "a2", session_id, role="coder")
+        self._insert_history(db, "a3", session_id, role="reviewer")
+
+        stats = history_repo.get_stats(session_id=session_id)
+        assert stats["total"] == 3
+
+    def test_get_stats_by_role(self, db):
+        """get_statsでby_roleが正しい"""
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-stats-role"
+
+        self._insert_history(db, "a1", session_id, role="coder")
+        self._insert_history(db, "a2", session_id, role="coder")
+        self._insert_history(db, "a3", session_id, role="reviewer")
+        self._insert_history(db, "a4", session_id, role=None)
+
+        stats = history_repo.get_stats(session_id=session_id)
+        assert stats["by_role"]["coder"] == 2
+        assert stats["by_role"]["reviewer"] == 1
+        assert stats["by_role"]["(none)"] == 1
+
+    def test_get_stats_avg_duration(self, db):
+        """get_statsでavg_duration_secondsが計算される"""
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-stats-dur"
+
+        # 10秒間のsubagent
+        self._insert_history(
+            db, "a1", session_id, role="coder",
+            started_at="2025-01-01T00:00:00+00:00",
+            stopped_at="2025-01-01T00:00:10+00:00",
+        )
+        # 20秒間のsubagent
+        self._insert_history(
+            db, "a2", session_id, role="reviewer",
+            started_at="2025-01-01T00:00:00+00:00",
+            stopped_at="2025-01-01T00:00:20+00:00",
+        )
+
+        stats = history_repo.get_stats(session_id=session_id)
+        # 平均 = (10 + 20) / 2 = 15秒
+        assert stats["avg_duration_seconds"] is not None
+        assert abs(stats["avg_duration_seconds"] - 15.0) < 0.1
+
+    def test_get_stats_no_stopped_at(self, db):
+        """stopped_atがNULLのレコードのみの場合、avg_duration_secondsはNone"""
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-stats-no-stop"
+
+        self._insert_history(db, "a1", session_id, role="coder", stopped_at=None)
+
+        stats = history_repo.get_stats(session_id=session_id)
+        assert stats["avg_duration_seconds"] is None
+
+    def test_get_stats_global(self, db):
+        """session_id未指定で全体統計"""
+        history_repo = SubagentHistoryRepository(db)
+
+        self._insert_history(db, "a1", "session-g1", role="coder")
+        self._insert_history(db, "a2", "session-g2", role="reviewer")
+
+        stats = history_repo.get_stats()
+        assert stats["total"] == 2
+
+    def test_get_stats_empty(self, db):
+        """履歴がない場合のget_stats"""
+        history_repo = SubagentHistoryRepository(db)
+
+        stats = history_repo.get_stats(session_id="empty-session")
+        assert stats["total"] == 0
+        assert stats["by_role"] == {}
+        assert stats["avg_duration_seconds"] is None
+
+    def test_dict_fields(self, db):
+        """_row_to_dictが全フィールドを含む"""
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-fields"
+        leader_tp = "/path/to/leader.jsonl"
+
+        db.conn.execute(
+            """
+            INSERT INTO subagent_history
+                (agent_id, session_id, agent_type, role, role_source,
+                 leader_transcript_path, started_at, stopped_at, issue_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            ("a-fields", session_id, "gp", "coder", "task_match",
+             leader_tp, "2025-01-01T00:00:00+00:00", "2025-01-01T00:01:00+00:00", "1234"),
+        )
+        db.conn.commit()
+
+        results = history_repo.get_by_session(session_id)
+        assert len(results) == 1
+        r = results[0]
+        assert r["id"] is not None
+        assert r["agent_id"] == "a-fields"
+        assert r["session_id"] == session_id
+        assert r["agent_type"] == "gp"
+        assert r["role"] == "coder"
+        assert r["role_source"] == "task_match"
+        assert r["leader_transcript_path"] == leader_tp
+        assert r["started_at"] == "2025-01-01T00:00:00+00:00"
+        assert r["stopped_at"] == "2025-01-01T00:01:00+00:00"
+        assert r["issue_id"] == "1234"
+
+
+class TestSchemaV4Migration:
+    """スキーマv4マイグレーションのテスト"""
+
+    def test_migration_creates_subagent_history_table(self, tmp_path):
+        """v3→v4マイグレーションでsubagent_historyテーブルが作成される"""
+        db_path = tmp_path / ".claude-nagger" / "state.db"
+        db = NaggerStateDB(db_path)
+        db.connect()
+
+        # テーブル存在確認
+        cursor = db.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='subagent_history'"
+        )
+        assert cursor.fetchone() is not None
+
+        # スキーマバージョン確認
+        cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
+        version = cursor.fetchone()[0]
+        assert version >= 4
+
+        db.close()
+
+    def test_migration_from_v3_to_v4(self, tmp_path):
+        """既存v3 DBからv4へのマイグレーションが正常動作する"""
+        import sqlite3
+
+        db_path = tmp_path / ".claude-nagger" / "state.db"
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # v3相当のDBを手動作成
+        conn = sqlite3.connect(str(db_path))
+        conn.executescript("""
+            CREATE TABLE schema_version (
+                version INTEGER PRIMARY KEY,
+                applied_at TEXT NOT NULL
+            );
+            INSERT INTO schema_version (version, applied_at) VALUES (3, '2025-01-01T00:00:00+00:00');
+
+            CREATE TABLE subagents (
+                agent_id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                agent_type TEXT NOT NULL DEFAULT 'unknown',
+                role TEXT,
+                role_source TEXT,
+                created_at TEXT NOT NULL,
+                startup_processed INTEGER NOT NULL DEFAULT 0,
+                startup_processed_at TEXT,
+                task_match_index INTEGER,
+                leader_transcript_path TEXT
+            );
+
+            CREATE TABLE task_spawns (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                transcript_index INTEGER NOT NULL,
+                subagent_type TEXT,
+                role TEXT,
+                prompt_hash TEXT,
+                tool_use_id TEXT,
+                matched_agent_id TEXT,
+                created_at TEXT NOT NULL,
+                UNIQUE(session_id, transcript_index)
+            );
+
+            CREATE TABLE sessions (
+                session_id TEXT NOT NULL,
+                hook_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                last_tokens INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'active',
+                expired_at TEXT,
+                PRIMARY KEY (session_id, hook_name)
+            );
+
+            CREATE TABLE hook_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                hook_name TEXT NOT NULL,
+                event_type TEXT NOT NULL,
+                agent_id TEXT,
+                timestamp TEXT NOT NULL,
+                result TEXT,
+                details TEXT,
+                duration_ms INTEGER
+            );
+        """)
+        conn.close()
+
+        # NaggerStateDBで開くとv4マイグレーションが実行される
+        db = NaggerStateDB(db_path)
+        db.connect()
+
+        # subagent_historyテーブルが存在する
+        cursor = db.conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='subagent_history'"
+        )
+        assert cursor.fetchone() is not None
+
+        # バージョン4が記録されている
+        cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
+        assert cursor.fetchone()[0] == 4
+
+        db.close()
+
+
+class TestIntegrationUnregisterAndHistory:
+    """unregister→履歴参照の統合テスト"""
+
+    def test_full_lifecycle(self, db):
+        """register→unregister→get_by_sessionの一連の流れ"""
+        repo = SubagentRepository(db)
+        history_repo = SubagentHistoryRepository(db)
+        session_id = "session-lifecycle"
+
+        # 3つのsubagentを登録
+        repo.register("a1", session_id, "gp", role="coder")
+        repo.register("a2", session_id, "gp", role="reviewer")
+        repo.register("a3", session_id, "gp", role="tester")
+
+        # 2つをunregister
+        repo.unregister("a1")
+        repo.unregister("a2")
+
+        # a3はまだアクティブ
+        assert repo.get("a3") is not None
+
+        # 履歴には2件
+        history = history_repo.get_by_session(session_id)
+        assert len(history) == 2
+        history_agent_ids = {h["agent_id"] for h in history}
+        assert history_agent_ids == {"a1", "a2"}
+
+        # statsで確認
+        stats = history_repo.get_stats(session_id=session_id)
+        assert stats["total"] == 2
+        assert stats["by_role"]["coder"] == 1
+        assert stats["by_role"]["reviewer"] == 1
