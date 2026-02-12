@@ -419,6 +419,51 @@ class TestMergePreToolUseHooks:
                                 "command": "claude-nagger hook sendmessage-guard"
                             }
                         ]
+                    },
+                    {
+                        "matcher": "Read",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook leader-constraint"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "Edit",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook leader-constraint"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "Write",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook leader-constraint"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "Grep",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook leader-constraint"
+                            }
+                        ]
+                    },
+                    {
+                        "matcher": "Glob",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "claude-nagger hook leader-constraint"
+                            }
+                        ]
                     }
                 ]
             }
@@ -428,7 +473,7 @@ class TestMergePreToolUseHooks:
 
         # 重複があるため追加されない
         assert result is False
-        assert len(settings["hooks"]["PreToolUse"]) == 9
+        assert len(settings["hooks"]["PreToolUse"]) == 14
 
     def test_bash_matcher_included_in_default_hooks(self):
         """Bashマッチャーがデフォルトフックに含まれる (issue_4032)"""
