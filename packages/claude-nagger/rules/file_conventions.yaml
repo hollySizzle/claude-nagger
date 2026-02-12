@@ -66,4 +66,26 @@ rules:
       このファイルを変更する場合は､ @docs/rules/coding_standards.yaml をよく確認し従うこと
       作業を続けるためには､上記ドキュメントを確認したことを示してください
       また実装完了後は pytest tests/ -v を実行し、テスト成功を確認すること
-  
+
+  # 設定ファイル(TOML)関連
+  - name: "設定ファイル(TOML)変更確認"
+    patterns:
+      - "**/*.toml"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      TOML設定ファイルを変更する際の注意:
+      - 変更が他の設定に影響しないか確認
+      - 特にpyproject.tomlのバージョン変更時はCHANGELOG.mdと一貫性を保つこと
+
+  # ドキュメント(Markdown)関連
+  - name: "ドキュメント(Markdown)更新確認"
+    patterns:
+      - "**/*.md"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      Markdownドキュメント更新時の注意:
+      - 内容の正確性を確認
+      - リンク切れがないか確認
+      - 特にCHANGELOG.md更新時はpyproject.tomlのバージョンと一貫性を保つこと

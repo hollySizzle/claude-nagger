@@ -3,14 +3,72 @@
 # ClaudeCodeがこれらのコマンドを実行する際に、規約確認を促します
 
 rules:
-  - name: "Git操作規約"
+  - name: "Git push/commit前確認"
     patterns:
-      - "git*"
-    severity: "block" # block: 完全ブロック, warn: 警告のみ
+      - "git push*"
+      - "git commit*"
+    severity: "warn"
     token_threshold: 25000
     message: |
-      Git操作を実行する場合は、@docs/rules/git_operation_standards.md をよく確認し従うこと
-      作業を続けるためには､上記ドキュメントを確認したことを示してください
+      Gitにpush/commitする前に以下を確認してください:
+      - 変更内容のレビュー完了
+      - テスト実行済み
+      - コミットメッセージにissue_idを含めているか
+
+  - name: "Git差分確認推奨"
+    patterns:
+      - "git diff*"
+    severity: "info"
+    token_threshold: 25000
+    message: |
+      git diffで変更内容を確認する際のヒント:
+      - `git diff --staged`でステージ済み変更を確認
+      - 意図しない変更が含まれていないか確認
+
+  - name: "Gitコミット規約"
+    patterns:
+      - "git commit*"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      コミット規約を遵守してください:
+      - コミットメッセージにissue_{id}を含める
+      - 1コミット1目的（関連しない変更を混ぜない）
+
+  - name: "mainブランチpush前最終確認"
+    patterns:
+      - "git push origin main"
+      - "git push origin master"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      mainブランチへの直接pushは影響が大きいです:
+      - CIテストが全て通っているか確認
+      - レビュー済みか確認
+      - 本当にmainブランチへ直接pushすべきか再検討
+
+  - name: "Git操作前テスト実行推奨"
+    patterns:
+      - "git add*"
+      - "git commit*"
+    severity: "info"
+    token_threshold: 25000
+    message: |
+      コミット前にテストを実行することを推奨します:
+      - `python3 -m pytest tests/ -v`
+      - テスト失敗がないことを確認してからコミット
+
+  - name: "リリーススクリプト実行確認"
+    patterns:
+      - "./scripts/release.sh*"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      リリーススクリプト実行前に確認してください:
+      - バージョン番号の指定は正しいか
+      - CHANGELOG.mdが更新されているか
+      - .envにGH_TOKENが設定されているか
+      - オプション: `--release-only`でGitHubリリースのみ実行可能
 
   - name: "Docker操作規約"
     patterns:
