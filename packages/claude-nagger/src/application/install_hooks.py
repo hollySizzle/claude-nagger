@@ -320,6 +320,15 @@ suggested_rules/
                     "command": "claude-nagger hook leader-constraint"
                 }
             ]
+        },
+        {
+            "matcher": "Task",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook task-spawn-guard"
+                }
+            ]
         }
     ]
 
