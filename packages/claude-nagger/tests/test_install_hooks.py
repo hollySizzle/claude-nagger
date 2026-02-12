@@ -419,60 +419,6 @@ class TestMergePreToolUseHooks:
                                 "command": "claude-nagger hook sendmessage-guard"
                             }
                         ]
-                    },
-                    {
-                        "matcher": "Read",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "claude-nagger hook leader-constraint"
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": "Edit",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "claude-nagger hook leader-constraint"
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": "Write",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "claude-nagger hook leader-constraint"
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": "Grep",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "claude-nagger hook leader-constraint"
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": "Glob",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "claude-nagger hook leader-constraint"
-                            }
-                        ]
-                    },
-                    {
-                        "matcher": "Task",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": "claude-nagger hook task-spawn-guard"
-                            }
-                        ]
                     }
                 ]
             }
@@ -482,7 +428,7 @@ class TestMergePreToolUseHooks:
 
         # 重複があるため追加されない
         assert result is False
-        assert len(settings["hooks"]["PreToolUse"]) == 15
+        assert len(settings["hooks"]["PreToolUse"]) == 9
 
     def test_bash_matcher_included_in_default_hooks(self):
         """Bashマッチャーがデフォルトフックに含まれる (issue_4032)"""
