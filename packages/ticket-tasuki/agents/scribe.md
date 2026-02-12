@@ -71,6 +71,8 @@ Epic → Feature → UserStory → Task / Bug / Test
 - UserStory: ユーザー要件（例: パスワードリセット）
 - Task/Bug/Test: 実作業単位
 
+- **重要**: Epic, Featureの新規作成は必ずオーナーの判断が必要である
+
 ## US分解ワークフローテンプレート
 
 UserStoryをTask分解する際、以下のTask構造をワークフローとして展開すること。
@@ -121,3 +123,16 @@ US: {ユーザーストーリー名}
     - [x] {チケット操作の内容}
       - {操作の意図}
 
+## PMO報告義務
+
+以下のタイミングでprocess-auditor subagentにpeer DMで通知すること（process-auditorが同一チーム内に存在する場合）:
+
+| タイミング | 通知内容 |
+|-----------|---------|
+| US分解完了時 | `issue_{id} [PMO報告] US分解完了、構造チェック依頼` |
+| ステータス変更時 | `issue_{id} [PMO報告] ステータス変更: {旧}→{新}` |
+| クローズ依頼受領時 | `issue_{id} [PMO報告] クローズ前監査依頼` |
+
+- process-auditorが不在の場合はスキップする（エラーにしない）
+- 通知はSendMessage（type: "message", recipient: "process-auditor"）で送信する
+- sendmessage_guardの制約（issue_id必須・100文字以内）を遵守する
