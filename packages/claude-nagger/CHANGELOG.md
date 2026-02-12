@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.3.1] - 2026-02-12
+
+### Added
+- ticket-tasukiプラグインhook: task_spawn_guard, redmine_guard (issue_6093, issue_6118)
+- task_spawn_guard, redmine_guardのテスト追加 (issue_6102, issue_6103)
+
+### Changed
+- 全hookブロックメッセージに `[claude-nagger]` プレフィックス付与 (issue_6100)
+- conventions YAML規約エントリ追記 (issue_6099)
+
 ## [2.3.0] - 2026-02-11
 
 ### Added
