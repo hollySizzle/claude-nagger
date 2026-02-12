@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from domain.hooks.base_hook import BaseHook
-from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository
+from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository, SubagentHistoryRepository
 from shared.constants import SUGGESTED_RULES_FILENAME, SUGGESTED_RULES_DIRNAME
 
 
@@ -471,7 +471,13 @@ class SessionStartupHook(BaseHook):
             summary = self._build_suggested_rules_summary(suggested_rules_data)
             if summary:
                 message += "\n\n" + summary
-        
+
+        # 前回セッションのsubagent履歴サマリーを追記（mainエージェントのみ）
+        if not self._is_subagent:
+            history_summary = self._build_subagent_history_summary(session_id)
+            if history_summary:
+                message += "\n\n" + history_summary
+
         self.log_info(f"🎯 Built message for execution #{execution_count}: {title[:50]}...")
         
         return message
@@ -532,6 +538,45 @@ class SessionStartupHook(BaseHook):
             "",
             "確認後、file_conventions.yaml / command_conventions.yaml に追記してください。",
         ])
+
+        return "\n".join(lines)
+
+    def _build_subagent_history_summary(self, session_id: str) -> Optional[str]:
+        """前回セッションのsubagent履歴サマリーを構築
+
+        Args:
+            session_id: 現在のセッションID
+
+        Returns:
+            サマリー文字列。前回セッションがない or 件数0ならNone
+        """
+        if not self._db:
+            return None
+
+        history_repo = SubagentHistoryRepository(self._db)
+        previous_session_id = history_repo.get_previous_session_id(session_id)
+        if not previous_session_id:
+            return None
+
+        stats = history_repo.get_stats(previous_session_id)
+        if stats["total"] == 0:
+            return None
+
+        lines = [
+            "---",
+            "📊 前回セッションのsubagentアクティビティ",
+            f"合計: {stats['total']}件",
+            "",
+            "role別:",
+        ]
+
+        for role, count in stats["by_role"].items():
+            lines.append(f"  - {role}: {count}件")
+
+        if stats["avg_duration_seconds"] is not None:
+            avg = round(stats["avg_duration_seconds"], 1)
+            lines.append("")
+            lines.append(f"平均所要時間: {avg}秒")
 
         return "\n".join(lines)
 

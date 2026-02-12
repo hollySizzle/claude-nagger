@@ -58,6 +58,52 @@ class SubagentHistoryRepository:
         )
         return [self._row_to_dict(row) for row in cursor.fetchall()]
 
+
+    def get_previous_session_id(self, current_session_id: str) -> Optional[str]:
+        """現在セッションの直前セッションIDを取得
+
+        current_session_idのsubagent_historyレコードの最小started_atより前の、
+        別セッションの最新session_idを返す。
+        現在セッションにレコードがない場合は全体の最新セッションIDを返す。
+
+        Args:
+            current_session_id: 現在のセッションID
+
+        Returns:
+            前セッションID。履歴がなければNone
+        """
+        # 現在セッションの最小started_atを取得
+        cursor = self._db.conn.execute(
+            "SELECT MIN(started_at) FROM subagent_history WHERE session_id = ?",
+            (current_session_id,),
+        )
+        row = cursor.fetchone()
+        min_started_at = row[0] if row else None
+
+        if min_started_at:
+            # 現在セッションより前の、別セッションの最新session_idを取得
+            cursor = self._db.conn.execute(
+                """
+                SELECT session_id FROM subagent_history
+                WHERE session_id != ? AND started_at < ?
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+                (current_session_id, min_started_at),
+            )
+        else:
+            # 現在セッションにレコードがない場合、全体の最新セッションIDを返す
+            cursor = self._db.conn.execute(
+                """
+                SELECT session_id FROM subagent_history
+                ORDER BY started_at DESC
+                LIMIT 1
+                """,
+            )
+
+        row = cursor.fetchone()
+        return row[0] if row else None
+
     def get_stats(self, session_id: str = None) -> dict:
         """統計情報: role別件数、平均所要時間等
 
