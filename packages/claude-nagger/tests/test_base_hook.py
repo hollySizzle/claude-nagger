@@ -165,7 +165,7 @@ class TestOutputResponse:
         assert hook_output['permissionDecisionReason'] == 'test reason'
 
     def test_output_block(self, capsys):
-        """blockレスポンス出力（hookSpecificOutput形式）"""
+        """blockレスポンス出力（hookSpecificOutput形式、[claude-nagger]プレフィックス付き）"""
         hook = ConcreteHook()
         result = hook.output_response('block', 'blocked reason')
 
@@ -177,7 +177,8 @@ class TestOutputResponse:
         hook_output = output['hookSpecificOutput']
         assert hook_output['hookEventName'] == 'PreToolUse'
         assert hook_output['permissionDecision'] == 'deny'
-        assert hook_output['permissionDecisionReason'] == 'blocked reason'
+        # ブロック時は[claude-nagger]プレフィックスが付与される
+        assert hook_output['permissionDecisionReason'] == '[claude-nagger] blocked reason'
 
     def test_output_exception(self):
         """出力例外時はFalse"""
@@ -1015,7 +1016,8 @@ class TestExitWithResponse:
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
         assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
-        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "NG"
+        # deny時は[claude-nagger]プレフィックスが付与される
+        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "[claude-nagger] NG"
 
     def test_exit_with_response_with_updated_input(self, capsys):
         """updatedInput付きで終了"""
@@ -1112,7 +1114,8 @@ class TestExitDeny:
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
         assert output["hookSpecificOutput"]["permissionDecision"] == "deny"
-        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "拒否理由"
+        # deny時は[claude-nagger]プレフィックスが付与される
+        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "[claude-nagger] 拒否理由"
 
 
 class TestExitAsk:
@@ -1128,7 +1131,8 @@ class TestExitAsk:
         captured = capsys.readouterr()
         output = json.loads(captured.out.strip())
         assert output["hookSpecificOutput"]["permissionDecision"] == "ask"
-        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "確認理由"
+        # ask時は[claude-nagger]プレフィックスが付与される
+        assert output["hookSpecificOutput"]["permissionDecisionReason"] == "[claude-nagger] 確認理由"
 
     def test_exit_ask_with_updated_input(self, capsys):
         """updatedInput付きexit_ask"""

@@ -38,6 +38,19 @@ if TYPE_CHECKING:
     from .hook_response import HookResponse
 
 
+# ブロックメッセージの出所プレフィックス（ユーザー/AIが出所を判別可能にする）
+BLOCK_MESSAGE_PREFIX = "[claude-nagger] "
+
+
+def _prefix_block_reason(reason: str) -> str:
+    """ブロック理由メッセージに出所プレフィックスを付与する（重複防止付き）"""
+    if not reason:
+        return reason
+    if reason.startswith(BLOCK_MESSAGE_PREFIX):
+        return reason
+    return BLOCK_MESSAGE_PREFIX + reason
+
+
 class ExitCode(IntEnum):
     """Claude Code Hooks API 終了コード
 
@@ -275,11 +288,11 @@ class BaseHook(ABC):
     def output_response(self, decision: str, reason: str = "") -> bool:
         """
         JSON形式でレスポンスを出力（Claude Code公式スキーマ対応）
-        
+
         Args:
             decision: 'approve', 'block' のいずれか
             reason: 理由メッセージ
-            
+
         Returns:
             出力成功の場合True
         """
@@ -288,11 +301,14 @@ class BaseHook(ABC):
 
             # PreToolUseのみhookSpecificOutput形式（permissionDecision付き）
             if event_name == 'PreToolUse':
+                perm_decision = 'allow' if decision == 'approve' else 'deny'
+                # ブロック/deny時は出所プレフィックスを付与
+                prefixed_reason = _prefix_block_reason(reason) if perm_decision == 'deny' else reason
                 response = {
                     'hookSpecificOutput': {
                         'hookEventName': event_name,
-                        'permissionDecision': 'allow' if decision == 'approve' else 'deny',
-                        'permissionDecisionReason': reason
+                        'permissionDecision': perm_decision,
+                        'permissionDecisionReason': prefixed_reason
                     }
                 }
                 json_output = json.dumps(response, ensure_ascii=False)
@@ -327,8 +343,9 @@ class BaseHook(ABC):
             self.exit_allow(reason=warn_reason)
             return  # exit_allowで終了するのでここには到達しない
 
-        self.log_info(f"BLOCK: {reason}")
-        print(reason, file=sys.stderr)
+        prefixed = _prefix_block_reason(reason)
+        self.log_info(f"BLOCK: {prefixed}")
+        print(prefixed, file=sys.stderr)
         sys.exit(ExitCode.BLOCK)
 
     def exit_success(
@@ -356,7 +373,9 @@ class BaseHook(ABC):
         }
 
         if reason:
-            response['hookSpecificOutput']['permissionDecisionReason'] = reason
+            # deny/ask時は出所プレフィックスを付与
+            prefixed = _prefix_block_reason(reason) if permission_decision in ('deny', 'ask') else reason
+            response['hookSpecificOutput']['permissionDecisionReason'] = prefixed
 
         # 追加フィールドをマージ
         if extra_fields:
@@ -404,6 +423,13 @@ class BaseHook(ABC):
             ))
         """
         response_dict = response.to_dict()
+        # deny/ask時は出所プレフィックスを付与
+        hook_output = response_dict.get("hookSpecificOutput", {})
+        decision = hook_output.get("permissionDecision", "")
+        if decision in ("deny", "ask") and "permissionDecisionReason" in hook_output:
+            hook_output["permissionDecisionReason"] = _prefix_block_reason(
+                hook_output["permissionDecisionReason"]
+            )
         json_output = json.dumps(response_dict, ensure_ascii=False)
         self.log_debug(f"Output JSON: {json_output}")
         print(json_output)
