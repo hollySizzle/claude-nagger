@@ -68,3 +68,13 @@ rules:
     message: |
       ticket-tasukiプラグインファイル。別gitリポジトリ（.claude/plugins/ticket-tasuki/）でcommit/pushすること。
       claude-naggerリポジトリではなくticket-tasukiリポジトリで作業してください。
+
+  - name: "config.yaml同期規約"
+    patterns:
+      - "**/.claude-nagger/config.yaml"
+    severity: "warn"
+    token_threshold: 0
+    message: |
+      config.yamlは以下の2箇所で管理されています。片方を変更した場合、もう一方も同期更新してください:
+      - .claude-nagger/config.yaml（claude-nagger本体・配布用）
+      - .claude/plugins/ticket-tasuki/.claude-nagger/config.yaml（ticket-tasukiプラグイン固有）
