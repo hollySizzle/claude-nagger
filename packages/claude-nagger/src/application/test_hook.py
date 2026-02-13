@@ -107,12 +107,13 @@ class TestHookCommand:
         try:
             from domain.services.command_convention_matcher import CommandConventionMatcher
             matcher = CommandConventionMatcher()
-            rule_info = matcher.get_confirmation_message(self.command)
+            rule_infos = matcher.get_confirmation_message(self.command)
 
-            if rule_info:
-                print(f"  ✅ マッチしたルール: {rule_info['rule_name']}")
-                print(f"     重要度: {rule_info['severity']}")
-                print(f"     メッセージ: {rule_info['message'][:80]}...")
+            if rule_infos:
+                for rule_info in rule_infos:
+                    print(f"  ✅ マッチしたルール: {rule_info['rule_name']}")
+                    print(f"     重要度: {rule_info['severity']}")
+                    print(f"     メッセージ: {rule_info['message'][:80]}...")
             else:
                 print(f"  ❌ コマンド '{self.command}' にマッチするルールなし")
 
@@ -135,12 +136,13 @@ class TestHookCommand:
         try:
             from domain.services.file_convention_matcher import FileConventionMatcher
             matcher = FileConventionMatcher()
-            rule_info = matcher.get_confirmation_message(self.file_path)
+            rule_infos = matcher.get_confirmation_message(self.file_path)
 
-            if rule_info:
-                print(f"  ✅ マッチしたルール: {rule_info['rule_name']}")
-                print(f"     重要度: {rule_info['severity']}")
-                print(f"     メッセージ: {rule_info['message'][:80]}...")
+            if rule_infos:
+                for rule_info in rule_infos:
+                    print(f"  ✅ マッチしたルール: {rule_info['rule_name']}")
+                    print(f"     重要度: {rule_info['severity']}")
+                    print(f"     メッセージ: {rule_info['message'][:80]}...")
             else:
                 print(f"  ❌ ファイル '{self.file_path}' にマッチするルールなし")
 

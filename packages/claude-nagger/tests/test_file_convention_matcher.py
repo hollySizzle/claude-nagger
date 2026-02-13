@@ -77,30 +77,31 @@ class TestFileConventionMatcher:
         matcher = FileConventionMatcher(temp_rules_file)
         
         # マッチするファイル
-        rule = matcher.check_file('some/path/test.pu')
-        assert rule is not None
-        assert rule.name == 'Test Rule 1'
-        assert rule.severity == 'block'
+        rules = matcher.check_file('some/path/test.pu')
+        assert len(rules) == 1
+        assert rules[0].name == 'Test Rule 1'
+        assert rules[0].severity == 'block'
         
         # マッチしないファイル
-        rule = matcher.check_file('other/file.txt')
-        assert rule is None
+        rules = matcher.check_file('other/file.txt')
+        assert rules == []
 
     def test_get_confirmation_message(self, temp_rules_file):
         """確認メッセージ生成のテスト"""
         matcher = FileConventionMatcher(temp_rules_file)
 
         # マッチするファイルの場合
-        result = matcher.get_confirmation_message('test/example.pu')
-        assert result is not None
+        results = matcher.get_confirmation_message('test/example.pu')
+        assert len(results) == 1
+        result = results[0]
         assert result['rule_name'] == 'Test Rule 1'
         assert result['severity'] == 'block'
         # メッセージフォーマット: "⚠️  {rule.message}" (convention_docは含まない)
         assert 'Test message 1' in result['message']
 
         # マッチしないファイルの場合
-        result = matcher.get_confirmation_message('other.txt')
-        assert result is None
+        results = matcher.get_confirmation_message('other.txt')
+        assert results == []
 
     def test_list_rules(self, temp_rules_file):
         """ルール一覧取得のテスト"""
@@ -147,7 +148,7 @@ class TestFileConventionMatcher:
         try:
             matcher = FileConventionMatcher(temp_path)
             assert len(matcher.rules) == 0
-            assert matcher.check_file('any/file.txt') is None
+            assert matcher.check_file('any/file.txt') == []
         finally:
             temp_path.unlink()
 
@@ -155,7 +156,45 @@ class TestFileConventionMatcher:
         """存在しないルールファイルのテスト"""
         matcher = FileConventionMatcher(Path('/nonexistent/file.yaml'))
         assert len(matcher.rules) == 0
-        assert matcher.check_file('any/file.txt') is None
+        assert matcher.check_file('any/file.txt') == []
+
+    def test_check_file_multiple_rules_match(self):
+        """複数ルールにマッチするケース"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {
+                'rules': [
+                    {
+                        'name': 'PUファイル規約',
+                        'patterns': ['**/*.pu'],
+                        'severity': 'block',
+                        'message': 'PUファイル変更確認'
+                    },
+                    {
+                        'name': 'テストディレクトリ規約',
+                        'patterns': ['test/**/*'],
+                        'severity': 'warn',
+                        'message': 'テストファイル変更注意'
+                    },
+                    {
+                        'name': '無関係規約',
+                        'patterns': ['app/**/*.rb'],
+                        'severity': 'warn',
+                        'message': 'Rubyファイル注意'
+                    }
+                ]
+            }
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            matcher = FileConventionMatcher(temp_path)
+            rules = matcher.check_file('test/example.pu')
+            # PUファイル規約とテストディレクトリ規約の2つにマッチ
+            assert len(rules) == 2
+            assert rules[0].name == 'PUファイル規約'
+            assert rules[1].name == 'テストディレクトリ規約'
+        finally:
+            temp_path.unlink()
 
 
 class TestGlobstarPatterns:

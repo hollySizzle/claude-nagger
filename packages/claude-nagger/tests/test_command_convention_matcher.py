@@ -245,25 +245,63 @@ class TestCheckCommand:
         """コマンドがルールにマッチ"""
         matcher = CommandConventionMatcher(rules_file=temp_rules_file)
 
-        rule = matcher.check_command('git push origin main')
-        assert rule is not None
-        assert rule.name == 'Git規約'
-        assert rule.severity == 'block'
+        rules = matcher.check_command('git push origin main')
+        assert len(rules) == 1
+        assert rules[0].name == 'Git規約'
+        assert rules[0].severity == 'block'
 
     def test_check_command_second_rule_match(self, temp_rules_file):
         """2番目のルールにマッチ"""
         matcher = CommandConventionMatcher(rules_file=temp_rules_file)
 
-        rule = matcher.check_command('npm run deploy')
-        assert rule is not None
-        assert rule.name == 'Deploy規約'
+        rules = matcher.check_command('npm run deploy')
+        assert len(rules) == 1
+        assert rules[0].name == 'Deploy規約'
 
     def test_check_command_no_match(self, temp_rules_file):
         """マッチするルールがない"""
         matcher = CommandConventionMatcher(rules_file=temp_rules_file)
 
-        rule = matcher.check_command('npm install express')
-        assert rule is None
+        rules = matcher.check_command('npm install express')
+        assert rules == []
+
+    def test_check_command_multiple_rules_match(self):
+        """複数ルールにマッチするケース"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {
+                'rules': [
+                    {
+                        'name': 'Git Push規約',
+                        'patterns': ['git push*'],
+                        'severity': 'block',
+                        'message': 'Git Push確認'
+                    },
+                    {
+                        'name': 'Git全般規約',
+                        'patterns': ['git *'],
+                        'severity': 'warn',
+                        'message': 'Git操作注意'
+                    },
+                    {
+                        'name': '無関係規約',
+                        'patterns': ['npm *'],
+                        'severity': 'warn',
+                        'message': 'npm注意'
+                    }
+                ]
+            }
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            matcher = CommandConventionMatcher(rules_file=temp_path)
+            rules = matcher.check_command('git push origin main')
+            # Git Push規約とGit全般規約の2つにマッチ
+            assert len(rules) == 2
+            assert rules[0].name == 'Git Push規約'
+            assert rules[1].name == 'Git全般規約'
+        finally:
+            temp_path.unlink()
 
 
 class TestGetConfirmationMessage:
@@ -294,8 +332,9 @@ class TestGetConfirmationMessage:
         """確認メッセージ生成（マッチ）"""
         matcher = CommandConventionMatcher(rules_file=temp_rules_file)
 
-        result = matcher.get_confirmation_message('test command')
-        assert result is not None
+        results = matcher.get_confirmation_message('test command')
+        assert len(results) == 1
+        result = results[0]
         assert result['rule_name'] == 'Test規約'
         assert result['severity'] == 'block'
         assert result['command'] == 'test command'
@@ -307,8 +346,8 @@ class TestGetConfirmationMessage:
         """確認メッセージ生成（マッチなし）"""
         matcher = CommandConventionMatcher(rules_file=temp_rules_file)
 
-        result = matcher.get_confirmation_message('unrelated command')
-        assert result is None
+        results = matcher.get_confirmation_message('unrelated command')
+        assert results == []
 
 
 class TestReloadRules:

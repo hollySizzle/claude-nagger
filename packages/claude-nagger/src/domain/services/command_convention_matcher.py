@@ -128,55 +128,62 @@ class CommandConventionMatcher(BaseConventionMatcher):
         self.logger.info(f"🚫 No patterns matched for command: {normalized_command}")
         return False
 
-    def check_command(self, command: str) -> Optional[ConventionRule]:
+    def check_command(self, command: str) -> List[ConventionRule]:
         """
-        コマンドに該当する規約を返す
+        コマンドに該当する全規約を返す
         
         Args:
             command: チェック対象のコマンド
             
         Returns:
-            該当する規約ルール（なければNone）
+            該当する規約ルールのリスト（なければ空リスト）
         """
         self.logger.info(f"📋 CHECK COMMAND: {command}")
         self.logger.info(f"📊 Total command rules loaded: {len(self.rules)}")
         
+        matched_rules: List[ConventionRule] = []
         for rule in self.rules:
             self.logger.info(f"🔎 Testing rule: {rule.name}")
             if self.matches_pattern(command, rule.patterns):
                 self.logger.info(f"✅ COMMAND MATCHED RULE: {rule.name} (severity: {rule.severity})")
-                return rule
+                matched_rules.append(rule)
         
-        self.logger.info(f"❌ NO RULES MATCHED FOR COMMAND: {command}")
-        return None
+        if not matched_rules:
+            self.logger.info(f"❌ NO RULES MATCHED FOR COMMAND: {command}")
+        
+        return matched_rules
 
-    def get_confirmation_message(self, command: str) -> Optional[Dict[str, Any]]:
+    def get_confirmation_message(self, command: str) -> List[Dict[str, Any]]:
         """
-        確認メッセージを生成
+        確認メッセージを生成（全マッチルール分）
         
         Args:
             command: チェック対象のコマンド
             
         Returns:
-            確認メッセージ情報（なければNone）
+            確認メッセージ情報のリスト（なければ空リスト）
         """
-        rule = self.check_command(command)
-        if not rule:
-            return None
+        rules = self.check_command(command)
+        if not rules:
+            return []
         
-        formatted_message = f"""⚠️  {rule.message}
+        results = []
+        for rule in rules:
+            formatted_message = f"""⚠️  {rule.message}
 
 実行コマンド: {command}
 
 続行しますか？"""
+            
+            results.append({
+                'rule_name': rule.name,
+                'severity': rule.severity,
+                'message': formatted_message,
+                'command': command,
+                'token_threshold': rule.token_threshold
+            })
         
-        return {
-            'rule_name': rule.name,
-            'severity': rule.severity,
-            'message': formatted_message,
-            'command': command,
-            'token_threshold': rule.token_threshold
-        }
+        return results
 
     def reload_rules(self):
         """ルールをリロード"""

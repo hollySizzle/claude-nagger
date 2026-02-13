@@ -118,59 +118,67 @@ class ImplementationDesignHook(BaseHook):
         
         # transcript_pathを保存（あとで使用）
         self.transcript_path = input_data.get('transcript_path')
-        # Transcript path debug log removed
         
         # FileConventionMatcherで規約に該当するか確認（絶対パスを使用）
-        rule_info = self.matcher.get_confirmation_message(absolute_path)
+        rule_infos = self.matcher.get_confirmation_message(absolute_path)
         
-        # Pattern matching debug removed
-        # Target file debug removed
-        # Rule matching result debug removed
-        
-        if rule_info:
-            self.log_info(f"✅ RULE MATCHED: {rule_info['rule_name']} - Severity: {rule_info['severity']}")
-            self.impl_logger.info(f"FILE RULE MATCHED: {rule_info['rule_name']} (severity: {rule_info['severity']}, threshold: {rule_info.get('token_threshold', 'default')})")
+        if rule_infos:
+            # マッチした全ルールについてログ出力
+            for rule_info in rule_infos:
+                self.log_info(f"✅ RULE MATCHED: {rule_info['rule_name']} - Severity: {rule_info['severity']}")
+                self.impl_logger.info(f"FILE RULE MATCHED: {rule_info['rule_name']} (severity: {rule_info['severity']}, threshold: {rule_info.get('token_threshold', 'default')})")
             
-            # 規約別のセッション・トークンチェック
+            # 規約別のセッション・トークンチェック（全ルールがスキップ可能な場合のみFalse）
             session_id = input_data.get('session_id', '')
-            rule_name = rule_info['rule_name']
-            self.impl_logger.info(f"RULE MATCHED CHECK: session_id='{session_id}', rule_name='{rule_name}'")
             
             if session_id:
-                # 規約別マーカーでトークン閾値チェック
-                is_processed = self.is_rule_processed(session_id, rule_name)
-                self.impl_logger.info(f"MARKER CHECK: is_rule_processed={is_processed}")
-                if is_processed:
-                    # 規約固有の閾値設定を取得
-                    threshold = self._get_rule_threshold(rule_info)
+                has_unprocessed_rule = False
+                for rule_info in rule_infos:
+                    rule_name = rule_info['rule_name']
+                    self.impl_logger.info(f"RULE MATCHED CHECK: session_id='{session_id}', rule_name='{rule_name}'")
                     
-                    # マーカーファイルから前回のトークン数を取得
-                    marker_path = self.get_rule_marker_path(session_id, rule_name)
-                    if marker_path.exists():
-                        try:
-                            import json
-                            with open(marker_path, 'r') as f:
-                                marker_data = json.load(f)
-                                last_tokens = marker_data.get('tokens', 0)
-                            
-                            # 現在のトークン数を取得
-                            current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
-                            if current_tokens is not None:
-                                token_increase = current_tokens - last_tokens
+                    is_processed = self.is_rule_processed(session_id, rule_name)
+                    self.impl_logger.info(f"MARKER CHECK: is_rule_processed={is_processed}")
+                    if is_processed:
+                        # 規約固有の閾値設定を取得
+                        threshold = self._get_rule_threshold(rule_info)
+                        
+                        # マーカーファイルから前回のトークン数を取得
+                        marker_path = self.get_rule_marker_path(session_id, rule_name)
+                        if marker_path.exists():
+                            try:
+                                import json
+                                with open(marker_path, 'r') as f:
+                                    marker_data = json.load(f)
+                                    last_tokens = marker_data.get('tokens', 0)
                                 
-                                if token_increase < threshold:
-                                    self.log_info(f"✅ Rule '{rule_name}' within individual token threshold: {token_increase}/{threshold}, skipping")
-                                    self.impl_logger.info(f"INDIVIDUAL TOKEN THRESHOLD SKIP: Rule '{rule_name}' increase {token_increase} < threshold {threshold}, skipping processing")
-                                    return False
-                                else:
-                                    self.log_info(f"🚨 Rule '{rule_name}' individual token threshold exceeded: {token_increase} >= {threshold}, processing")
-                                    self.impl_logger.info(f"INDIVIDUAL TOKEN THRESHOLD EXCEEDED: Rule '{rule_name}' increase {token_increase} >= threshold {threshold}, proceeding with processing")
-                                    # 古いマーカーをリネーム
-                                    self._rename_expired_marker(marker_path)
-                        except Exception as e:
-                            self.log_error(f"Error checking individual token threshold: {e}")
+                                # 現在のトークン数を取得
+                                current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
+                                if current_tokens is not None:
+                                    token_increase = current_tokens - last_tokens
+                                    
+                                    if token_increase < threshold:
+                                        self.log_info(f"✅ Rule '{rule_name}' within individual token threshold: {token_increase}/{threshold}, skipping")
+                                        self.impl_logger.info(f"INDIVIDUAL TOKEN THRESHOLD SKIP: Rule '{rule_name}' increase {token_increase} < threshold {threshold}, skipping processing")
+                                        continue
+                                    else:
+                                        self.log_info(f"🚨 Rule '{rule_name}' individual token threshold exceeded: {token_increase} >= {threshold}, processing")
+                                        self.impl_logger.info(f"INDIVIDUAL TOKEN THRESHOLD EXCEEDED: Rule '{rule_name}' increase {token_increase} >= threshold {threshold}, proceeding with processing")
+                                        # 古いマーカーをリネーム
+                                        self._rename_expired_marker(marker_path)
+                                        has_unprocessed_rule = True
+                            except Exception as e:
+                                self.log_error(f"Error checking individual token threshold: {e}")
+                                has_unprocessed_rule = True
+                        else:
+                            self.log_info(f"⚠️ Marker file not found for rule '{rule_name}', proceeding with processing")
+                            has_unprocessed_rule = True
                     else:
-                        self.log_info(f"⚠️ Marker file not found for rule '{rule_name}', proceeding with processing")
+                        has_unprocessed_rule = True
+                
+                if not has_unprocessed_rule:
+                    self.log_info(f"✅ All rules within threshold, skipping processing")
+                    return False
             
             return True
         else:
@@ -297,42 +305,51 @@ class ImplementationDesignHook(BaseHook):
         cwd = input_data.get('cwd', os.getcwd())
         absolute_path = self.normalize_file_path(file_path, cwd)
         
-        # Processing file path debug removed
-        
         # 規約情報を取得（絶対パスを使用）
-        rule_info = self.matcher.get_confirmation_message(absolute_path)
+        rule_infos = self.matcher.get_confirmation_message(absolute_path)
         
-        if not rule_info:
+        if not rule_infos:
             # 規約に該当しない場合は許可
             return {
                 'decision': 'approve',
                 'reason': 'No rules matched'
             }
         
-        # severityに応じて処理を分岐
-        severity = rule_info['severity']
-        message = rule_info['message']
-        rule_name = rule_info['rule_name']
+        # 全マッチルールのメッセージを結合してブロック
+        messages = []
+        block_rule_names = []
+        for rule_info in rule_infos:
+            severity = rule_info['severity']
+            message = rule_info['message']
+            rule_name = rule_info['rule_name']
+            
+            # 規約名別マーカーをチェック
+            if session_id and self.is_rule_processed(session_id, rule_name):
+                self.log_debug(f"Rule '{rule_name}' already processed in this session, skipping")
+                continue
+            
+            # 規約名別マーカーを作成（ブロック前に）
+            if session_id:
+                current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
+                self.mark_rule_processed(session_id, rule_name, current_tokens or 0)
+                self.log_debug(f"Created rule marker for '{rule_name}' before blocking with {current_tokens or 0} tokens")
+            
+            self.impl_logger.info(f"FILE RULE BLOCKING: Rule '{rule_name}' (severity: {severity}) blocking file edit: {absolute_path}")
+            messages.append(message)
+            block_rule_names.append(rule_name)
         
-        # 規約名別マーカーをチェック
-        if session_id and self.is_rule_processed(session_id, rule_name):
-            self.log_debug(f"Rule '{rule_name}' already processed in this session, skipping")
+        if not messages:
+            # 全ルールがスキップされた場合は許可
             return {
                 'decision': 'approve',
-                'reason': f'Rule "{rule_name}" within token threshold'
+                'reason': 'All rules within token threshold'
             }
         
-        # 規約名別マーカーを作成（ブロック前に）
-        if session_id:
-            current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
-            self.mark_rule_processed(session_id, rule_name, current_tokens or 0)
-            self.log_debug(f"Created rule marker for '{rule_name}' before blocking with {current_tokens or 0} tokens")
-        
-        # JSON応答でブロック（sys.exit使わない）
-        self.impl_logger.info(f"FILE RULE BLOCKING: Rule '{rule_name}' (severity: {severity}) blocking file edit: {absolute_path}")
+        # 複数メッセージを結合
+        combined_message = "\n\n---\n\n".join(messages)
         return {
             'decision': 'block',
-            'reason': message
+            'reason': combined_message
         }
     def run(self) -> int:
         """
@@ -365,10 +382,10 @@ class ImplementationDesignHook(BaseHook):
         
         self.log_info(f"🔍 Checking command: {command}")
         
-        # コマンド規約チェック（先に実行してrule_infoを取得）
-        rule_info = self.command_matcher.get_confirmation_message(command)
+        # コマンド規約チェック（全ルール評価）
+        rule_infos = self.command_matcher.get_confirmation_message(command)
         
-        if not rule_info:
+        if not rule_infos:
             self.log_info(f"❌ No command rules matched for: {command}")
             self.impl_logger.info(f"COMMAND NO RULE MATCHED: {command}")
             return {
@@ -376,62 +393,70 @@ class ImplementationDesignHook(BaseHook):
                 'reason': 'No command rules matched'
             }
         
-        # コマンド規約マッチしたログ
-        self.impl_logger.info(f"COMMAND RULE MATCHED: {rule_info['rule_name']} (severity: {rule_info['severity']}, threshold: {rule_info.get('token_threshold', 'default')}) for command: {command}")
-        
-        # セッション内で同じコマンドが既に処理済みかチェック
-        if session_id and self.is_command_processed(session_id, command):
-            # 規約固有の閾値を取得（コマンド版）
-            command_threshold = self._get_command_threshold(rule_info)
+        # 全マッチルールについて処理
+        messages = []
+        for rule_info in rule_infos:
+            # コマンド規約マッチしたログ
+            self.impl_logger.info(f"COMMAND RULE MATCHED: {rule_info['rule_name']} (severity: {rule_info['severity']}, threshold: {rule_info.get('token_threshold', 'default')}) for command: {command}")
             
-            # コマンドマーカーファイルから前回のトークン数を取得
-            marker_path = self.get_command_marker_path(session_id, command)
-            if marker_path.exists():
-                try:
-                    import json
-                    with open(marker_path, 'r') as f:
-                        marker_data = json.load(f)
-                        last_tokens = marker_data.get('tokens', 0)
-                    
-                    # 現在のトークン数を取得
-                    current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
-                    if current_tokens is not None:
-                        token_increase = current_tokens - last_tokens
+            # セッション内で同じコマンドが既に処理済みかチェック
+            if session_id and self.is_command_processed(session_id, command):
+                # 規約固有の閾値を取得（コマンド版）
+                command_threshold = self._get_command_threshold(rule_info)
+                
+                # コマンドマーカーファイルから前回のトークン数を取得
+                marker_path = self.get_command_marker_path(session_id, command)
+                if marker_path.exists():
+                    try:
+                        import json
+                        with open(marker_path, 'r') as f:
+                            marker_data = json.load(f)
+                            last_tokens = marker_data.get('tokens', 0)
                         
-                        if token_increase < command_threshold:
-                            self.log_info(f"✅ Command '{command}' within individual token threshold: {token_increase}/{command_threshold}, skipping")
-                            self.impl_logger.info(f"INDIVIDUAL COMMAND TOKEN THRESHOLD SKIP: '{command}' increase {token_increase} < threshold {command_threshold}, skipping processing")
-                            return {
-                                'decision': 'approve',
-                                'reason': f'Command within threshold ({token_increase}/{command_threshold})'
-                            }
-                        else:
-                            self.log_info(f"🚨 Command '{command}' individual token threshold exceeded: {token_increase} >= {command_threshold}, processing")
-                            self.impl_logger.info(f"INDIVIDUAL COMMAND TOKEN THRESHOLD EXCEEDED: '{command}' increase {token_increase} >= threshold {command_threshold}, proceeding with processing")
-                            # 古いマーカーをリネーム
-                            self._rename_expired_marker(marker_path)
-                except Exception as e:
-                    self.log_error(f"Error checking command individual token threshold: {e}")
-            else:
-                self.log_info(f"⚠️ Command marker file not found for '{command}', proceeding with processing")
+                        # 現在のトークン数を取得
+                        current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
+                        if current_tokens is not None:
+                            token_increase = current_tokens - last_tokens
+                            
+                            if token_increase < command_threshold:
+                                self.log_info(f"✅ Command '{command}' within individual token threshold: {token_increase}/{command_threshold}, skipping")
+                                self.impl_logger.info(f"INDIVIDUAL COMMAND TOKEN THRESHOLD SKIP: '{command}' increase {token_increase} < threshold {command_threshold}, skipping processing")
+                                continue
+                            else:
+                                self.log_info(f"🚨 Command '{command}' individual token threshold exceeded: {token_increase} >= {command_threshold}, processing")
+                                self.impl_logger.info(f"INDIVIDUAL COMMAND TOKEN THRESHOLD EXCEEDED: '{command}' increase {token_increase} >= threshold {command_threshold}, proceeding with processing")
+                                # 古いマーカーをリネーム
+                                self._rename_expired_marker(marker_path)
+                    except Exception as e:
+                        self.log_error(f"Error checking command individual token threshold: {e}")
+                else:
+                    self.log_info(f"⚠️ Command marker file not found for '{command}', proceeding with processing")
+            
+            # セッション内でコマンドを処理済みとしてマーク
+            if session_id:
+                current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
+                self.mark_command_processed(session_id, command, current_tokens or 0)
+                self.log_info(f"📝 Marked command as processed: {command}")
+            
+            severity = rule_info['severity']
+            message = rule_info['message']
+            
+            self.log_info(f"🚨 Command rule matched - Severity: {severity}, Rule: {rule_info['rule_name']}")
+            self.impl_logger.info(f"COMMAND RULE BLOCKING: Rule '{rule_info['rule_name']}' (severity: {severity}) blocking command: {command}")
+            messages.append(message)
         
-        # セッション内でコマンドを処理済みとしてマーク
-        if session_id:
-            current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
-            self.mark_command_processed(session_id, command, current_tokens or 0)
-            self.log_info(f"📝 Marked command as processed: {command}")
+        if not messages:
+            # 全ルールがスキップされた場合は許可
+            return {
+                'decision': 'approve',
+                'reason': 'All command rules within threshold'
+            }
         
-        # severityに応じて処理を分岐
-        severity = rule_info['severity']
-        message = rule_info['message']
-        
-        self.log_info(f"🚨 Command rule matched - Severity: {severity}, Rule: {rule_info['rule_name']}")
-        
-        # JSON応答でブロック（SessionStartupHookと同じ形式に統一）
-        self.impl_logger.info(f"COMMAND RULE BLOCKING: Rule '{rule_info['rule_name']}' (severity: {severity}) blocking command: {command}")
+        # 複数メッセージを結合
+        combined_message = "\n\n---\n\n".join(messages)
         return {
             'decision': 'block',
-            'reason': message
+            'reason': combined_message
         }
 
 

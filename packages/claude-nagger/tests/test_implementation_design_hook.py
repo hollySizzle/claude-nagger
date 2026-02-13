@@ -37,11 +37,11 @@ class TestImplementationDesignHook:
         
         # FileConventionMatcherをモック
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get_message:
-            mock_get_message.return_value = {
+            mock_get_message.return_value = [{
                 'rule_name': 'Test Rule',
                 'severity': 'block',
                 'message': 'Test message'
-            }
+            }]
             
             assert hook.should_process(input_data) is True
 
@@ -55,7 +55,7 @@ class TestImplementationDesignHook:
         
         # FileConventionMatcherをモック
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get_message:
-            mock_get_message.return_value = None
+            mock_get_message.return_value = []
             
             assert hook.should_process(input_data) is False
 
@@ -77,12 +77,12 @@ class TestImplementationDesignHook:
         
         # FileConventionMatcherをモック
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get_message:
-            mock_get_message.return_value = {
+            mock_get_message.return_value = [{
                 'rule_name': 'Test Rule',
                 'severity': 'block',
                 'message': 'This file is blocked',
                 'convention_doc': '@test/doc.md'
-            }
+            }]
             
             result = hook.process(input_data)
             
@@ -99,12 +99,12 @@ class TestImplementationDesignHook:
 
         # FileConventionMatcherをモック
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get_message:
-            mock_get_message.return_value = {
+            mock_get_message.return_value = [{
                 'rule_name': 'Test Warning',
                 'severity': 'warn',
                 'message': 'This is a warning',
                 'convention_doc': '@test/warn.md'
-            }
+            }]
 
             result = hook.process(input_data)
 
@@ -122,7 +122,7 @@ class TestImplementationDesignHook:
 
         # FileConventionMatcherをモック
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get_message:
-            mock_get_message.return_value = None
+            mock_get_message.return_value = []
 
             result = hook.process(input_data)
 
@@ -164,12 +164,12 @@ class TestImplementationDesignHook:
 
         # FileConventionMatcherをモック（should_processとprocessの両方に影響）
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get_message:
-            mock_get_message.return_value = {
+            mock_get_message.return_value = [{
                 'rule_name': 'Test Rule',
                 'severity': 'block',
                 'message': 'Blocked for testing',
                 'convention_doc': '@test/doc.md'
-            }
+            }]
 
             # should_processとセッション関連メソッドをモック
             with patch.object(hook, 'should_process', return_value=True), \
@@ -314,11 +314,11 @@ class TestProcessCommand:
         }
 
         with patch.object(hook.command_matcher, 'get_confirmation_message') as mock_cmd:
-            mock_cmd.return_value = {
+            mock_cmd.return_value = [{
                 'rule_name': 'Git Push規約',
                 'severity': 'block',
                 'message': 'プッシュ前にテストを実行'
-            }
+            }]
 
             result = hook.process(input_data)
 
@@ -336,7 +336,7 @@ class TestProcessCommand:
         }
 
         with patch.object(hook.command_matcher, 'get_confirmation_message') as mock_cmd:
-            mock_cmd.return_value = None
+            mock_cmd.return_value = []
 
             result = hook.process(input_data)
 
@@ -487,11 +487,11 @@ class TestFileToolDetection:
         }
 
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get:
-            mock_get.return_value = {
+            mock_get.return_value = [{
                 'rule_name': 'Test',
                 'severity': 'warn',
                 'message': 'Test'
-            }
+            }]
             assert hook.should_process(input_data) is True
 
     def test_edit_tool_with_relative_path(self, hook):
@@ -504,11 +504,11 @@ class TestFileToolDetection:
         }
 
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get:
-            mock_get.return_value = {
+            mock_get.return_value = [{
                 'rule_name': 'Test',
                 'severity': 'warn',
                 'message': 'Test'
-            }
+            }]
             assert hook.should_process(input_data) is True
 
 
@@ -541,12 +541,12 @@ class TestRuleMarkerWithTokenThreshold:
         }
 
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get:
-            mock_get.return_value = {
+            mock_get.return_value = [{
                 'rule_name': rule_name,
                 'severity': 'warn',
                 'message': 'Test message',
                 'token_threshold': 50000
-            }
+            }]
 
             # 初回は処理される
             with patch.object(hook, 'is_rule_processed', return_value=False):
@@ -581,12 +581,12 @@ class TestCommandMarkerWithTokenThreshold:
         }
 
         with patch.object(hook.command_matcher, 'get_confirmation_message') as mock_cmd:
-            mock_cmd.return_value = {
+            mock_cmd.return_value = [{
                 'rule_name': 'Git Push',
                 'severity': 'warn',
                 'message': 'Test',
                 'token_threshold': 50000
-            }
+            }]
 
             # マーカーが存在し、閾値内
             with patch.object(hook, 'is_command_processed', return_value=True), \
@@ -654,11 +654,11 @@ class TestProcessWithRuleAlreadyProcessed:
         }
 
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_get:
-            mock_get.return_value = {
+            mock_get.return_value = [{
                 'rule_name': 'Test Rule',
                 'severity': 'warn',
                 'message': 'Test message'
-            }
+            }]
 
             with patch.object(hook, 'is_rule_processed', return_value=True):
                 result = hook.process(input_data)

@@ -132,51 +132,58 @@ class FileConventionMatcher:
         self.logger.info(f"🚫 No patterns matched for: {normalized_path}")
         return False
 
-    def check_file(self, file_path: str) -> Optional[ConventionRule]:
+    def check_file(self, file_path: str) -> List[ConventionRule]:
         """
-        ファイルパスに該当する規約を返す
+        ファイルパスに該当する全規約を返す
         
         Args:
             file_path: チェック対象のファイルパス
             
         Returns:
-            該当する規約ルール（なければNone）
+            該当する規約ルールのリスト（なければ空リスト）
         """
         self.logger.info(f"📋 CHECK FILE: {file_path}")
         self.logger.info(f"📊 Total rules loaded: {len(self.rules)}")
         
+        matched_rules: List[ConventionRule] = []
         for rule in self.rules:
             self.logger.info(f"🔎 Testing rule: {rule.name}")
             if self.matches_pattern(file_path, rule.patterns):
                 self.logger.info(f"✅ FILE MATCHED RULE: {rule.name} (severity: {rule.severity})")
-                return rule
+                matched_rules.append(rule)
         
-        self.logger.info(f"❌ NO RULES MATCHED FOR FILE: {file_path}")
-        return None
+        if not matched_rules:
+            self.logger.info(f"❌ NO RULES MATCHED FOR FILE: {file_path}")
+        
+        return matched_rules
 
-    def get_confirmation_message(self, file_path: str) -> Optional[Dict[str, Any]]:
+    def get_confirmation_message(self, file_path: str) -> List[Dict[str, Any]]:
         """
-        確認メッセージを生成
+        確認メッセージを生成（全マッチルール分）
         
         Args:
             file_path: チェック対象のファイルパス
             
         Returns:
-            確認メッセージ情報（なければNone）
+            確認メッセージ情報のリスト（なければ空リスト）
         """
-        rule = self.check_file(file_path)
-        if not rule:
-            return None
+        rules = self.check_file(file_path)
+        if not rules:
+            return []
         
-        # messageに規約ドキュメントへの参照が既に含まれているため、そのまま使用
-        formatted_message = f"""⚠️  {rule.message}"""
+        results = []
+        for rule in rules:
+            # messageに規約ドキュメントへの参照が既に含まれているため、そのまま使用
+            formatted_message = f"""⚠️  {rule.message}"""
+            
+            results.append({
+                'rule_name': rule.name,
+                'severity': rule.severity,
+                'message': formatted_message,
+                'token_threshold': rule.token_threshold
+            })
         
-        return {
-            'rule_name': rule.name,
-            'severity': rule.severity,
-            'message': formatted_message,
-            'token_threshold': rule.token_threshold
-        }
+        return results
 
     def reload_rules(self):
         """ルールをリロード"""
