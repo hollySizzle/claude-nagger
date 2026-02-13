@@ -60,14 +60,16 @@ rules:
     message: |
       作業を継続するためには、vibes/docs/rules/claude_code_hook_testing.yaml を熟読し遵守することを宣言してください
 
-  - name: "ticket-tasukiプラグイン編集規約"
+  - name: "プラグイン開発規約"
     patterns:
-      - "**/.claude/plugins/ticket-tasuki/**"
-    severity: "info"
+      - "**/.claude/plugins/**"
+    severity: "warn"
     token_threshold: 0
     message: |
-      ticket-tasukiプラグインファイル。別gitリポジトリ（.claude/plugins/ticket-tasuki/）でcommit/pushすること。
-      claude-naggerリポジトリではなくticket-tasukiリポジトリで作業してください。
+      プラグイン開発規約（vibes/docs/rules/plugin_development.yaml）を遵守してください:
+      - plugin.jsonのバージョンバンプ必須（キャッシュ反映に必要）
+      - プラグインディレクトリ内でcommit（親リポジトリではなく）
+      - コミットメッセージにissue_{id}を含める
 
   - name: "config.yaml同期規約"
     patterns:

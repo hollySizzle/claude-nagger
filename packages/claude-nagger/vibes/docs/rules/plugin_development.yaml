@@ -1,0 +1,24 @@
+# プラグイン開発規約
+# claude-naggarプラグイン(.claude/plugins/)の開発・編集時に遵守する規約
+
+rules:
+  must:
+    - plugin.jsonのバージョンバンプ: ファイル追加・変更時は必ずplugin.jsonのversionをインクリメントすること（キャッシュ反映に必須）
+    - プラグインリポジトリでcommit: プラグインは独立gitリポジトリ。プラグインディレクトリ内でcommit/pushすること
+    - コミットメッセージにissue_id: チケット番号(issue_{id})をコミットメッセージに含めること
+
+  must_not:
+    - 親リポジトリでのcommit: プラグインファイルの変更を親リポジトリ(claude-nagger)でcommitしない
+    - バージョンバンプなしのファイル追加: キャッシュに反映されず変更が無視される
+
+  should:
+    - セマンティックバージョニング: パッチ(0.0.x)で小修正、マイナー(0.x.0)で機能追加
+    - agent定義変更時はdescription(frontmatter)の整合性確認
+
+commands:
+  test: "cd .claude/plugins/{plugin-name} && git status"
+  commit: "cd .claude/plugins/{plugin-name} && git add -A && git commit -m '[coder] issue_{id}: 変更内容'"
+
+related_files:
+  file_conventions: "@packages/claude-nagger/.claude-nagger/file_conventions.yaml"
+  plugin_json: ".claude/plugins/{plugin-name}/.claude-plugin/plugin.json"
