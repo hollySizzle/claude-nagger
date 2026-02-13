@@ -615,7 +615,7 @@ class TestGetPathMethods:
                 "templates_dir": "templates",
                 "output_dir": "output",
                 "target_dirs": {
-                    "rules": "../docs/rules",
+                    "rules": "vibes/docs/rules",
                     "specs": "../docs/specs"
                 }
             }

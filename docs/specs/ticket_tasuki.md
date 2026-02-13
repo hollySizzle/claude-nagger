@@ -139,7 +139,7 @@ coderはsubagentであり、`tools:`制限でClaude Code本体が物理的に強
 - leaderのコンテキスト削減にも寄与（チケット操作の委譲先）
 
 ### REQ-4: 却下案テンプレート追加
-**対象**: `docs/rules/redmine_driven_dev.yaml`
+**対象**: `packages/claude-nagger/vibes/docs/rules/redmine_driven_dev.yaml`
 **内容**:
 - comment_templateに「却下案」欄追加
   - 試して不採用にしたアプローチと理由を記録
@@ -166,7 +166,7 @@ coderはsubagentであり、`tools:`制限でClaude Code本体が物理的に強
 
 ## 関連文書
 - @docs/temps/subagent_workflow_discussion.md（検討経緯）
-- @docs/rules/redmine_driven_dev.yaml（TiDD規約）
+- @packages/claude-nagger/vibes/docs/rules/redmine_driven_dev.yaml（TiDD規約）
 - @docs/specs/architecture.md
 - packages/claude-nagger/.claude-nagger/config.yaml
 - https://code.claude.com/docs/en/plugins（Claude Codeプラグイン公式ドキュメント）

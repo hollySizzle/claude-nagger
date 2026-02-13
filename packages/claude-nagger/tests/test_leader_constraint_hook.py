@@ -1,7 +1,7 @@
 """LeaderConstraintHook テスト
 
 subagentアクティブ時のleader直接作業ブロックフックの検証。
-テスト規約: docs/rules/claude_code_hook_testing.yaml 準拠
+テスト規約: vibes/docs/rules/claude_code_hook_testing.yaml 準拠
 """
 
 import pytest

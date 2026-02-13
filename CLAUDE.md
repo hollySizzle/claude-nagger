@@ -71,7 +71,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - [ ] Redmine プラグインの動作確認
 
 **設計書準拠確認**: 機能 ID 存在・シーケンス図一致・未定義機能追加なし・権限整合性
-詳細: @docs/rules/design_compliance_standards.md
+詳細: @packages/claude-nagger/vibes/docs/rules/design_compliance_standards.md
 
 ## ドキュメント
 
@@ -81,7 +81,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 専門用語の活用/簡潔な文章表現/情報の集約/繰り返しを避ける 等を実行すること
 - 作成ルールに従うこと
   - @docs/INDEX.md を確認し新規ドキュメントの必要性を再考
-  - ガイドラインの確認(@docs/rules/documentation_standards.md)
+  - ガイドラインの確認(@packages/claude-nagger/vibes/docs/rules/documentation_standards.md)
 
 ### docs/ ディレクトリ構成
 

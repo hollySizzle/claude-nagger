@@ -53,4 +53,4 @@
 
 ## 関連ドキュメント
 
-- @docs/rules/coding_standards.md
+- @packages/claude-nagger/vibes/docs/rules/coding_standards.md

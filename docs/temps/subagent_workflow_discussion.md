@@ -154,7 +154,7 @@ US#123「ユーザー登録機能」
 
 ## 関連文書
 - @docs/specs/ticket_tasuki.md（ticket-tasuki要件定義）
-- @docs/rules/redmine_driven_dev.yaml
+- @packages/claude-nagger/vibes/docs/rules/redmine_driven_dev.yaml
 - packages/claude-nagger/.claude-nagger/config.yaml
 - packages/claude-nagger/src/domain/hooks/subagent_event_hook.py
 - packages/claude-nagger/src/domain/services/subagent_marker_manager.py

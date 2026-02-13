@@ -15,4 +15,4 @@
 
 ## 関連文書
 - @docs/specs/architecture.md
-- @docs/rules/coding_standards.md
+- @packages/claude-nagger/vibes/docs/rules/coding_standards.md

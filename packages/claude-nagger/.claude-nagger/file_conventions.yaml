@@ -58,7 +58,7 @@ rules:
     severity: "block"
     token_threshold: 20000
     message: |
-      作業を継続するためには、docs/rules/claude_code_hook_testing.yaml を熟読し遵守することを宣言してください
+      作業を継続するためには、vibes/docs/rules/claude_code_hook_testing.yaml を熟読し遵守することを宣言してください
 
   - name: "ticket-tasukiプラグイン編集規約"
     patterns:

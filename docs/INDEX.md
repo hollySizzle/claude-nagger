@@ -7,9 +7,9 @@
 このドキュメントは階層的に整理されています。各カテゴリのINDEXから詳細なドキュメントにアクセスしてください。
 
 ### rules - プロジェクト規約
-- [[TODO: 規約名]](@docs/rules/_template.md)
-- [コーディング規約](@docs/rules/coding_standards.md)
-- [ドキュメント規約](@docs/rules/documentation_standards.md)
+- [[TODO: 規約名]](@packages/claude-nagger/vibes/docs/rules/_template.md)
+- [コーディング規約](@packages/claude-nagger/vibes/docs/rules/coding_standards.md)
+- [ドキュメント規約](@packages/claude-nagger/vibes/docs/rules/documentation_standards.md)
 
 ### apis - 外部連携仕様
 - [ClaudeCodeBestPracticesAnthropic](@docs/apis/ClaudeCodeBestPracticesAnthropic.md)

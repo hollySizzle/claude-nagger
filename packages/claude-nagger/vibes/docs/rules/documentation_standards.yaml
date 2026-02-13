@@ -106,6 +106,6 @@ yaml_template: |
     key: "@docs/path/to/file"
 
 related_files:
-  coding_standards: "@docs/rules/coding_standards.md"
+  coding_standards: "@packages/claude-nagger/vibes/docs/rules/coding_standards.md"
   architecture: "@docs/specs/architecture.md"
   index: "@docs/INDEX.md"

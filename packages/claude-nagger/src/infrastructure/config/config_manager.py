@@ -170,7 +170,7 @@ class ConfigManager:
                 "templates_dir": "templates",
                 "output_dir": "output",
                 "target_dirs": {
-                    "rules": "../docs/rules",
+                    "rules": "vibes/docs/rules",
                     "specs": "../docs/specs",
                     "tasks": "../docs/tasks",
                     "logics": "../docs/logics",
