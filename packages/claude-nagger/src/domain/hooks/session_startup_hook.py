@@ -33,6 +33,13 @@ def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> None:
             base[key] = value
 
 
+def _strip_numeric_suffix(name: str) -> str:
+    """末尾の-数字サフィックスを除去してベースロール名を返す。
+    例: 'tester-2' → 'tester', 'coder' → 'coder'
+    """
+    return re.sub(r'-\d+$', '', name)
+
+
 
 class SessionStartupHook(BaseHook):
     """セッション開始時のAI協働規約確認フック"""
@@ -100,7 +107,8 @@ class SessionStartupHook(BaseHook):
         """subagent種別に応じたoverride設定を解決
 
         解決順序: base → subagent_default → subagent_types.{type}
-        type解決順序: role → 完全一致agent_type → ":"区切り末尾 → 空dict
+        type解決順序: role完全一致 → role末尾-数字除去 → agent_type完全一致
+                     → agent_type末尾-数字除去 → ":"区切り末尾 → 空dict
 
         Args:
             agent_type: サブエージェント種別
@@ -112,12 +120,23 @@ class SessionStartupHook(BaseHook):
         overrides = self.config.get("overrides", {})
         subagent_default = overrides.get("subagent_default", {})
         subagent_types = overrides.get("subagent_types", {})
-        # role → 完全一致 → ":"区切り末尾部分で再検索 → 空dictフォールバック
+        # role完全一致 → role末尾-数字除去 → agent_type完全一致
+        # → agent_type末尾-数字除去 → ":"区切り末尾 → 空dictフォールバック
         type_specific = None
         if role:
             type_specific = subagent_types.get(role)
+            # role末尾-数字除去フォールバック（例: tester-2 → tester）
+            if type_specific is None:
+                base_role = _strip_numeric_suffix(role)
+                if base_role != role:
+                    type_specific = subagent_types.get(base_role)
         if type_specific is None:
             type_specific = subagent_types.get(agent_type)
+        # agent_type末尾-数字除去フォールバック
+        if type_specific is None:
+            base_agent_type = _strip_numeric_suffix(agent_type)
+            if base_agent_type != agent_type:
+                type_specific = subagent_types.get(base_agent_type)
         if type_specific is None and ":" in agent_type:
             short_name = agent_type.rsplit(":", 1)[-1]
             type_specific = subagent_types.get(short_name, {})
@@ -191,7 +210,7 @@ class SessionStartupHook(BaseHook):
                                     text_parts.append(block)
                             content = '\n'.join(text_parts)
 
-                        match = re.search(r'\[ROLE:(\w+)\]', content)
+                        match = re.search(r'\[ROLE:([^\]]+)\]', content)
                         if match:
                             role_from_user = match.group(1)
 
@@ -205,7 +224,7 @@ class SessionStartupHook(BaseHook):
                                     and block.get('type') == 'tool_use'
                                     and block.get('name') == 'Task'):
                                     prompt = block.get('input', {}).get('prompt', '')
-                                    match = re.search(r'\[ROLE:(\w+)\]', prompt)
+                                    match = re.search(r'\[ROLE:([^\]]+)\]', prompt)
                                     if match:
                                         role_from_task = match.group(1)
 
