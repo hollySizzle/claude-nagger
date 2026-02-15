@@ -63,8 +63,10 @@ class ConfigManager:
         # 探索対象の拡張子（優先度順）
         extensions = ['.yaml', '.yml']
         
-        # プロジェクト固有設定を優先（.claude-nagger/vault/）
-        project_vault_dir = Path.cwd() / ".claude-nagger" / "vault"
+        # CLAUDE_PROJECT_DIRを優先、フォールバックはcwd
+        project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+        base_path = Path(project_dir) if project_dir else Path.cwd()
+        project_vault_dir = base_path / ".claude-nagger" / "vault"
         for ext in extensions:
             secrets_file = project_vault_dir / f"secrets{ext}"
             if secrets_file.exists():
@@ -95,8 +97,10 @@ class ConfigManager:
         # 探索対象の拡張子（優先度順）
         extensions = ['.yaml', '.yml', '.json5']
         
-        # プロジェクト固有設定を優先（.claude-nagger/）
-        project_dir = Path.cwd() / ".claude-nagger"
+        # CLAUDE_PROJECT_DIRを優先、フォールバックはcwd
+        project_dir_env = os.environ.get("CLAUDE_PROJECT_DIR")
+        base_path = Path(project_dir_env) if project_dir_env else Path.cwd()
+        project_dir = base_path / ".claude-nagger"
         for ext in extensions:
             config_file = project_dir / f"config{ext}"
             if config_file.exists():

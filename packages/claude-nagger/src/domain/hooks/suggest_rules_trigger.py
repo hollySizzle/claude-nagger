@@ -51,7 +51,11 @@ class SuggestRulesTrigger(BaseHook):
 
     def _load_config(self) -> Dict[str, Any]:
         """config.yamlからsuggest_rules設定を読み込む"""
-        config_path = Path.cwd() / ".claude-nagger" / "config.yaml"
+        project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+        if project_dir:
+            config_path = Path(project_dir) / ".claude-nagger" / "config.yaml"
+        else:
+            config_path = Path.cwd() / ".claude-nagger" / "config.yaml"
         if not config_path.exists():
             return {}
         try:
@@ -264,7 +268,9 @@ def _fallback_yaml(
 
 def _save_suggested_rules(content: str, header: str = "") -> Path:
     """suggested_rules.yamlに保存"""
-    output_dir = Path.cwd() / ".claude-nagger" / SUGGESTED_RULES_DIRNAME
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    base_path = Path(project_dir) if project_dir else Path.cwd()
+    output_dir = base_path / ".claude-nagger" / SUGGESTED_RULES_DIRNAME
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / SUGGESTED_RULES_FILENAME
 

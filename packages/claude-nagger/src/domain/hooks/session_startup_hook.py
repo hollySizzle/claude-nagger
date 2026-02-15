@@ -62,8 +62,10 @@ class SessionStartupHook(BaseHook):
         Returns:
             設定データの辞書
         """
-        # プロジェクト設定を優先
-        project_config = Path.cwd() / ".claude-nagger" / "config.yaml"
+        # CLAUDE_PROJECT_DIRを優先、フォールバックはcwd
+        project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+        base_path = Path(project_dir) if project_dir else Path.cwd()
+        project_config = base_path / ".claude-nagger" / "config.yaml"
         if project_config.exists():
             config_file = project_config
         else:
@@ -484,7 +486,9 @@ class SessionStartupHook(BaseHook):
 
     def _get_suggested_rules_path(self) -> Path:
         """suggested_rules.yamlのパスを返す"""
-        return Path.cwd() / ".claude-nagger" / SUGGESTED_RULES_DIRNAME / SUGGESTED_RULES_FILENAME
+        project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+        base_path = Path(project_dir) if project_dir else Path.cwd()
+        return base_path / ".claude-nagger" / SUGGESTED_RULES_DIRNAME / SUGGESTED_RULES_FILENAME
 
     def _load_suggested_rules(self) -> Optional[Dict[str, Any]]:
         """suggested_rules.yamlを読み込む。存在しない場合はNone"""

@@ -1,5 +1,6 @@
 """コマンド実行規約マッチングサービス"""
 
+import os
 import yaml
 import fnmatch
 from pathlib import Path
@@ -32,8 +33,10 @@ class CommandConventionMatcher(BaseConventionMatcher):
             debug: デバッグモードフラグ
         """
         if rules_file is None:
-            # プロジェクト固有設定を優先（.claude-nagger/）
-            project_config = Path.cwd() / ".claude-nagger" / "command_conventions.yaml"
+            # CLAUDE_PROJECT_DIRを優先、フォールバックはcwd
+            project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+            base_path = Path(project_dir) if project_dir else Path.cwd()
+            project_config = base_path / ".claude-nagger" / "command_conventions.yaml"
             if project_config.exists():
                 rules_file = project_config
             else:

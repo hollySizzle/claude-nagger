@@ -1,5 +1,6 @@
 """ファイル編集規約マッチングサービス"""
 
+import os
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -31,8 +32,10 @@ class FileConventionMatcher:
             debug: デバッグモードフラグ
         """
         if rules_file is None:
-            # プロジェクト固有設定を優先（.claude-nagger/）
-            project_config = Path.cwd() / ".claude-nagger" / "file_conventions.yaml"
+            # CLAUDE_PROJECT_DIRを優先、フォールバックはcwd
+            project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+            base_path = Path(project_dir) if project_dir else Path.cwd()
+            project_config = base_path / ".claude-nagger" / "file_conventions.yaml"
             if project_config.exists():
                 rules_file = project_config
             else:

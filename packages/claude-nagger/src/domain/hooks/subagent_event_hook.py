@@ -25,7 +25,11 @@ _logger = StructuredLogger(name="SubagentEventHook", log_dir=DEFAULT_LOG_DIR)
 
 def _load_transcript_storage_config() -> dict:
     """config.yamlからtranscript_storage設定を読み込む"""
-    config_path = Path.cwd() / ".claude-nagger" / "config.yaml"
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if project_dir:
+        config_path = Path(project_dir) / ".claude-nagger" / "config.yaml"
+    else:
+        config_path = Path.cwd() / ".claude-nagger" / "config.yaml"
     if not config_path.exists():
         return {}
     try:
