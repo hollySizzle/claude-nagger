@@ -28,10 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   python3-pip \
   && apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install claude-nagger package (editable mode)
-COPY packages/claude-nagger/ /tmp/claude-nagger/
-COPY README.md /tmp/claude-nagger/README.md
-RUN pip3 install --break-system-packages -e /tmp/claude-nagger/[dev]
+# claude-nagger: editable installはpostCreateCommandで実行
+# (ビルド時はワークスペース未マウントのため)
 
 # uv (Python package manager) のインストール
 RUN pip3 install uv --break-system-packages
