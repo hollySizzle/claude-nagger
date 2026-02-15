@@ -169,3 +169,8 @@ related_rules:
 # デバッグ設定
 debug:
   enable_logging: false
+
+transcript_storage:
+  enabled: true
+  mode: "indexed"
+  retention_days: 30
