@@ -156,7 +156,7 @@
     "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/statusline.js"
   },
   "enabledPlugins": {
-    "ticket-tasuki@workspace-plugins": true
+    "ticket-tasuki@ticket-tasuki": true
   },
   "extraKnownMarketplaces": {
     "ticket-tasuki": {
