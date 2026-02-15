@@ -36,11 +36,11 @@ class TestSubagentHistoryTableCreation:
         assert "idx_subagent_history_session" in indexes
         assert "idx_subagent_history_role" in indexes
 
-    def test_schema_version_is_4(self, db):
-        """スキーマバージョンが4"""
+    def test_schema_version_is_5(self, db):
+        """スキーマバージョンが5"""
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
         version = cursor.fetchone()[0]
-        assert version == 4
+        assert version == 5
 
 
 class TestUnregisterHistoryCopy:
@@ -472,9 +472,9 @@ class TestSchemaV4Migration:
         )
         assert cursor.fetchone() is not None
 
-        # バージョン4が記録されている
+        # バージョン5が記録されている（v4マイグレーション後にv5も実行）
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
-        assert cursor.fetchone()[0] == 4
+        assert cursor.fetchone()[0] == 5
 
         db.close()
 

@@ -130,6 +130,12 @@ sendmessage_guard:
   #   違反: {violation}
   #   パターン: {pattern}, 最大文字数: {max_length}
 
+# トランスクリプト保存設定（raw modeトランスクリプトDB保存）
+transcript_storage:
+  enabled: false
+  mode: "raw"
+  retention_days: 30
+
 # コンテキスト管理設定
 context_management:
   reminder_thresholds:

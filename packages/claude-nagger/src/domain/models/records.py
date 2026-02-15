@@ -45,3 +45,15 @@ class HookLogRecord:
     result: Optional[str]
     details: Optional[str]
     duration_ms: Optional[int]
+
+
+@dataclass
+class TranscriptLineRecord:
+    """トランスクリプト行レコード"""
+
+    id: int
+    session_id: str
+    line_number: int
+    line_type: str          # "user" | "assistant" | "progress" 等
+    raw_json: str           # 生JSON文字列（raw mode）
+    created_at: str

@@ -87,13 +87,25 @@ CREATE TABLE IF NOT EXISTS subagent_history (
 
 CREATE INDEX IF NOT EXISTS idx_subagent_history_session ON subagent_history(session_id);
 CREATE INDEX IF NOT EXISTS idx_subagent_history_role ON subagent_history(role);
+
+CREATE TABLE IF NOT EXISTS transcript_lines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL,
+    line_number INTEGER NOT NULL,
+    line_type TEXT,
+    raw_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_transcript_lines_session ON transcript_lines(session_id);
+CREATE INDEX IF NOT EXISTS idx_transcript_lines_type ON transcript_lines(session_id, line_type);
 """
 
 
 class NaggerStateDB:
     """状態管理SQLiteデータベース"""
 
-    SCHEMA_VERSION = 4
+    SCHEMA_VERSION = 5
 
     def __init__(self, db_path: Path):
         """初期化
@@ -258,6 +270,28 @@ class NaggerStateDB:
             self._conn.execute(
                 "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (4, now),
+            )
+            self._conn.commit()
+
+        if from_ver < 5 <= to_ver:
+            # v4 -> v5: transcript_linesテーブル新設（issue_6174）
+            # raw modeトランスクリプトDB保存
+            self._conn.executescript("""
+                CREATE TABLE IF NOT EXISTS transcript_lines (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT NOT NULL,
+                    line_number INTEGER NOT NULL,
+                    line_type TEXT,
+                    raw_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS idx_transcript_lines_session ON transcript_lines(session_id);
+                CREATE INDEX IF NOT EXISTS idx_transcript_lines_type ON transcript_lines(session_id, line_type);
+            """)
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute(
+                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (5, now),
             )
             self._conn.commit()
 

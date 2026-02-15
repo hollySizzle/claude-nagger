@@ -149,6 +149,12 @@ sendmessage_guard:
     - shutdown_response
     - plan_approval_response
 
+# トランスクリプト保存設定（raw modeトランスクリプトDB保存）
+transcript_storage:
+  enabled: false
+  mode: "raw"
+  retention_days: 30
+
 # コンテキスト管理設定
 context_management:
   reminder_thresholds:
@@ -357,6 +363,15 @@ suggested_rules/
                 {
                     "type": "command",
                     "command": "claude-nagger hook suggest-rules-trigger"
+                }
+            ]
+        },
+        {
+            "matcher": "",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook transcript-storage"
                 }
             ]
         }

@@ -105,6 +105,12 @@ def main():
         help="セッション終了時の規約提案トリガー（Stop hook）"
     )
 
+    # hook transcript-storage
+    hook_subparsers.add_parser(
+        "transcript-storage",
+        help="セッション終了時のトランスクリプトDB保存（Stop hook）"
+    )
+
     # hook subagent-event
     hook_subparsers.add_parser(
         "subagent-event",
@@ -234,6 +240,11 @@ def main():
         if args.hook_name == "suggest-rules-trigger":
             from domain.hooks.suggest_rules_trigger import SuggestRulesTrigger
             hook = SuggestRulesTrigger()
+            return hook.run()
+
+        if args.hook_name == "transcript-storage":
+            from domain.hooks.transcript_storage_hook import TranscriptStorageHook
+            hook = TranscriptStorageHook()
             return hook.run()
 
         if args.hook_name == "subagent-event":
