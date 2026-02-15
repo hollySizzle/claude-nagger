@@ -37,6 +37,8 @@ def _strip_numeric_suffix(name: str) -> str:
     """末尾の-数字サフィックスを除去してベースロール名を返す。
     例: 'tester-2' → 'tester', 'coder' → 'coder'
     """
+    if not isinstance(name, str):
+        return name
     return re.sub(r'-\d+$', '', name)
 
 
