@@ -28,7 +28,8 @@ class SubagentHistoryRepository:
         cursor = self._db.conn.execute(
             """
             SELECT id, agent_id, session_id, agent_type, role, role_source,
-                   leader_transcript_path, started_at, stopped_at, issue_id
+                   leader_transcript_path, started_at, stopped_at, issue_id,
+                   agent_transcript_path
             FROM subagent_history
             WHERE session_id = ?
             ORDER BY started_at ASC
@@ -49,7 +50,8 @@ class SubagentHistoryRepository:
         cursor = self._db.conn.execute(
             """
             SELECT id, agent_id, session_id, agent_type, role, role_source,
-                   leader_transcript_path, started_at, stopped_at, issue_id
+                   leader_transcript_path, started_at, stopped_at, issue_id,
+                   agent_transcript_path
             FROM subagent_history
             WHERE agent_id = ?
             ORDER BY started_at ASC
@@ -183,4 +185,5 @@ class SubagentHistoryRepository:
             "started_at": row[7],
             "stopped_at": row[8],
             "issue_id": row[9],
+            "agent_transcript_path": row[10] if len(row) > 10 else None,
         }

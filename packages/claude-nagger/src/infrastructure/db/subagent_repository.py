@@ -50,7 +50,7 @@ class SubagentRepository:
         )
         self._db.conn.commit()
 
-    def unregister(self, agent_id: str) -> None:
+    def unregister(self, agent_id: str, agent_transcript_path: str = None) -> None:
         """SubagentStop時。subagent_historyにコピー後、DELETE FROM subagents + task_spawns
 
         DELETE前に対象レコードをSELECTし、subagent_historyテーブルにINSERTして
@@ -58,6 +58,7 @@ class SubagentRepository:
 
         Args:
             agent_id: エージェントID
+            agent_transcript_path: subagentのトランスクリプトパス（issue_6184）
         """
         # DELETE前に履歴をsubagent_historyへコピー
         cursor = self._db.conn.execute(
@@ -76,10 +77,12 @@ class SubagentRepository:
                 """
                 INSERT INTO subagent_history
                     (agent_id, session_id, agent_type, role, role_source,
-                     leader_transcript_path, started_at, stopped_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     leader_transcript_path, started_at, stopped_at,
+                     agent_transcript_path)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (row[0], row[1], row[2], row[3], row[4], row[5], row[6], now),
+                (row[0], row[1], row[2], row[3], row[4], row[5], row[6], now,
+                 agent_transcript_path),
             )
 
         self._db.conn.execute(

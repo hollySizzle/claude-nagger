@@ -82,7 +82,8 @@ CREATE TABLE IF NOT EXISTS subagent_history (
     leader_transcript_path  TEXT,
     started_at              TEXT NOT NULL,
     stopped_at              TEXT,
-    issue_id                TEXT
+    issue_id                TEXT,
+    agent_transcript_path   TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_subagent_history_session ON subagent_history(session_id);
@@ -112,7 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_transcript_lines_timestamp ON transcript_lines(se
 class NaggerStateDB:
     """状態管理SQLiteデータベース"""
 
-    SCHEMA_VERSION = 6
+    SCHEMA_VERSION = 7
 
     def __init__(self, db_path: Path):
         """初期化
@@ -324,6 +325,19 @@ class NaggerStateDB:
             self._conn.execute(
                 "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (6, now),
+            )
+            self._conn.commit()
+
+        if from_ver < 7 <= to_ver:
+            # v6 -> v7: subagent_historyにagent_transcript_pathカラム追加（issue_6184）
+            # SubagentStop時のsubagentトランスクリプトパスを履歴に保存
+            self._conn.execute(
+                "ALTER TABLE subagent_history ADD COLUMN agent_transcript_path TEXT"
+            )
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute(
+                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (7, now),
             )
             self._conn.commit()
 

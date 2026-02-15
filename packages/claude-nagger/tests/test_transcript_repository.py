@@ -164,14 +164,14 @@ class TestSchemaMigrationV6:
     """v5→v6マイグレーション・スキーマテスト"""
 
     def test_schema_version_is_6(self, tmp_path):
-        """新規DBのスキーマバージョンが6"""
+        """新規DBのスキーマバージョンが7"""
         db_path = tmp_path / ".claude-nagger" / "state.db"
         db = NaggerStateDB(db_path)
         db.connect()
 
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
         row = cursor.fetchone()
-        assert row[0] == 6
+        assert row[0] == 7
 
         db.close()
 

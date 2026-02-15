@@ -648,7 +648,9 @@ class TestSubagentEventHook:
                 exit_code = self._run_main_with_stdin(input_data)
 
         assert exit_code == 0
-        mock_subagent_repo.unregister.assert_called_once_with("agent-abc")
+        mock_subagent_repo.unregister.assert_called_once_with(
+            "agent-abc", agent_transcript_path=None
+        )
 
 
 # ============================================================
