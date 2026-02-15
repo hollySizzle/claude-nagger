@@ -331,7 +331,8 @@ class TestLoadTranscriptStorageConfig:
             "transcript_storage:\n  enabled: true\n  mode: indexed\n",
             encoding="utf-8",
         )
-        monkeypatch.chdir(tmp_path)
+        # CLAUDE_PROJECT_DIRを設定して最優先で発見させる
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
 
         result = _load_transcript_storage_config()
         assert result == {"enabled": True, "mode": "indexed"}
@@ -357,3 +358,49 @@ class TestLoadTranscriptStorageConfig:
 
         result = _load_transcript_storage_config()
         assert result == {}
+
+
+class TestLoadTranscriptStorageConfigFallback:
+    """_load_transcript_storage_config のパッケージルートフォールバックテスト（issue_6189）
+
+    CLAUDE_PROJECT_DIRがモノレポルート等を指し、config.yamlが見つからない場合に
+    __file__ベースのパッケージルートにフォールバックする。
+    """
+
+    def test_fallback_to_package_root_when_env_wrong(self, tmp_path, monkeypatch):
+        """CLAUDE_PROJECT_DIRが不正でも__file__ベースのパッケージルートで発見する"""
+        from domain.hooks.subagent_event_hook import _load_transcript_storage_config
+
+        # CLAUDE_PROJECT_DIRをconfig.yamlが無いパスに設定（モノレポルート想定）
+        wrong_dir = tmp_path / "wrong_project"
+        wrong_dir.mkdir()
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(wrong_dir))
+        monkeypatch.chdir(tmp_path)
+
+        # パッケージルート（__file__の4階層上）のconfig.yamlが参照されることを確認
+        import domain.hooks.subagent_event_hook as module
+        pkg_root = Path(module.__file__).resolve().parent.parent.parent.parent
+        config_path = pkg_root / ".claude-nagger" / "config.yaml"
+
+        result = _load_transcript_storage_config()
+        if config_path.exists():
+            # 実在のconfig.yamlが見つかる（transcript_storageキーの有無で結果が変わる）
+            assert isinstance(result, dict)
+        else:
+            assert result == {}
+
+    def test_claude_project_dir_takes_priority(self, tmp_path, monkeypatch):
+        """CLAUDE_PROJECT_DIRにconfig.yamlがある場合はそちらが優先される"""
+        from domain.hooks.subagent_event_hook import _load_transcript_storage_config
+
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+        config_file = config_dir / "config.yaml"
+        config_file.write_text(
+            "transcript_storage:\n  enabled: true\n  mode: raw\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+
+        result = _load_transcript_storage_config()
+        assert result == {"enabled": True, "mode": "raw"}

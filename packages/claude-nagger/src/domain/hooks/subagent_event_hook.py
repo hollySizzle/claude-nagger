@@ -24,21 +24,45 @@ _logger = StructuredLogger(name="SubagentEventHook", log_dir=DEFAULT_LOG_DIR)
 
 
 def _load_transcript_storage_config() -> dict:
-    """config.yamlからtranscript_storage設定を読み込む"""
+    """config.yamlからtranscript_storage設定を読み込む
+
+    探索順序:
+    1. CLAUDE_PROJECT_DIR環境変数
+    2. パッケージルート（__file__から算出）
+    3. Path.cwd()
+    """
+    candidates = []
+
+    # 1. CLAUDE_PROJECT_DIR
     project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
     if project_dir:
-        config_path = Path(project_dir) / ".claude-nagger" / "config.yaml"
-    else:
-        config_path = Path.cwd() / ".claude-nagger" / "config.yaml"
-    if not config_path.exists():
-        return {}
+        candidates.append(Path(project_dir) / ".claude-nagger" / "config.yaml")
+
+    # 2. パッケージルート（src/domain/hooks/ → 3階層上がpackage root）
+    package_root = Path(__file__).resolve().parent.parent.parent.parent
+    candidates.append(package_root / ".claude-nagger" / "config.yaml")
+
+    # 3. cwd
     try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            data = yaml.safe_load(f)
-        return data.get('transcript_storage', {}) if data else {}
-    except Exception as e:
-        _logger.warning(f"設定ファイル読み込み失敗: {e}")
-        return {}
+        cwd_candidate = Path.cwd() / ".claude-nagger" / "config.yaml"
+        if cwd_candidate not in candidates:
+            candidates.append(cwd_candidate)
+    except OSError:
+        pass
+
+    for config_path in candidates:
+        if config_path.exists():
+            _logger.info(f"config.yaml発見: {config_path}")
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    data = yaml.safe_load(f)
+                return data.get('transcript_storage', {}) if data else {}
+            except Exception as e:
+                _logger.warning(f"設定ファイル読み込み失敗: {e}")
+                return {}
+
+    _logger.info(f"config.yaml未発見: 探索パス={[str(c) for c in candidates]}")
+    return {}
 
 
 def _launch_subagent_transcript_storage(
