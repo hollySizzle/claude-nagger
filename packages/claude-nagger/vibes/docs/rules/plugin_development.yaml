@@ -22,6 +22,18 @@ commands:
   test: "cd .claude/plugins/{plugin-name} && git status"
   commit: "cd .claude/plugins/{plugin-name} && git add -A && git commit -m '[coder] issue_{id}: 変更内容'"
 
+workflow:
+  description: "ticket-tasuki開発ワークフロー"
+  steps:
+    - "agents/*.mdまたはプラグインファイルを編集"
+    - ".claude-plugin/plugin.json のバージョンをバンプ（必須）"
+    - "git commit & push（pushまで必須。autoUpdate反映のため）"
+    - "Claude Codeセッション再起動で反映"
+  notes:
+    - "バージョンバンプなしのファイル追加はキャッシュに反映されない"
+    - "マーケットプレース: ticket-tasuki@ticket-tasuki（GitHub autoUpdate:true）"
+    - "pushしないとGitHubマーケットプレースに反映されない"
+
 related_files:
   file_conventions: "@packages/claude-nagger/.claude-nagger/file_conventions.yaml"
   plugin_json: ".claude/plugins/{plugin-name}/.claude-plugin/plugin.json"

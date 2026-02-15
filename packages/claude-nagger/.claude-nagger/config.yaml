@@ -162,6 +162,10 @@ context_management:
     medium_warning: 60000
     critical_warning: 100000
 
+# 関連規約ファイル
+related_rules:
+  plugin_development: "@packages/claude-nagger/vibes/docs/rules/plugin_development.yaml"
+
 # デバッグ設定
 debug:
   enable_logging: false
