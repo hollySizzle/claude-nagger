@@ -19,6 +19,7 @@ from src.domain.hooks.session_startup_hook import (
     SessionStartupHook,
     _deep_copy_dict,
     _deep_merge,
+    _strip_numeric_suffix,
 )
 from src.domain.hooks.subagent_event_hook import main as subagent_event_main
 
@@ -1182,3 +1183,154 @@ class TestShouldProcessRetryMatch:
 
         assert result is True
         mock_subagent_repo.retry_match_from_agent_progress.assert_not_called()
+
+
+class TestStripNumericSuffix:
+    """_strip_numeric_suffix関数の単体テスト"""
+
+    def test_strip_single_digit(self):
+        """末尾-1桁数字を除去"""
+        assert _strip_numeric_suffix("tester-2") == "tester"
+
+    def test_strip_different_digit(self):
+        """末尾-異なる1桁数字を除去"""
+        assert _strip_numeric_suffix("scribe-3") == "scribe"
+
+    def test_no_suffix(self):
+        """サフィックスなしはそのまま返す"""
+        assert _strip_numeric_suffix("coder") == "coder"
+
+    def test_non_numeric_suffix_unchanged(self):
+        """末尾が数字でないハイフン付き名前は変化なし"""
+        assert _strip_numeric_suffix("tech-lead") == "tech-lead"
+
+    def test_strip_multi_digit(self):
+        """末尾-2桁数字を除去"""
+        assert _strip_numeric_suffix("agent-10") == "agent"
+
+    def test_empty_string(self):
+        """空文字列はそのまま返す"""
+        assert _strip_numeric_suffix("") == ""
+
+
+class TestResolveSubagentConfigSuffixFallback:
+    """_resolve_subagent_configのsuffix除去フォールバックテスト"""
+
+    BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
+
+    def _make_hook(self, config=None):
+        """テスト用hookインスタンス生成"""
+        config = config if config is not None else self.BASE_CONFIG
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            return SessionStartupHook()
+
+    def test_exact_match_priority(self):
+        """完全一致がsuffix除去より優先される"""
+        # config.yamlにtesterがあるので、tester-2用の独自設定を追加
+        config = _load_real_config()
+        config.setdefault("overrides", {}).setdefault("subagent_types", {})
+        config["overrides"]["subagent_types"]["tester-2"] = {
+            "messages": {"first_time": {"title": "tester-2専用規約"}}
+        }
+        hook = self._make_hook(config)
+        resolved = hook._resolve_subagent_config("general-purpose", role="tester-2")
+        # tester-2の完全一致設定が使われる
+        assert resolved["messages"]["first_time"]["title"] == "tester-2専用規約"
+
+    def test_suffix_fallback_role(self):
+        """suffix除去でベースロール設定にフォールバック"""
+        hook = self._make_hook()
+        # config.yamlにtesterはあるがtester-2はない → testerにフォールバック
+        resolved = hook._resolve_subagent_config("general-purpose", role="tester-2")
+        assert resolved["messages"]["first_time"]["title"] == "tester subagent規約"
+
+    def test_existing_role_no_suffix(self):
+        """既存のsuffix無しロール名は変化なく動作（回帰テスト）"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("general-purpose", role="coder")
+        assert resolved["messages"]["first_time"]["title"] == "coder subagent規約"
+
+    def test_existing_role_tester(self):
+        """testerロールの既存動作確認（回帰テスト）"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("general-purpose", role="tester")
+        assert resolved["messages"]["first_time"]["title"] == "tester subagent規約"
+
+    def test_colon_separator_still_works(self):
+        """':'区切りフォールバックが引き続き動作"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("ticket-tasuki:coder")
+        assert resolved["messages"]["first_time"]["title"] == "coder subagent規約"
+
+    def test_agent_type_suffix_fallback(self):
+        """agent_typeにsuffix付きの場合もフォールバック"""
+        hook = self._make_hook()
+        # roleがNoneでagent_type="tester-2" → testerにフォールバック
+        resolved = hook._resolve_subagent_config("tester-2", role=None)
+        assert resolved["messages"]["first_time"]["title"] == "tester subagent規約"
+
+    def test_agent_type_no_suffix_still_works(self):
+        """agent_typeにsuffixなしの通常動作（回帰テスト）"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("tester")
+        assert resolved["messages"]["first_time"]["title"] == "tester subagent規約"
+
+    def test_no_match_returns_default(self):
+        """どのルールにもマッチしない場合はsubagent_defaultにフォールバック"""
+        hook = self._make_hook()
+        resolved = hook._resolve_subagent_config("unknown-agent", role="nonexistent-5")
+        # subagent_defaultの設定が使われる
+        assert resolved["messages"]["first_time"]["title"] == "subagent規約"
+        assert "作業完了後に結果を報告すること" in resolved["messages"]["first_time"]["main_text"]
+
+
+class TestParseRoleFromTranscriptHyphen:
+    """_parse_role_from_transcriptのハイフン対応テスト"""
+
+    BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
+
+    def _make_hook(self, config=None):
+        """テスト用hookインスタンス生成"""
+        config = config if config is not None else self.BASE_CONFIG
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            return SessionStartupHook()
+
+    def _write_transcript(self, tmp_path, lines):
+        """JSONL形式のトランスクリプトファイルを作成"""
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w', encoding='utf-8') as f:
+            for entry in lines:
+                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+        return str(transcript)
+
+    def test_role_with_numeric_suffix(self, tmp_path):
+        """[ROLE:coder-2]がマッチすること"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": "[ROLE:coder-2]\nPlease fix the bug."}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "coder-2"
+
+    def test_role_without_suffix_still_works(self, tmp_path):
+        """[ROLE:coder]が引き続きマッチすること（回帰テスト）"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": "[ROLE:coder]\nPlease fix the bug."}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "coder"
+
+    def test_role_with_hyphen_non_numeric(self, tmp_path):
+        """[ROLE:tech-lead]がマッチすること"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": "[ROLE:tech-lead]\nReview this code."}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "tech-lead"
+
+    def test_role_tester_with_suffix(self, tmp_path):
+        """[ROLE:tester-3]がマッチすること"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "user", "message": {"content": "[ROLE:tester-3]\nRun tests."}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "tester-3"
