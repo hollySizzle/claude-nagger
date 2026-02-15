@@ -246,11 +246,6 @@ def main():
             hook = SendMessageGuardHook()
             return hook.run()
 
-        if args.hook_name == "leader-constraint":
-            from domain.hooks.leader_constraint_hook import LeaderConstraintHook
-            hook = LeaderConstraintHook()
-            return hook.run()
-
         # hook名未指定時はhookヘルプ表示
         hook_parser.print_help()
         return 0

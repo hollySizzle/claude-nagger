@@ -130,29 +130,6 @@ sendmessage_guard:
   #   違反: {violation}
   #   パターン: {pattern}, 最大文字数: {max_length}
 
-# leader行動制約設定（subagent存在時のleader直接作業ブロック）
-# subagentがアクティブな場合、leaderのソースコード直接操作をブロック
-# leader_constraint:
-#   enabled: true
-#   blocked_tools:
-#     - Read
-#     - Edit
-#     - Write
-#     - Grep
-#     - Glob
-#   source_paths:
-#     - "src/"
-#     - "tests/"
-#   exempt_patterns:
-#     - "*.md"
-#     - "config.yaml"
-#     - ".claude/"
-#     - "docs/"
-#     - "settings.json"
-#   block_message: |
-#     ソースコード操作はsubagentに委譲してください。
-#     調査→researcher、実装→coder、テスト→tester
-
 # コンテキスト管理設定
 context_management:
   reminder_thresholds:
