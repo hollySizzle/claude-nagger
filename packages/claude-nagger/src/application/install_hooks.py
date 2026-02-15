@@ -152,7 +152,8 @@ sendmessage_guard:
 # トランスクリプト保存設定（raw modeトランスクリプトDB保存）
 transcript_storage:
   enabled: false
-  mode: "raw"
+  # mode: raw=生データ格納 / indexed=インデックス付き / structured=構造化格納
+  mode: "structured"
   retention_days: 30
 
 # コンテキスト管理設定
@@ -282,51 +283,6 @@ suggested_rules/
                 }
             ]
         },
-        {
-            "matcher": "Read",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "claude-nagger hook leader-constraint"
-                }
-            ]
-        },
-        {
-            "matcher": "Edit",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "claude-nagger hook leader-constraint"
-                }
-            ]
-        },
-        {
-            "matcher": "Write",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "claude-nagger hook leader-constraint"
-                }
-            ]
-        },
-        {
-            "matcher": "Grep",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "claude-nagger hook leader-constraint"
-                }
-            ]
-        },
-        {
-            "matcher": "Glob",
-            "hooks": [
-                {
-                    "type": "command",
-                    "command": "claude-nagger hook leader-constraint"
-                }
-            ]
-        }
     ]
 
     # デフォルトのNotificationフック設定

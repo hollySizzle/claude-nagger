@@ -88,7 +88,6 @@ claude-nagger match-test --pattern "**/*.py" --file "src/main.py"
 | `suggest-rules-trigger` | Stop | セッション終了時の規約提案 |
 | `subagent-event` | PreToolUse/PostToolUse | サブエージェントStart/Stopイベント管理 |
 | `sendmessage-guard` | PreToolUse | SendMessageガード（Redmine基盤通信強制） |
-| `leader-constraint` | PreToolUse | leader行動制約（subagent存在時の直接作業ブロック） |
 | `task-spawn-guard` | PreToolUse | Task spawnガード |
 
 ## 設定ファイル

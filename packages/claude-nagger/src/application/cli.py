@@ -123,12 +123,6 @@ def main():
         help="SendMessageガードフック（Redmine基盤通信強制）"
     )
 
-    # hook leader-constraint
-    hook_subparsers.add_parser(
-        "leader-constraint",
-        help="leader行動制約フック（subagent存在時のleader直接作業ブロック）"
-    )
-
     # notify サブコマンド（Discord通知）
     notify_parser = subparsers.add_parser(
         "notify",
