@@ -75,6 +75,7 @@ class TranscriptStorageHook(BaseHook):
 
         セッション終了をブロックしないよう、子プロセスを分離して起動。
         """
+        mode = self._config.get("mode", "raw")
         python_exec = sys.executable
         module_path = "domain.hooks.transcript_storage_hook"
         cmd = [
@@ -82,6 +83,7 @@ class TranscriptStorageHook(BaseHook):
             "--background",
             "--session-id", session_id,
             "--transcript-path", transcript_path,
+            "--mode", mode,
         ]
         env = os.environ.copy()
         # PYTHONPATHにsrcディレクトリを追加
@@ -102,7 +104,7 @@ class TranscriptStorageHook(BaseHook):
             self.log_error(f"バックグラウンドプロセス起動失敗: {e}")
 
 
-def run_background_storage(session_id: str, transcript_path: str) -> int:
+def run_background_storage(session_id: str, transcript_path: str, mode: str = "raw") -> int:
     """バックグラウンド処理本体
 
     .jsonlトランスクリプトをSQLiteに格納する。
@@ -110,6 +112,7 @@ def run_background_storage(session_id: str, transcript_path: str) -> int:
     Args:
         session_id: セッションID
         transcript_path: .jsonlファイルパス
+        mode: 格納モード ("raw" | "indexed" | "structured")
 
     Returns:
         0: 成功, 1: エラー
@@ -120,9 +123,9 @@ def run_background_storage(session_id: str, transcript_path: str) -> int:
         db.connect()
 
         try:
-            repo = TranscriptRepository(db)
+            repo = TranscriptRepository(db, mode=mode)
             count = repo.store_transcript(session_id, transcript_path)
-            logger.info(f"トランスクリプト格納完了: {count}行")
+            logger.info(f"トランスクリプト格納完了: {count}行, mode={mode}")
             return 0
         finally:
             db.close()
@@ -149,6 +152,11 @@ def main():
         "--transcript-path", default="",
         help="トランスクリプトファイルパス",
     )
+    parser.add_argument(
+        "--mode", default="raw",
+        choices=["raw", "indexed", "structured"],
+        help="格納モード (raw/indexed/structured)",
+    )
     args = parser.parse_args()
 
     if args.background:
@@ -156,6 +164,7 @@ def main():
         sys.exit(run_background_storage(
             session_id=args.session_id,
             transcript_path=args.transcript_path,
+            mode=args.mode,
         ))
     else:
         # 通常のStop hookモード

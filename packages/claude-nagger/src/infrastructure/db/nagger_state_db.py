@@ -94,18 +94,25 @@ CREATE TABLE IF NOT EXISTS transcript_lines (
     line_number INTEGER NOT NULL,
     line_type TEXT,
     raw_json TEXT NOT NULL,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    timestamp TEXT,
+    content_summary TEXT,
+    tool_name TEXT,
+    token_count INTEGER,
+    model TEXT,
+    uuid TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_transcript_lines_session ON transcript_lines(session_id);
 CREATE INDEX IF NOT EXISTS idx_transcript_lines_type ON transcript_lines(session_id, line_type);
+CREATE INDEX IF NOT EXISTS idx_transcript_lines_timestamp ON transcript_lines(session_id, timestamp);
 """
 
 
 class NaggerStateDB:
     """状態管理SQLiteデータベース"""
 
-    SCHEMA_VERSION = 5
+    SCHEMA_VERSION = 6
 
     def __init__(self, db_path: Path):
         """初期化
@@ -292,6 +299,31 @@ class NaggerStateDB:
             self._conn.execute(
                 "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (5, now),
+            )
+            self._conn.commit()
+
+        if from_ver < 6 <= to_ver:
+            # v5 -> v6: transcript_linesにメタデータカラム追加（issue_6175）
+            # indexed/structured modeでのメタデータインデックス・カラム分解
+            for col_def in [
+                "timestamp TEXT",
+                "content_summary TEXT",
+                "tool_name TEXT",
+                "token_count INTEGER",
+                "model TEXT",
+                "uuid TEXT",
+            ]:
+                self._conn.execute(
+                    f"ALTER TABLE transcript_lines ADD COLUMN {col_def}"
+                )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_transcript_lines_timestamp "
+                "ON transcript_lines(session_id, timestamp)"
+            )
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute(
+                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (6, now),
             )
             self._conn.commit()
 

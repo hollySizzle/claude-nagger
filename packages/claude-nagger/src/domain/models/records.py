@@ -57,3 +57,9 @@ class TranscriptLineRecord:
     line_type: str          # "user" | "assistant" | "progress" 等
     raw_json: str           # 生JSON文字列（raw mode）
     created_at: str
+    timestamp: Optional[str] = None        # 元データのタイムスタンプ
+    content_summary: Optional[str] = None  # 内容サマリ（先頭100文字）
+    tool_name: Optional[str] = None        # ツール名（assistant: tool_use, progress: hookName）
+    token_count: Optional[int] = None      # トークン数（input + output）
+    model: Optional[str] = None            # モデル名
+    uuid: Optional[str] = None             # 元データのUUID

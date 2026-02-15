@@ -160,48 +160,46 @@ class TestLineTypeExtraction:
 
 # === スキーママイグレーションテスト ===
 
-class TestSchemaMigrationV5:
-    """v4→v5マイグレーションテスト"""
+class TestSchemaMigrationV6:
+    """v5→v6マイグレーション・スキーマテスト"""
 
-    def test_schema_migration_v5(self, tmp_path):
-        """v4→v5マイグレーションでtranscript_linesテーブルが作成される"""
+    def test_schema_version_is_6(self, tmp_path):
+        """新規DBのスキーマバージョンが6"""
         db_path = tmp_path / ".claude-nagger" / "state.db"
         db = NaggerStateDB(db_path)
         db.connect()
 
-        # スキーマバージョン確認
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
         row = cursor.fetchone()
-        assert row[0] == 5
+        assert row[0] == 6
 
-        # transcript_linesテーブルの存在確認
-        cursor = db.conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='transcript_lines'"
-        )
-        assert cursor.fetchone() is not None
+        db.close()
 
-        # テーブルのカラム確認
+    def test_fresh_db_has_metadata_columns(self, db):
+        """新規DBにメタデータカラムが存在する"""
         cursor = db.conn.execute("PRAGMA table_info(transcript_lines)")
         columns = {row[1]: row[2] for row in cursor.fetchall()}
+        # 基本カラム
         assert "id" in columns
         assert "session_id" in columns
         assert "line_number" in columns
         assert "line_type" in columns
         assert "raw_json" in columns
         assert "created_at" in columns
+        # v6追加カラム
+        assert "timestamp" in columns
+        assert "content_summary" in columns
+        assert "tool_name" in columns
+        assert "token_count" in columns
+        assert "model" in columns
+        assert "uuid" in columns
 
-        # インデックス確認
+    def test_timestamp_index_exists(self, db):
+        """timestampインデックスが存在する"""
         cursor = db.conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_transcript_lines_session'"
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_transcript_lines_timestamp'"
         )
         assert cursor.fetchone() is not None
-
-        cursor = db.conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_transcript_lines_type'"
-        )
-        assert cursor.fetchone() is not None
-
-        db.close()
 
     def test_fresh_db_has_transcript_lines(self, db):
         """新規DBにtranscript_linesテーブルが存在する"""
@@ -231,6 +229,227 @@ class TestSchemaMigrationV5:
         assert row[1] == 1
         assert row[2] == "user"
         assert row[3] == '{"type":"user"}'
+
+
+# === indexed modeテスト ===
+
+class TestIndexedMode:
+    """indexed/structuredモードのメタデータ抽出テスト"""
+
+    def test_indexed_mode_extracts_metadata(self, db, tmp_path):
+        """indexedモードでメタデータが格納される"""
+        path = tmp_path / "indexed.jsonl"
+        lines = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": "テストメッセージ",
+                "uuid": "user-uuid-1",
+            },
+            {
+                "type": "assistant",
+                "timestamp": "2026-01-01T00:00:01Z",
+                "message": {
+                    "model": "claude-opus-4-6",
+                    "content": [{"type": "text", "text": "応答テキスト"}],
+                    "usage": {"input_tokens": 200, "output_tokens": 100},
+                },
+                "uuid": "asst-uuid-1",
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+        repo = TranscriptRepository(db, mode="indexed")
+        repo.store_transcript("test-session", str(path))
+
+        results = repo.get_transcript_lines("test-session")
+        assert len(results) == 2
+
+        # user行
+        user_line = results[0]
+        assert user_line.timestamp == "2026-01-01T00:00:00Z"
+        assert user_line.uuid == "user-uuid-1"
+        assert user_line.content_summary == "テストメッセージ"
+        assert user_line.tool_name is None
+        assert user_line.token_count is None
+        assert user_line.model is None
+
+        # assistant行
+        asst_line = results[1]
+        assert asst_line.timestamp == "2026-01-01T00:00:01Z"
+        assert asst_line.uuid == "asst-uuid-1"
+        assert asst_line.content_summary == "応答テキスト"
+        assert asst_line.token_count == 300  # 200 + 100
+        assert asst_line.model == "claude-opus-4-6"
+
+    def test_raw_mode_no_metadata(self, db, tmp_path):
+        """rawモードでメタデータカラムがNULL"""
+        path = tmp_path / "raw.jsonl"
+        lines = [
+            {
+                "type": "user",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "message": "テスト",
+                "uuid": "user-uuid-1",
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+        repo = TranscriptRepository(db, mode="raw")
+        repo.store_transcript("test-session", str(path))
+
+        results = repo.get_transcript_lines("test-session")
+        assert len(results) == 1
+
+        line = results[0]
+        assert line.timestamp is None
+        assert line.content_summary is None
+        assert line.tool_name is None
+        assert line.token_count is None
+        assert line.model is None
+        assert line.uuid is None
+
+    def test_content_summary_truncation(self, db, tmp_path):
+        """100文字で切り詰め"""
+        long_text = "あ" * 200
+        path = tmp_path / "long.jsonl"
+        lines = [
+            {
+                "type": "user",
+                "message": long_text,
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+        repo = TranscriptRepository(db, mode="indexed")
+        repo.store_transcript("test-session", str(path))
+
+        results = repo.get_transcript_lines("test-session")
+        assert len(results) == 1
+        assert len(results[0].content_summary) == 100
+
+    def test_tool_name_extraction(self, db, tmp_path):
+        """tool_use時のツール名抽出"""
+        path = tmp_path / "tools.jsonl"
+        lines = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "ls"}},
+                        {"type": "tool_use", "name": "Read", "input": {"path": "/tmp"}},
+                    ],
+                    "usage": {"input_tokens": 50, "output_tokens": 10},
+                },
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+        repo = TranscriptRepository(db, mode="indexed")
+        repo.store_transcript("test-session", str(path))
+
+        results = repo.get_transcript_lines("test-session")
+        assert len(results) == 1
+        assert results[0].tool_name == "Bash,Read"
+        # content_summaryはtool_useの場合ツール名
+        assert results[0].content_summary == "Bash"
+
+    def test_token_count_extraction(self, db, tmp_path):
+        """トークン数計算"""
+        path = tmp_path / "tokens.jsonl"
+        lines = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [{"type": "text", "text": "hello"}],
+                    "usage": {"input_tokens": 500, "output_tokens": 250},
+                },
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+        repo = TranscriptRepository(db, mode="indexed")
+        repo.store_transcript("test-session", str(path))
+
+        results = repo.get_transcript_lines("test-session")
+        assert len(results) == 1
+        assert results[0].token_count == 750
+
+    def test_metadata_extraction_with_malformed_json(self, db, tmp_path):
+        """不正JSONでも安全にメタデータ抽出"""
+        path = tmp_path / "malformed.jsonl"
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("not valid json\n")
+            f.write(json.dumps({"type": "user", "message": "正常行"}) + "\n")
+
+        repo = TranscriptRepository(db, mode="indexed")
+        count = repo.store_transcript("test-session", str(path))
+        assert count == 2
+
+        results = repo.get_transcript_lines("test-session")
+        assert len(results) == 2
+
+        # 不正JSON行: メタデータはすべてNone
+        assert results[0].line_type is None
+        assert results[0].timestamp is None
+        assert results[0].content_summary is None
+
+        # 正常行: メタデータ抽出OK
+        assert results[1].line_type == "user"
+        assert results[1].content_summary == "正常行"
+
+    def test_progress_hook_name_extraction(self, db, tmp_path):
+        """progress行のhookName抽出"""
+        path = tmp_path / "progress.jsonl"
+        lines = [
+            {
+                "type": "progress",
+                "timestamp": "2026-01-01T00:00:00Z",
+                "data": {"type": "hook_progress", "hookName": "PreToolUse:Bash"},
+                "uuid": "prog-uuid-1",
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+        repo = TranscriptRepository(db, mode="indexed")
+        repo.store_transcript("test-session", str(path))
+
+        results = repo.get_transcript_lines("test-session")
+        assert len(results) == 1
+        assert results[0].tool_name == "PreToolUse:Bash"
+        assert results[0].timestamp == "2026-01-01T00:00:00Z"
+        assert results[0].uuid == "prog-uuid-1"
+
+    def test_user_message_dict_content(self, db, tmp_path):
+        """user行で.messageがdictの場合のcontent_summary抽出"""
+        path = tmp_path / "user_dict.jsonl"
+        lines = [
+            {
+                "type": "user",
+                "message": {"role": "user", "content": "dictの中のcontent"},
+            },
+        ]
+        with open(path, "w", encoding="utf-8") as f:
+            for line in lines:
+                f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+        repo = TranscriptRepository(db, mode="indexed")
+        repo.store_transcript("test-session", str(path))
+
+        results = repo.get_transcript_lines("test-session")
+        assert results[0].content_summary == "dictの中のcontent"
 
 
 # === delete_old_transcriptsテスト ===

@@ -220,5 +220,6 @@ class TestMain:
             mock_bg.assert_called_once_with(
                 session_id="sess-123",
                 transcript_path="/path/to/transcript.jsonl",
+                mode="raw",
             )
             assert exc_info.value.code == 0
