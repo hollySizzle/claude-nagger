@@ -17,7 +17,7 @@ from infrastructure.config.config_manager import ConfigManager
 
 # デフォルト設定
 DEFAULT_PATTERN = r"issue_\d+"
-DEFAULT_MAX_CONTENT_LENGTH = 100
+DEFAULT_MAX_CONTENT_LENGTH = 30
 DEFAULT_EXEMPT_TYPES = [
     "shutdown_request",
     "shutdown_response",
