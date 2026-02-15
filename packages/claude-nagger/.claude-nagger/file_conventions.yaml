@@ -71,6 +71,18 @@ rules:
       - プラグインディレクトリ内でcommit（親リポジトリではなく）
       - コミットメッセージにissue_{id}を含める
 
+  - name: "プラグインCLAUDE.md利用者向け制約"
+    patterns:
+      - "**/.claude/plugins/**/CLAUDE.md"
+    severity: "warn"
+    token_threshold: 0
+    message: |
+      プラグインのCLAUDE.mdはインストール先プロジェクトのagent/leaderコンテキストに注入されます。
+      以下を遵守してください:
+      - 利用者向け情報のみ記載（subagent一覧・利用規約等）
+      - 開発者向け情報（開発ワークフロー・コミット手順等）は記載禁止
+      - 開発者向け規約はvibes/docs/rules/plugin_development.yamlに集約すること
+
   - name: "config.yaml同期規約"
     patterns:
       - "**/.claude-nagger/config.yaml"
