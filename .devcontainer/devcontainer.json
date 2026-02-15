@@ -53,10 +53,12 @@
   "containerEnv": {
     "NODE_OPTIONS": "--max-old-space-size=4096",
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
+    "TMPDIR": "/home/node/.claude/.tmp",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
+  "postCreateCommand": "pip3 install --break-system-packages -e '/workspace/packages/claude-nagger/[dev]'",
   "postStartCommand": "sudo FIREWALL_ALLOWED_DOMAINS=\"$FIREWALL_ALLOWED_DOMAINS\" /usr/local/bin/init-firewall.sh",
   "waitFor": "postStartCommand"
 }

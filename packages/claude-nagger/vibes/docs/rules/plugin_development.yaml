@@ -6,14 +6,17 @@ rules:
     - plugin.jsonのバージョンバンプ: ファイル追加・変更時は必ずplugin.jsonのversionをインクリメントすること（キャッシュ反映に必須）
     - プラグインリポジトリでcommit: プラグインは独立gitリポジトリ。プラグインディレクトリ内でcommit/pushすること
     - コミットメッセージにissue_id: チケット番号(issue_{id})をコミットメッセージに含めること
+    - git push必須: commit後は必ずpushすること（GitHubマーケットプレースautoUpdate反映に必須）
 
   must_not:
     - 親リポジトリでのcommit: プラグインファイルの変更を親リポジトリ(claude-nagger)でcommitしない
     - バージョンバンプなしのファイル追加: キャッシュに反映されず変更が無視される
+    - commitのみでpush忘れ: キャッシュが更新されずhookが反映されない
 
   should:
     - セマンティックバージョニング: パッチ(0.0.x)で小修正、マイナー(0.x.0)で機能追加
     - agent定義変更時はdescription(frontmatter)の整合性確認
+    - Docker環境のTMPDIR: devcontainer.jsonでTMPDIR=/home/node/.claude/.tmpを設定すること（EXDEV回避）
 
 commands:
   test: "cd .claude/plugins/{plugin-name} && git status"
