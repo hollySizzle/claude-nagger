@@ -172,5 +172,6 @@ debug:
 
 transcript_storage:
   enabled: true
-  mode: "indexed"
+  # mode: raw=生データ格納 / indexed=インデックス付き / structured=構造化格納
+  mode: "structured"
   retention_days: 30
