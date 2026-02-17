@@ -569,3 +569,270 @@ class TestMcpConventionRule:
             message='Test message'
         )
         assert rule.token_threshold is None
+
+    def test_rule_with_input_match(self):
+        """input_match付きルール作成"""
+        rule = McpConventionRule(
+            name='Test',
+            tool_pattern='mcp__test__.*',
+            severity='warn',
+            message='Test message',
+            input_match={'issue_id': '\\d+'}
+        )
+        assert rule.input_match == {'issue_id': '\\d+'}
+
+    def test_rule_default_input_match(self):
+        """input_matchのデフォルト値はNone"""
+        rule = McpConventionRule(
+            name='Test',
+            tool_pattern='mcp__test__.*',
+            severity='warn',
+            message='Test message'
+        )
+        assert rule.input_match is None
+
+
+class TestMatchesInput:
+    """_matches_inputメソッドのテスト"""
+
+    def _create_matcher(self, rules_data):
+        """ルール付きマッチャーを作成するヘルパー"""
+        tmpdir = tempfile.mkdtemp()
+        path = Path(tmpdir) / 'mcp_conventions.yaml'
+        with open(path, 'w', encoding='utf-8') as f:
+            yaml.dump(rules_data, f)
+        return McpConventionMatcher(config_dir=Path(tmpdir)), path
+
+    def test_exact_match_via_regex(self):
+        """完全一致（regexとしてのexact match）"""
+        matcher, path = self._create_matcher({'rules': []})
+        try:
+            result = matcher._matches_input(
+                {'status_name': 'Closed'},
+                {'status_name': 'Closed'}
+            )
+            assert result is True
+        finally:
+            path.unlink()
+
+    def test_regex_pattern_match(self):
+        """正規表現パターンマッチ"""
+        matcher, path = self._create_matcher({'rules': []})
+        try:
+            result = matcher._matches_input(
+                {'issue_id': '1234'},
+                {'issue_id': '\\d+'}
+            )
+            assert result is True
+        finally:
+            path.unlink()
+
+    def test_regex_pattern_no_match(self):
+        """正規表現パターン不一致"""
+        matcher, path = self._create_matcher({'rules': []})
+        try:
+            result = matcher._matches_input(
+                {'issue_id': 'abc'},
+                {'issue_id': '\\d+'}
+            )
+            assert result is False
+        finally:
+            path.unlink()
+
+    def test_multiple_fields_all_match(self):
+        """複数フィールドAND条件: 全マッチ"""
+        matcher, path = self._create_matcher({'rules': []})
+        try:
+            result = matcher._matches_input(
+                {'issue_id': '123', 'status_name': 'Closed'},
+                {'issue_id': '\\d+', 'status_name': 'Closed'}
+            )
+            assert result is True
+        finally:
+            path.unlink()
+
+    def test_multiple_fields_partial_mismatch(self):
+        """複数フィールドAND条件: 一部不一致"""
+        matcher, path = self._create_matcher({'rules': []})
+        try:
+            result = matcher._matches_input(
+                {'issue_id': '123', 'status_name': 'Open'},
+                {'issue_id': '\\d+', 'status_name': 'Closed'}
+            )
+            assert result is False
+        finally:
+            path.unlink()
+
+    def test_missing_key_fails(self):
+        """欠損キー → マッチ失敗"""
+        matcher, path = self._create_matcher({'rules': []})
+        try:
+            result = matcher._matches_input(
+                {'other_field': 'value'},
+                {'issue_id': '\\d+'}
+            )
+            assert result is False
+        finally:
+            path.unlink()
+
+    def test_invalid_regex_fails(self):
+        """無効なregex → マッチ失敗"""
+        matcher, path = self._create_matcher({'rules': []})
+        try:
+            result = matcher._matches_input(
+                {'field': 'value'},
+                {'field': '[invalid'}
+            )
+            assert result is False
+        finally:
+            path.unlink()
+
+    def test_value_converted_to_string(self):
+        """非文字列値はstr()変換される"""
+        matcher, path = self._create_matcher({'rules': []})
+        try:
+            result = matcher._matches_input(
+                {'count': 42},
+                {'count': '42'}
+            )
+            assert result is True
+        finally:
+            path.unlink()
+
+
+class TestCheckToolWithInputMatch:
+    """check_toolのinput_match統合テスト"""
+
+    def _create_matcher(self, rules_data):
+        """ルール付きマッチャーを作成するヘルパー"""
+        tmpdir = tempfile.mkdtemp()
+        path = Path(tmpdir) / 'mcp_conventions.yaml'
+        with open(path, 'w', encoding='utf-8') as f:
+            yaml.dump(rules_data, f)
+        return McpConventionMatcher(config_dir=Path(tmpdir)), path
+
+    def test_input_match_rule_matches(self):
+        """input_matchルールがtool_inputでマッチ"""
+        matcher, path = self._create_matcher({
+            'rules': [
+                {
+                    'name': 'ステータス更新制限',
+                    'tool_pattern': 'mcp__redmine.*update_issue_status.*',
+                    'severity': 'block',
+                    'message': 'ステータス更新確認',
+                    'input_match': {'status_name': 'クローズ'}
+                }
+            ]
+        })
+
+        try:
+            rules = matcher.check_tool(
+                'mcp__redmine__update_issue_status',
+                tool_input={'issue_id': '123', 'status_name': 'クローズ'}
+            )
+            assert len(rules) == 1
+            assert rules[0].name == 'ステータス更新制限'
+        finally:
+            path.unlink()
+
+    def test_input_match_rule_no_match(self):
+        """input_matchルールがtool_inputで不一致"""
+        matcher, path = self._create_matcher({
+            'rules': [
+                {
+                    'name': 'ステータス更新制限',
+                    'tool_pattern': 'mcp__redmine.*update_issue_status.*',
+                    'severity': 'block',
+                    'message': 'ステータス更新確認',
+                    'input_match': {'status_name': 'クローズ'}
+                }
+            ]
+        })
+
+        try:
+            rules = matcher.check_tool(
+                'mcp__redmine__update_issue_status',
+                tool_input={'issue_id': '123', 'status_name': '着手中'}
+            )
+            assert rules == []
+        finally:
+            path.unlink()
+
+    def test_no_input_match_rule_works_normally(self):
+        """input_matchなしルールは従来通り動作"""
+        matcher, path = self._create_matcher({
+            'rules': [
+                {
+                    'name': '通常ルール',
+                    'tool_pattern': 'mcp__test__.*',
+                    'severity': 'warn',
+                    'message': 'テスト'
+                }
+            ]
+        })
+
+        try:
+            rules = matcher.check_tool('mcp__test__action')
+            assert len(rules) == 1
+        finally:
+            path.unlink()
+
+    def test_tool_input_none_skips_input_match_rule(self):
+        """tool_input=Noneの場合、input_matchルールはスキップ"""
+        matcher, path = self._create_matcher({
+            'rules': [
+                {
+                    'name': 'input_matchあり',
+                    'tool_pattern': 'mcp__test__.*',
+                    'severity': 'warn',
+                    'message': 'テスト',
+                    'input_match': {'field': 'value'}
+                }
+            ]
+        })
+
+        try:
+            rules = matcher.check_tool('mcp__test__action', tool_input=None)
+            assert rules == []
+        finally:
+            path.unlink()
+
+    def test_mixed_rules_with_and_without_input_match(self):
+        """input_matchありなし混在: マッチするものだけ返却"""
+        matcher, path = self._create_matcher({
+            'rules': [
+                {
+                    'name': 'input_matchなし',
+                    'tool_pattern': 'mcp__test__.*',
+                    'severity': 'info',
+                    'message': '情報'
+                },
+                {
+                    'name': 'input_matchあり(マッチ)',
+                    'tool_pattern': 'mcp__test__.*',
+                    'severity': 'warn',
+                    'message': '警告',
+                    'input_match': {'mode': 'dangerous'}
+                },
+                {
+                    'name': 'input_matchあり(不一致)',
+                    'tool_pattern': 'mcp__test__.*',
+                    'severity': 'block',
+                    'message': 'ブロック',
+                    'input_match': {'mode': 'safe'}
+                }
+            ]
+        })
+
+        try:
+            rules = matcher.check_tool(
+                'mcp__test__action',
+                tool_input={'mode': 'dangerous'}
+            )
+            assert len(rules) == 2
+            names = [r.name for r in rules]
+            assert 'input_matchなし' in names
+            assert 'input_matchあり(マッチ)' in names
+            assert 'input_matchあり(不一致)' not in names
+        finally:
+            path.unlink()

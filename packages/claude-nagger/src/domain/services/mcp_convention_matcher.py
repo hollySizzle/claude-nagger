@@ -19,6 +19,7 @@ class McpConventionRule:
     severity: str  # 'block', 'warn', 'info'
     message: str
     token_threshold: Optional[int] = None
+    input_match: Optional[Dict[str, str]] = None  # tool_inputフィールド条件（AND評価、re.fullmatch）
 
 
 class McpConventionMatcher(BaseConventionMatcher):
@@ -78,10 +79,11 @@ class McpConventionMatcher(BaseConventionMatcher):
                     tool_pattern=tool_pattern,
                     severity=rule_data.get('severity', 'warn'),
                     message=rule_data['message'],
-                    token_threshold=rule_data.get('token_threshold')
+                    token_threshold=rule_data.get('token_threshold'),
+                    input_match=rule_data.get('input_match')
                 )
                 rules.append(rule)
-                self.logger.debug(f"Loaded MCP rule: {rule.name} with pattern: {rule.tool_pattern}")
+                self.logger.debug(f"Loaded MCP rule: {rule.name} with pattern: {rule.tool_pattern}, input_match: {rule.input_match}")
 
             self.logger.info(f"Successfully loaded {len(rules)} MCP rules")
             return rules
@@ -132,12 +134,41 @@ class McpConventionMatcher(BaseConventionMatcher):
 
         return False
 
-    def check_tool(self, tool_name: str) -> List[McpConventionRule]:
+
+    def _matches_input(self, tool_input: Dict[str, Any], input_match: Dict[str, str]) -> bool:
+        """
+        tool_inputがinput_match条件にマッチするか確認（全キーAND評価）
+
+        Args:
+            tool_input: MCPツールの入力パラメータ
+            input_match: フィールド名→正規表現パターンの辞書
+
+        Returns:
+            全条件マッチする場合True
+        """
+        for key, pattern in input_match.items():
+            if key not in tool_input:
+                self.logger.info(f"  input_match: キー '{key}' がtool_inputに存在しない")
+                return False
+
+            value = str(tool_input[key])
+            try:
+                if not re.fullmatch(pattern, value):
+                    self.logger.info(f"  input_match: '{key}'='{value}' がパターン '{pattern}' に不一致")
+                    return False
+            except re.error as e:
+                self.logger.warning(f"  input_match: 無効な正規表現パターン '{pattern}' for key '{key}' - {e}")
+                return False
+
+        return True
+
+    def check_tool(self, tool_name: str, tool_input: Optional[Dict[str, Any]] = None) -> List[McpConventionRule]:
         """
         MCPツール名に該当する全規約を返す
 
         Args:
             tool_name: チェック対象のMCPツール名
+            tool_input: MCPツールの入力パラメータ（input_match評価用）
 
         Returns:
             該当する規約ルールのリスト（なければ空リスト）
@@ -149,6 +180,16 @@ class McpConventionMatcher(BaseConventionMatcher):
         for rule in self.rules:
             self.logger.info(f"Testing rule: {rule.name}")
             if self.matches_pattern(tool_name, [rule.tool_pattern]):
+                # input_match条件がある場合はtool_inputもチェック
+                if rule.input_match and tool_input is not None:
+                    if not self._matches_input(tool_input, rule.input_match):
+                        self.logger.info(f"  tool_pattern matched but input_match failed: {rule.name}")
+                        continue
+                elif rule.input_match and tool_input is None:
+                    # input_match条件があるがtool_inputがない場合はスキップ
+                    self.logger.info(f"  tool_pattern matched but no tool_input provided for input_match: {rule.name}")
+                    continue
+
                 self.logger.info(f"MCP TOOL MATCHED RULE: {rule.name} (severity: {rule.severity})")
                 matched_rules.append(rule)
 
@@ -157,17 +198,18 @@ class McpConventionMatcher(BaseConventionMatcher):
 
         return matched_rules
 
-    def get_confirmation_message(self, tool_name: str) -> List[Dict[str, Any]]:
+    def get_confirmation_message(self, tool_name: str, tool_input: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
         """
         確認メッセージを生成（全マッチルール分）
 
         Args:
             tool_name: チェック対象のMCPツール名
+            tool_input: MCPツールの入力パラメータ（input_match評価用）
 
         Returns:
             確認メッセージ情報のリスト（なければ空リスト）
         """
-        rules = self.check_tool(tool_name)
+        rules = self.check_tool(tool_name, tool_input)
         if not rules:
             return []
 

@@ -878,3 +878,92 @@ class TestGetMcpThreshold:
         result = hook._get_mcp_threshold(rule_info)
         assert isinstance(result, int)
         assert result > 0
+
+
+class TestMcpInputMatchIntegration:
+    """MCPツールのinput_match統合テスト"""
+
+    @pytest.fixture
+    def hook(self):
+        """テスト用フックインスタンス"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            log_file = Path(f.name)
+
+        hook = ImplementationDesignHook(log_file=log_file, debug=False)
+        yield hook
+        log_file.unlink(missing_ok=True)
+
+    def test_input_match_triggers_block(self, hook):
+        """input_matchマッチ時にblockを返す"""
+        input_data = {
+            'tool_name': 'mcp__redmine__update_status',
+            'tool_input': {
+                'issue_id': '123',
+                'status_name': 'クローズ'
+            },
+            'session_id': 'test_session'
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = [{
+                'rule_name': 'ステータス更新制限',
+                'severity': 'block',
+                'message': 'クローズ操作を確認してください',
+                'tool_name': 'mcp__redmine__update_status',
+                'token_threshold': None
+            }]
+
+            result = hook.process(input_data)
+
+            assert result['decision'] == 'block'
+            assert 'クローズ操作を確認してください' in result['reason']
+            # tool_inputが渡されていることを確認
+            mock_mcp.assert_called_once_with(
+                'mcp__redmine__update_status',
+                {'issue_id': '123', 'status_name': 'クローズ'}
+            )
+
+    def test_input_match_no_match_approves(self, hook):
+        """input_match不一致時にapproveを返す"""
+        input_data = {
+            'tool_name': 'mcp__redmine__update_status',
+            'tool_input': {
+                'issue_id': '123',
+                'status_name': '着手中'
+            },
+            'session_id': 'test_session'
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = []
+
+            result = hook.process(input_data)
+
+            assert result['decision'] == 'approve'
+            assert result['reason'] == 'No MCP rules matched'
+
+    def test_should_process_passes_tool_input(self, hook):
+        """should_processがtool_inputをmcp_matcherに渡す"""
+        input_data = {
+            'tool_name': 'mcp__redmine__update',
+            'tool_input': {
+                'issue_id': '456',
+                'confirmed': 'true'
+            }
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = [{
+                'rule_name': 'Test',
+                'severity': 'warn',
+                'message': 'Test',
+                'tool_name': 'mcp__redmine__update',
+                'token_threshold': None
+            }]
+
+            hook.should_process(input_data)
+
+            mock_mcp.assert_called_once_with(
+                'mcp__redmine__update',
+                {'issue_id': '456', 'confirmed': 'true'}
+            )

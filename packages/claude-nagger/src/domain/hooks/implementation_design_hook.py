@@ -100,7 +100,7 @@ class ImplementationDesignHook(BaseHook):
         # MCPツール呼び出しの場合（mcp__プレフィックス）
         if tool_name.startswith('mcp__'):
             self.impl_logger.info(f"MCP TOOL DETECTED: tool_name='{tool_name}'")
-            rule_infos = self.mcp_matcher.get_confirmation_message(tool_name)
+            rule_infos = self.mcp_matcher.get_confirmation_message(tool_name, tool_input)
             if rule_infos:
                 session_id = input_data.get('session_id', '')
                 if session_id:
@@ -554,10 +554,11 @@ class ImplementationDesignHook(BaseHook):
         Returns:
             ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve', 'reason': 'メッセージ'}
         """
+        tool_input = input_data.get('tool_input', {})
         self.impl_logger.info(f"MCP PROCESS: tool_name='{tool_name}'")
 
-        # MCP規約チェック（全ルール評価）
-        rule_infos = self.mcp_matcher.get_confirmation_message(tool_name)
+        # MCP規約チェック（全ルール評価、tool_input渡し）
+        rule_infos = self.mcp_matcher.get_confirmation_message(tool_name, tool_input)
 
         if not rule_infos:
             self.impl_logger.info(f"MCP NO RULE MATCHED: {tool_name}")
