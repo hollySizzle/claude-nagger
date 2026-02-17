@@ -478,7 +478,7 @@ class TestFileToolDetection:
         log_file.unlink(missing_ok=True)
 
     def test_serena_create_text_file_detected(self, hook):
-        """serena create_text_fileツールが検出される"""
+        """serena create_text_fileツールはMCP分岐で処理される"""
         input_data = {
             'tool_name': 'mcp__serena__create_text_file',
             'tool_input': {
@@ -486,11 +486,14 @@ class TestFileToolDetection:
             }
         }
 
-        with patch.object(hook.matcher, 'get_confirmation_message') as mock_get:
-            mock_get.return_value = [{
+        # mcp__プレフィックスがあるためMCP分岐に入る
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = [{
                 'rule_name': 'Test',
                 'severity': 'warn',
-                'message': 'Test'
+                'message': 'Test',
+                'tool_name': 'mcp__serena__create_text_file',
+                'token_threshold': None
             }]
             assert hook.should_process(input_data) is True
 
@@ -665,3 +668,213 @@ class TestProcessWithRuleAlreadyProcessed:
 
                 assert result['decision'] == 'approve'
                 assert 'within token threshold' in result['reason']
+
+
+class TestMcpToolDetection:
+    """MCPツール検出のテスト"""
+
+    @pytest.fixture
+    def hook(self):
+        """テスト用フックインスタンス"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            log_file = Path(f.name)
+
+        hook = ImplementationDesignHook(log_file=log_file, debug=False)
+        yield hook
+        log_file.unlink(missing_ok=True)
+
+    def test_mcp_tool_detected_with_matching_rule(self, hook):
+        """MCPツールが規約にマッチする場合にTrueを返す"""
+        input_data = {
+            'tool_name': 'mcp__redmine_epic_grid__update_issue_status_tool',
+            'tool_input': {}
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = [{
+                'rule_name': 'Redmine更新確認',
+                'severity': 'warn',
+                'message': 'Redmine更新操作を確認してください',
+                'tool_name': 'mcp__redmine_epic_grid__update_issue_status_tool',
+                'token_threshold': None
+            }]
+
+            assert hook.should_process(input_data) is True
+
+    def test_mcp_tool_no_matching_rule(self, hook):
+        """MCPツールが規約にマッチしない場合にFalseを返す"""
+        input_data = {
+            'tool_name': 'mcp__serena__find_symbol',
+            'tool_input': {}
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = []
+
+            assert hook.should_process(input_data) is False
+
+    def test_mcp_tool_not_interfere_with_bash(self, hook):
+        """Bashツールはコマンド系として処理される（MCP分岐に入らない）"""
+        input_data = {
+            'tool_name': 'Bash',
+            'tool_input': {
+                'command': 'git status'
+            }
+        }
+
+        # Bashはコマンド分岐に入るためMCPマッチャーは呼ばれない
+        assert hook.should_process(input_data) is True
+
+
+class TestProcessMcpTool:
+    """_process_mcp_toolメソッドのテスト"""
+
+    @pytest.fixture
+    def hook(self):
+        """テスト用フックインスタンス"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            log_file = Path(f.name)
+
+        hook = ImplementationDesignHook(log_file=log_file, debug=False)
+        yield hook
+        log_file.unlink(missing_ok=True)
+
+    def test_process_mcp_tool_with_matching_rule(self, hook):
+        """MCPツールが規約にマッチする場合にblockを返す"""
+        input_data = {
+            'tool_name': 'mcp__redmine_epic_grid__update_issue_status_tool',
+            'tool_input': {},
+            'session_id': 'test_session'
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = [{
+                'rule_name': 'Redmine更新確認',
+                'severity': 'block',
+                'message': 'Redmine更新操作を確認してください',
+                'tool_name': 'mcp__redmine_epic_grid__update_issue_status_tool',
+                'token_threshold': None
+            }]
+
+            result = hook.process(input_data)
+
+            assert result['decision'] == 'block'
+            assert 'Redmine更新操作を確認してください' in result['reason']
+
+    def test_process_mcp_tool_no_matching_rule(self, hook):
+        """MCPツールが規約にマッチしない場合にapproveを返す"""
+        input_data = {
+            'tool_name': 'mcp__serena__find_symbol',
+            'tool_input': {},
+            'session_id': 'test_session'
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = []
+
+            result = hook.process(input_data)
+
+            assert result['decision'] == 'approve'
+            assert result['reason'] == 'No MCP rules matched'
+
+    def test_process_mcp_tool_skip_already_processed(self, hook):
+        """処理済みルールはスキップされる（閾値内）"""
+        import uuid
+        session_id = f'test_session_{uuid.uuid4().hex[:8]}'
+
+        input_data = {
+            'tool_name': 'mcp__redmine__update',
+            'tool_input': {},
+            'session_id': session_id
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = [{
+                'rule_name': 'Redmine更新',
+                'severity': 'warn',
+                'message': 'Redmine更新確認',
+                'token_threshold': 50000
+            }]
+
+            # マーカーが存在し、閾値内でスキップされるケース
+            with patch.object(hook, 'is_rule_processed', return_value=True), \
+                 patch.object(hook, 'get_rule_marker_path') as mock_path, \
+                 patch.object(hook, '_get_current_context_size', return_value=1000):
+
+                # マーカーファイルのモック
+                mock_marker = MagicMock()
+                mock_marker.exists.return_value = True
+                mock_path.return_value = mock_marker
+
+                # ファイル読み込みをモック
+                with patch('builtins.open', create=True) as mock_open:
+                    mock_open.return_value.__enter__.return_value.read.return_value = '{"tokens": 500}'
+
+                    result = hook.process(input_data)
+
+                    assert result['decision'] == 'approve'
+                    assert 'within threshold' in result['reason']
+
+    def test_process_mcp_tool_multiple_rules(self, hook):
+        """複数ルールがマッチした場合のメッセージ結合"""
+        input_data = {
+            'tool_name': 'mcp__redmine__update_issue',
+            'tool_input': {},
+            'session_id': 'test_session'
+        }
+
+        with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_mcp:
+            mock_mcp.return_value = [
+                {
+                    'rule_name': 'Redmine全般',
+                    'severity': 'info',
+                    'message': 'Redmine操作情報'
+                },
+                {
+                    'rule_name': 'Redmine更新',
+                    'severity': 'block',
+                    'message': 'Redmine更新確認'
+                }
+            ]
+
+            result = hook.process(input_data)
+
+            assert result['decision'] == 'block'
+            assert 'Redmine操作情報' in result['reason']
+            assert 'Redmine更新確認' in result['reason']
+
+
+class TestGetMcpThreshold:
+    """_get_mcp_thresholdメソッドのテスト"""
+
+    @pytest.fixture
+    def hook(self):
+        """テスト用フックインスタンス"""
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            log_file = Path(f.name)
+
+        hook = ImplementationDesignHook(log_file=log_file, debug=False)
+        yield hook
+        log_file.unlink(missing_ok=True)
+
+    def test_mcp_specific_threshold(self, hook):
+        """MCP固有の閾値が使用される"""
+        rule_info = {
+            'rule_name': 'Test MCP Rule',
+            'severity': 'warn',
+            'token_threshold': 15000
+        }
+
+        result = hook._get_mcp_threshold(rule_info)
+        assert result == 15000
+
+    def test_default_mcp_threshold(self, hook):
+        """デフォルトのMCP閾値が使用される"""
+        rule_info = {
+            'rule_name': 'Test MCP Rule',
+            'severity': 'warn'
+        }
+
+        result = hook._get_mcp_threshold(rule_info)
+        assert isinstance(result, int)
+        assert result > 0

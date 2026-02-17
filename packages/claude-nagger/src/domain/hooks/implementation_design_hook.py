@@ -9,6 +9,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from domain.hooks.base_hook import BaseHook
 from domain.services.file_convention_matcher import FileConventionMatcher
 from domain.services.command_convention_matcher import CommandConventionMatcher
+from domain.services.mcp_convention_matcher import McpConventionMatcher
 from infrastructure.config.config_manager import ConfigManager
 from shared.structured_logging import get_logger
 
@@ -22,6 +23,7 @@ class ImplementationDesignHook(BaseHook):
         super().__init__(debug=True)
         self.matcher = FileConventionMatcher(debug=True)  # デバッグモードを有効化
         self.command_matcher = CommandConventionMatcher(debug=True)  # コマンド規約マッチャー
+        self.mcp_matcher = McpConventionMatcher(debug=True)  # MCP規約マッチャー
         self.config = ConfigManager()
         self.transcript_path = None
         
@@ -95,6 +97,61 @@ class ImplementationDesignHook(BaseHook):
             else:
                 self.impl_logger.warning(f"COMMAND TOOL REJECTED: Empty command")
         
+        # MCPツール呼び出しの場合（mcp__プレフィックス）
+        if tool_name.startswith('mcp__'):
+            self.impl_logger.info(f"MCP TOOL DETECTED: tool_name='{tool_name}'")
+            rule_infos = self.mcp_matcher.get_confirmation_message(tool_name)
+            if rule_infos:
+                session_id = input_data.get('session_id', '')
+                if session_id:
+                    has_unprocessed_rule = False
+                    for rule_info in rule_infos:
+                        rule_name = rule_info['rule_name']
+                        self.impl_logger.info(f"MCP RULE MATCHED CHECK: session_id='{session_id}', rule_name='{rule_name}'")
+
+                        is_processed = self.is_rule_processed(session_id, rule_name)
+                        self.impl_logger.info(f"MCP MARKER CHECK: is_rule_processed={is_processed}")
+                        if is_processed:
+                            # 規約固有の閾値を取得
+                            threshold = self._get_mcp_threshold(rule_info)
+
+                            # マーカーファイルから前回のトークン数を取得
+                            marker_path = self.get_rule_marker_path(session_id, rule_name)
+                            if marker_path.exists():
+                                try:
+                                    import json
+                                    with open(marker_path, 'r') as f:
+                                        marker_data = json.load(f)
+                                        last_tokens = marker_data.get('tokens', 0)
+
+                                    current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
+                                    if current_tokens is not None:
+                                        token_increase = current_tokens - last_tokens
+
+                                        if token_increase < threshold:
+                                            self.impl_logger.info(f"MCP TOKEN THRESHOLD SKIP: Rule '{rule_name}' increase {token_increase} < threshold {threshold}")
+                                            continue
+                                        else:
+                                            self.impl_logger.info(f"MCP TOKEN THRESHOLD EXCEEDED: Rule '{rule_name}' increase {token_increase} >= threshold {threshold}")
+                                            self._rename_expired_marker(marker_path)
+                                            has_unprocessed_rule = True
+                                except Exception as e:
+                                    self.log_error(f"Error checking MCP token threshold: {e}")
+                                    has_unprocessed_rule = True
+                            else:
+                                has_unprocessed_rule = True
+                        else:
+                            has_unprocessed_rule = True
+
+                    if not has_unprocessed_rule:
+                        self.impl_logger.info("MCP: All rules within threshold, skipping")
+                        return False
+
+                return True
+            else:
+                self.impl_logger.info(f"MCP NO RULES MATCHED: {tool_name}")
+                return False
+
         # ファイル編集/作成ツールの場合 (mcp__serena__create_text_file も含む)
         file_tools = ['Edit', 'Write', 'MultiEdit', 'mcp__serena__create_text_file', 'mcp__serena__replace_regex', 'mcp__filesystem__write_file', 'mcp__filesystem__edit_file']
         if tool_name in file_tools or 'edit' in tool_name.lower() or 'write' in tool_name.lower() or 'create' in tool_name.lower():
@@ -297,7 +354,11 @@ class ImplementationDesignHook(BaseHook):
         # コマンド実行ツールの場合（Bash or serena execute_shell_command）
         if tool_name == 'Bash' or tool_name == 'mcp__serena__execute_shell_command':
             return self._process_command(tool_input, session_id, input_data)
-        
+
+        # MCPツール呼び出しの場合
+        if tool_name.startswith('mcp__'):
+            return self._process_mcp_tool(tool_name, session_id, input_data)
+
         # ファイル編集の場合（既存の処理）
         file_path = tool_input.get('file_path', '') or tool_input.get('relative_path', '')
         
@@ -452,6 +513,111 @@ class ImplementationDesignHook(BaseHook):
                 'reason': 'All command rules within threshold'
             }
         
+        # 複数メッセージを結合
+        combined_message = "\n\n---\n\n".join(messages)
+        return {
+            'decision': 'block',
+            'reason': combined_message
+        }
+
+    def _get_mcp_threshold(self, rule_info: dict) -> int:
+        """
+        MCP規約情報から個別のトークン閾値を取得
+
+        Args:
+            rule_info: MCP規約情報辞書（token_threshold含む）
+
+        Returns:
+            トークン閾値
+        """
+        # MCP固有の閾値が設定されている場合はそれを優先
+        if rule_info.get('token_threshold') is not None:
+            threshold = rule_info['token_threshold']
+            self.log_debug(f"Using MCP-specific threshold for '{rule_info['rule_name']}': {threshold}")
+            self.impl_logger.debug(f"MCP THRESHOLD: Using rule-specific threshold for '{rule_info['rule_name']}': {threshold}")
+            return threshold
+
+        # フォールバック：デフォルトのMCP閾値を使用（コマンドと同等）
+        mcp_threshold = self.config.get_context_thresholds().get('mcp_threshold', 30000)
+        self.log_debug(f"Using default MCP threshold: {mcp_threshold}")
+        return mcp_threshold
+
+    def _process_mcp_tool(self, tool_name: str, session_id: str, input_data: dict) -> dict:
+        """
+        MCPツール呼び出し時の規約チェック処理
+
+        Args:
+            tool_name: MCPツール名
+            session_id: セッションID
+            input_data: 全体の入力データ
+
+        Returns:
+            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve', 'reason': 'メッセージ'}
+        """
+        self.impl_logger.info(f"MCP PROCESS: tool_name='{tool_name}'")
+
+        # MCP規約チェック（全ルール評価）
+        rule_infos = self.mcp_matcher.get_confirmation_message(tool_name)
+
+        if not rule_infos:
+            self.impl_logger.info(f"MCP NO RULE MATCHED: {tool_name}")
+            return {
+                'decision': 'approve',
+                'reason': 'No MCP rules matched'
+            }
+
+        # 全マッチルールについて処理
+        messages = []
+        for rule_info in rule_infos:
+            rule_name = rule_info['rule_name']
+            severity = rule_info['severity']
+            message = rule_info['message']
+
+            self.impl_logger.info(f"MCP RULE MATCHED: {rule_name} (severity: {severity}, threshold: {rule_info.get('token_threshold', 'default')}) for tool: {tool_name}")
+
+            # セッション内で同じルールが既に処理済みかチェック
+            if session_id and self.is_rule_processed(session_id, rule_name):
+                # 規約固有の閾値を取得
+                mcp_threshold = self._get_mcp_threshold(rule_info)
+
+                # マーカーファイルから前回のトークン数を取得
+                marker_path = self.get_rule_marker_path(session_id, rule_name)
+                if marker_path.exists():
+                    try:
+                        import json
+                        with open(marker_path, 'r') as f:
+                            marker_data = json.load(f)
+                            last_tokens = marker_data.get('tokens', 0)
+
+                        current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
+                        if current_tokens is not None:
+                            token_increase = current_tokens - last_tokens
+
+                            if token_increase < mcp_threshold:
+                                self.impl_logger.info(f"MCP TOKEN THRESHOLD SKIP: '{rule_name}' increase {token_increase} < threshold {mcp_threshold}")
+                                continue
+                            else:
+                                self.impl_logger.info(f"MCP TOKEN THRESHOLD EXCEEDED: '{rule_name}' increase {token_increase} >= threshold {mcp_threshold}")
+                                self._rename_expired_marker(marker_path)
+                    except Exception as e:
+                        self.log_error(f"Error checking MCP token threshold: {e}")
+                else:
+                    self.log_info(f"MCP marker file not found for '{rule_name}', proceeding")
+
+            # セッション内でルールを処理済みとしてマーク
+            if session_id:
+                current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
+                self.mark_rule_processed(session_id, rule_name, current_tokens or 0)
+
+            self.impl_logger.info(f"MCP RULE BLOCKING: Rule '{rule_name}' (severity: {severity}) blocking MCP tool: {tool_name}")
+            messages.append(message)
+
+        if not messages:
+            return {
+                'decision': 'approve',
+                'reason': 'All MCP rules within threshold'
+            }
+
         # 複数メッセージを結合
         combined_message = "\n\n---\n\n".join(messages)
         return {

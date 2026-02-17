@@ -49,6 +49,22 @@ rules:
   []
 """
 
+    MCP_CONVENTIONS_TEMPLATE = """\
+# MCP規約設定
+# MCPツール呼び出し時のパターンマッチ規約を定義します
+# tool_pattern: 正規表現（re.match）でMCPツール名にマッチ
+
+rules:
+  # 例: Redmine更新操作規約
+  # - name: "Redmine更新確認"
+  #   tool_pattern: "mcp__redmine_epic_grid__update.*"
+  #   severity: "warn"
+  #   token_threshold: 25000
+  #   message: |
+  #     Redmineの更新操作を行います。確認してください。
+  []
+"""
+
     CONFIG_TEMPLATE = """\
 # claude-nagger 設定ファイル
 
@@ -420,6 +436,7 @@ suggested_rules/
         files = {
             "file_conventions.yaml": self.FILE_CONVENTIONS_TEMPLATE,
             "command_conventions.yaml": self.COMMAND_CONVENTIONS_TEMPLATE,
+            "mcp_conventions.yaml": self.MCP_CONVENTIONS_TEMPLATE,
             "config.yaml": self.CONFIG_TEMPLATE,
         }
 
@@ -622,6 +639,7 @@ def ensure_config_exists(project_root: Path = None) -> bool:
     files = {
         "file_conventions.yaml": InstallHooksCommand.FILE_CONVENTIONS_TEMPLATE,
         "command_conventions.yaml": InstallHooksCommand.COMMAND_CONVENTIONS_TEMPLATE,
+        "mcp_conventions.yaml": InstallHooksCommand.MCP_CONVENTIONS_TEMPLATE,
         "config.yaml": InstallHooksCommand.CONFIG_TEMPLATE,
     }
     
