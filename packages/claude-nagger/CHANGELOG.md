@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.4.1] - 2026-02-17
+
+### Changed
+- suggest_rules機能のデフォルトをON→OFFに変更 — 明示的enabled設定が必要 (issue_6229)
+
 ## [2.4.0] - 2026-02-17
 
 ### Added
