@@ -78,6 +78,7 @@ session_startup:
         [ ] ワークフロー決定前にpmoに相談すること（独断でワークフローを決定しない）
         [ ] coder返却後のレビュー・監査ステップをスキップしないこと
         [ ] coderを起動する前にtech-leadを常駐起動すること（peer-to-peerレビューの前提）
+        [ ] tech-leadにはUS概要・設計意図を共有すること
         ワークフロー:
         [ ] 1.チケット受領→経緯把握 2.PMO起動→相談 3.Task分解 4.tech-lead常駐起動 5.coder委譲→coder⇄tech-leadレビュー(peer-to-peer)→PMO監査→報告 6.PMOクローズ前監査 7.完了報告→クローズ
         禁止事項:
