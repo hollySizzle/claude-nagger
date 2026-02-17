@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-02-17
+
+### Added
+- mcp_conventions基本実装 — YAML定義・ツール名マッチ・hook統合 (issue_6168)
+- mcp_conventions input_match拡張 — tool_inputフィールド条件マッチ (issue_6169)
+- トランスクリプトDB保存: raw mode基本実装 (issue_6174)
+- トランスクリプトDB保存: indexed/structured mode拡張とサマリカラム追加 (issue_6175)
+- SubagentStop時のsubagentトランスクリプト即時DB格納 (issue_6184)
+- config.yamlにtranscript_storageセクション追加 (issue_6190)
+- suffix除去ロジック実装・ROLEパターン正規表現修正 (issue_6172)
+- task_spawn_guardテスト追加・既存テスト更新 (issue_6218)
+
+### Changed
+- check_command/check_fileを全ルール評価方式に変更 (issue_6115)
+- CLAUDE_PROJECT_DIR環境変数を優先したconfig.yaml探索に統一 (issue_6188)
+- config.yaml探索に__file__ベースのパッケージルートフォールバックを追加 (issue_6189)
+- hook整理 — settings.jsonからhooksセクション削除、redmine_guard撤廃 (issue_6205)
+- プラグイン開発ワークフローをplugin_development.yamlに統合 (issue_6187)
+- docs/rules → vibes/docs/rules 移動・全参照更新 (issue_6152)
+- editable installパスを/tmp→/workspaceに修正 (issue_6186)
+- EXDEV修正(TMPDIR追加) (issue_6178)
+- テスト修正: tempdir参照の環境非依存化、期待値の実装追従
+
+### Removed
+- leader_constraint_hook削除 — ticket-tasukiに移管 (issue_6170, issue_6217)
+- leader_constraint_hook残留参照の完全削除 (issue_6194)
+- redmine_guard撤廃 (issue_6205)
+
 ## [2.3.1] - 2026-02-12
 
 ### Added
