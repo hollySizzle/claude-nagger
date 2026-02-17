@@ -106,7 +106,7 @@ class TestBasicBlocking:
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_allow_ticket_tasuki_with_team_name(self):
-        """team_name 指定ありなら許可"""
+        """team_name 指定ありなら許可（issue_id警告は出る場合あり）"""
         data = _make_task_input(
             subagent_type="ticket-tasuki:coder",
             team_name="my-team",
@@ -114,18 +114,24 @@ class TestBasicBlocking:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None  # 出力なし = 許可
+        # issue_id警告が出る（denyではない）
+        if out is not None:
+            assert "permissionDecision" not in out["hookSpecificOutput"] or \
+                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
 
     def test_allow_non_ticket_tasuki(self):
-        """ticket-tasuki以外のsubagent_typeは許可"""
+        """ticket-tasuki以外のsubagent_typeは許可（ブロックなし）"""
         data = _make_task_input(subagent_type="coder")
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        # issue_id警告は出るがブロックはされない
+        if out is not None:
+            assert "permissionDecision" not in out["hookSpecificOutput"] or \
+                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
 
     def test_allow_general_purpose_without_block(self):
-        """ブロック記録なしのgeneral-purposeは無条件許可"""
+        """ブロック記録なしのgeneral-purposeは許可（ブロックなし）"""
         session_id = "test-no-block-session"
         _cleanup_block_record(session_id)
         data = _make_task_input(
@@ -136,7 +142,10 @@ class TestBasicBlocking:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        # issue_id警告は出るがブロックはされない
+        if out is not None:
+            assert "permissionDecision" not in out["hookSpecificOutput"] or \
+                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
 
     def test_ignore_non_task_tool(self):
         """Task以外のツール名は無視"""
@@ -259,7 +268,7 @@ class TestCircumventionDetection:
         assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
 
     def test_no_circumvention_for_unrelated_prompt(self):
-        """ブロック後でもticket-tasuki無関係のpromptは許可"""
+        """ブロック後でもticket-tasuki無関係のpromptは許可（ブロックなし）"""
         self._trigger_block()
 
         data = _make_task_input(
@@ -270,7 +279,10 @@ class TestCircumventionDetection:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None  # 許可
+        # issue_id警告は出るがブロックはされない
+        if out is not None:
+            assert "permissionDecision" not in out["hookSpecificOutput"] or \
+                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
 
     def test_no_circumvention_with_team_name(self):
         """ブロック後でもteam_name指定ありなら迂回検知しない"""
@@ -285,7 +297,10 @@ class TestCircumventionDetection:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        # issue_id警告は出るがブロック/ask判定はされない
+        if out is not None:
+            assert "permissionDecision" not in out["hookSpecificOutput"] or \
+                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
 
     def test_no_circumvention_for_specific_subagent_type(self):
         """ブロック後でもcoder等の特定subagent_typeは迂回検知対象外"""
@@ -299,7 +314,10 @@ class TestCircumventionDetection:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        # issue_id警告は出るがブロックはされない
+        if out is not None:
+            assert "permissionDecision" not in out["hookSpecificOutput"] or \
+                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
 
     def test_circumvention_warning_contains_blocked_type(self):
         """迂回警告メッセージにブロックされたsubagent_typeが含まれる"""
@@ -338,7 +356,10 @@ class TestCircumventionDetection:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None  # TTL超過で許可
+        # TTL超過で迂回検知はされない（issue_id警告は出る場合あり）
+        if out is not None:
+            assert "permissionDecision" not in out["hookSpecificOutput"] or \
+                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
 
     def test_detect_circumvention_in_description(self):
         """promptだけでなくdescriptionの内容でも迂回検知"""
@@ -370,6 +391,122 @@ class TestCircumventionDetection:
         assert rc == 0
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+class TestIssueIdCheck:
+    """#6218: promptにissue_{id}が含まれるかのトレーサビリティチェック"""
+
+    def test_no_warning_with_issue_id(self):
+        """issue_{id}がpromptに含まれていれば警告なし"""
+        data = _make_task_input(
+            subagent_type="coder",
+            prompt="issue_6218: task_spawn_guardにチェックを追加する",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None  # 出力なし = 完全許可
+
+    def test_no_warning_with_issue_id_in_middle(self):
+        """issue_{id}がprompt中間にあっても警告なし"""
+        data = _make_task_input(
+            subagent_type="coder",
+            prompt="以下のタスクを実行: issue_1234 のバグ修正",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_warning_without_issue_id(self):
+        """issue_{id}がpromptに含まれていなければ警告あり"""
+        data = _make_task_input(
+            subagent_type="coder",
+            prompt="バグ修正を実行してください",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        hook_output = out["hookSpecificOutput"]
+        # 警告メッセージが含まれる
+        assert "issue_{id}" in hook_output["permissionDecisionReason"]
+        # ブロックではない（permissionDecisionがdeny/askでない）
+        assert "permissionDecision" not in hook_output or \
+            hook_output.get("permissionDecision") not in ("deny", "ask")
+
+    def test_warning_with_empty_prompt(self):
+        """空promptでも警告あり"""
+        data = _make_task_input(
+            subagent_type="coder",
+            prompt="",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert "issue_{id}" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+    def test_warning_does_not_block(self):
+        """issue_id警告はブロック（deny）しない"""
+        data = _make_task_input(
+            subagent_type="coder",
+            prompt="テスト実装を行う",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        # permissionDecisionキーが存在しないか、deny/askでないことを確認
+        hook_output = out["hookSpecificOutput"]
+        assert "permissionDecision" not in hook_output or \
+            hook_output["permissionDecision"] not in ("deny", "ask")
+
+    def test_existing_block_takes_priority_over_issue_id_warn(self):
+        """ticket-tasuki直接起動のdeny判定はissue_id警告より優先"""
+        data = _make_task_input(
+            subagent_type="ticket-tasuki:coder",
+            prompt="テスト実装",  # issue_idなし
+        )
+        rc, out = _run_guard(data)
+        _cleanup_block_record(data["session_id"])
+
+        assert rc == 0
+        assert out is not None
+        # deny判定が優先される
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_team_name_with_issue_id_no_output(self):
+        """team_name指定ありかつissue_id含むなら完全許可"""
+        data = _make_task_input(
+            subagent_type="ticket-tasuki:coder",
+            team_name="my-team",
+            prompt="issue_6218: 実装タスク",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None  # 完全に出力なし
+
+    def test_issue_id_various_formats(self):
+        """各種issue_{id}フォーマットを正しく検出"""
+        test_cases = [
+            ("issue_1", True),
+            ("issue_12345", True),
+            ("issue_0", True),
+            ("prefix issue_999 suffix", True),
+            ("issue_", False),  # 数字なし
+            ("issue_abc", False),  # 数字でない
+            ("ISSUE_123", False),  # 大文字
+        ]
+        for prompt, should_have_id in test_cases:
+            data = _make_task_input(subagent_type="coder", prompt=prompt)
+            rc, out = _run_guard(data)
+            assert rc == 0, f"Failed for prompt: {prompt}"
+            if should_have_id:
+                assert out is None, f"Expected no warn for prompt: {prompt}"
+            else:
+                assert out is not None, f"Expected warn for prompt: {prompt}"
 
 
 class TestEdgeCases:
@@ -424,4 +561,7 @@ class TestEdgeCases:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        # issue_id警告は出るがブロック/ask判定はされない
+        if out is not None:
+            assert "permissionDecision" not in out["hookSpecificOutput"] or \
+                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
