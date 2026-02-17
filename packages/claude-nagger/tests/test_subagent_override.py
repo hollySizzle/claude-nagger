@@ -135,7 +135,7 @@ class TestSessionStartupHookSubagentOverride:
 
         assert resolved["enabled"] is True
         assert resolved["messages"]["first_time"]["title"] == "subagent規約"
-        assert "hookブロック後はリトライ" in resolved["messages"]["first_time"]["main_text"]
+        assert "スコープ外のファイルを編集しないこと" in resolved["messages"]["first_time"]["main_text"]
         assert "作業完了後に結果を報告すること" in resolved["messages"]["first_time"]["main_text"]
 
     def test_resolve_subagent_config_type_specific(self):
@@ -276,7 +276,7 @@ class TestSessionStartupHookSubagentOverride:
 
         main_text = resolved["messages"]["first_time"]["main_text"]
         assert "作業完了後に結果を報告すること" in main_text
-        assert "判断が必要な場合は実装せず報告すること" in main_text
+        assert "スコープ外のファイルを編集しないこと" in main_text
 
     def test_is_session_processed_context_aware_always_false(self):
         """BaseHookのセッションチェックを常にバイパス"""
@@ -564,7 +564,7 @@ class TestSessionStartupHookProcessSubagent:
                 result = hook.process({"session_id": "test-session"})
 
         assert result["decision"] == "block"
-        assert "プロジェクトセットアップ" in result["reason"]
+        assert "ticket-tasuki 協働規約" in result["reason"]
 
     def test_subagent_no_register_call(self):
         """subagent処理時はSessionRepository.registerが呼ばれない"""

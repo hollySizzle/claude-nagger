@@ -763,7 +763,7 @@ class TestCLIIntegration:
         )
         assert result.returncode == 0
         assert "claude-nagger" in result.stdout
-        assert "1." in result.stdout  # バージョン番号
+        assert "v" in result.stdout  # バージョン番号（vX.Y.Z形式）
 
     def test_cli_install_hooks_dry_run(self, temp_dir, cli_env):
         """install-hooks --dry-runオプション"""

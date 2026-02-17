@@ -26,8 +26,9 @@ class TestBaseHookInit:
 
     def test_init_default_log_dir(self):
         """デフォルトのログディレクトリ"""
+        import tempfile
         hook = ConcreteHook()
-        assert hook.log_dir == Path(f"/tmp/claude-nagger-{os.getuid()}")
+        assert hook.log_dir == Path(tempfile.gettempdir()) / f"claude-nagger-{os.getuid()}"
 
     def test_init_custom_log_dir(self, tmp_path):
         """カスタムログディレクトリ"""
@@ -217,7 +218,8 @@ class TestSessionMarker:
         hook = ConcreteHook()
         path = hook.get_session_marker_path('test-session')
 
-        assert path == Path('/tmp/claude_hook_ConcreteHook_session_test-session')
+        import tempfile
+        assert path == Path(tempfile.gettempdir()) / 'claude_hook_ConcreteHook_session_test-session'
 
     def test_is_session_processed_false(self):
         """セッション未処理"""
@@ -264,8 +266,9 @@ class TestCommandMarker:
         hook = ConcreteHook()
         path = hook.get_command_marker_path('session', 'echo test')
 
+        import tempfile
         assert 'claude_cmd_session_' in str(path)
-        assert path.parent == Path('/tmp')
+        assert path.parent == Path(tempfile.gettempdir())
 
     def test_is_command_processed(self):
         """コマンド処理済み確認"""

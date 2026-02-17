@@ -300,4 +300,5 @@ class TestDefaultLogDir:
 
     def test_default_log_dir_value(self):
         """デフォルトログディレクトリの値（UID付き）"""
-        assert DEFAULT_LOG_DIR == Path(f'/tmp/claude-nagger-{os.getuid()}')
+        import tempfile
+        assert DEFAULT_LOG_DIR == Path(tempfile.gettempdir()) / f'claude-nagger-{os.getuid()}'

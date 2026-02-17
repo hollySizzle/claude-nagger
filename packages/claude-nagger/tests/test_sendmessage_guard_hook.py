@@ -108,9 +108,9 @@ class TestValidateContent:
 
     def test_exact_max_length(self, hook):
         """境界: ちょうど max_content_length"""
-        # issue_6041 は 10文字、残り90文字で合計100文字
-        content = "issue_6041" + "x" * 90
-        assert len(content) == 100
+        # DEFAULT_MAX_CONTENT_LENGTH=30, issue_6041は10文字、残り20文字で合計30文字
+        content = "issue_6041" + "x" * (DEFAULT_MAX_CONTENT_LENGTH - 10)
+        assert len(content) == DEFAULT_MAX_CONTENT_LENGTH
         result = hook.validate_content(content)
         assert result["valid"] is True
 

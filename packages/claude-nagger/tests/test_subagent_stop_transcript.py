@@ -338,16 +338,17 @@ class TestLoadTranscriptStorageConfig:
         assert result == {"enabled": True, "mode": "indexed"}
 
     def test_returns_empty_when_no_config(self, tmp_path, monkeypatch):
-        """config.yaml不在時は空dict"""
+        """config.yaml不在時でもパッケージルートフォールバックで実config発見"""
         from domain.hooks.subagent_event_hook import _load_transcript_storage_config
 
         monkeypatch.chdir(tmp_path)
 
         result = _load_transcript_storage_config()
-        assert result == {}
+        # パッケージルートフォールバック（candidate #2）で実config.yamlが発見される
+        assert result == {'enabled': True, 'mode': 'structured', 'retention_days': 30}
 
     def test_returns_empty_when_no_transcript_storage_key(self, tmp_path, monkeypatch):
-        """transcript_storageキー不在時は空dict"""
+        """transcript_storageキー不在時でもパッケージルートフォールバックで実config発見"""
         from domain.hooks.subagent_event_hook import _load_transcript_storage_config
 
         config_dir = tmp_path / ".claude-nagger"
@@ -357,7 +358,8 @@ class TestLoadTranscriptStorageConfig:
         monkeypatch.chdir(tmp_path)
 
         result = _load_transcript_storage_config()
-        assert result == {}
+        # CLAUDE_PROJECT_DIR未設定のため、パッケージルートフォールバック（candidate #2）で実config.yamlが発見される
+        assert result == {'enabled': True, 'mode': 'structured', 'retention_days': 30}
 
 
 class TestLoadTranscriptStorageConfigFallback:

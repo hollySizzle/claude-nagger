@@ -44,6 +44,7 @@ session_startup:
         [ ] coder subagentの成果物を必ずレビューする（diff確認・設計意図との整合性）
         [ ] 判断が必要な場面ではオーナーに確認する（pro/con付き）
         [ ] Redmineコメントに実行者マーカー（[coder]/[leader]/[scribe]等）を付記する
+        [ ] チケットでは経緯･意図･決定(実装)理由 がわかるような記載とすること
         禁止事項:
         [ ] コードを直接編集しない（Edit/Write/NotebookEditツールをleaderとして使用しない）
         [ ] coder subagentの成果物をレビューせずに次のタスクに進まない
