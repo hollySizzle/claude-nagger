@@ -1,5 +1,5 @@
 {
-  "description": "ticket-tasuki plugin hooks: Task spawn guard + Redmine guard + Leader constraint guard (redmine only)",
+  "description": "ticket-tasuki plugin hooks: Task spawn guard only",
   "hooks": {
     "PreToolUse": [
       {
@@ -8,21 +8,6 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/task_spawn_guard.py\"",
-            "timeout": 10
-          }
-        ]
-      },
-      {
-        "matcher": "mcp__redmine_epic_grid__*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/redmine_guard.py\"",
-            "timeout": 10
-          },
-          {
-            "type": "command",
-            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/leader_constraint_guard.py\"",
             "timeout": 10
           }
         ]

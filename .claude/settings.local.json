@@ -28,7 +28,22 @@
       "Bash(uv run pytest:*)",
       "Bash(uv pip install:*)",
       "Bash(git add:*)",
-      "Bash(docker build:*)"
+      "Bash(docker build:*)",
+      "Bash(docker run:*)",
+      "Bash(tailscale status:*)",
+      "Bash(systemctl is-active:*)",
+      "Bash(dpkg:*)",
+      "Bash(nslookup:*)",
+      "Bash(sudo bash:*)",
+      "Bash(DOCKER_BUILDKIT=0 docker build:*)",
+      "Bash(ip route:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:gist.github.com)",
+      "Bash(docker ps:*)",
+      "Bash(docker exec:*)",
+      "WebFetch(domain:docs.docker.com)",
+      "WebFetch(domain:zenn.dev)"
     ]
   },
   "enableAllProjectMcpServers": true,
