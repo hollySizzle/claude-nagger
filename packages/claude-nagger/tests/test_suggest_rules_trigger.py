@@ -92,21 +92,22 @@ class TestShouldProcess:
         result = hook.should_process({})
         assert result is False
 
-    def test_enabled設定なしでTrue(self, tmp_log_dir):
-        """enabled設定がない場合はデフォルトTrue（閾値以上時）"""
+    def test_enabled設定なしでFalse(self, tmp_log_dir):
+        """enabled設定がない場合はデフォルトFalse（無効化）"""
         _create_hook_inputs(tmp_log_dir, 15)
         hook = SuggestRulesTrigger(min_inputs=10)
         hook.log_dir = tmp_log_dir
         hook._config = {}  # enabled設定なし
 
         result = hook.should_process({})
-        assert result is True
+        assert result is False
 
     def test_閾値未満でFalse(self, tmp_log_dir):
         """hook_input件数が閾値未満の場合False"""
         _create_hook_inputs(tmp_log_dir, 5)
         hook = SuggestRulesTrigger(min_inputs=10)
         hook.log_dir = tmp_log_dir
+        hook._config = {'enabled': True}
 
         result = hook.should_process({})
         assert result is False
@@ -116,6 +117,7 @@ class TestShouldProcess:
         _create_hook_inputs(tmp_log_dir, 10)
         hook = SuggestRulesTrigger(min_inputs=10)
         hook.log_dir = tmp_log_dir
+        hook._config = {'enabled': True}
 
         result = hook.should_process({})
         assert result is True
@@ -124,6 +126,7 @@ class TestShouldProcess:
         """hook_inputが0件の場合False"""
         hook = SuggestRulesTrigger(min_inputs=10)
         hook.log_dir = tmp_log_dir
+        hook._config = {'enabled': True}
 
         result = hook.should_process({})
         assert result is False
@@ -133,6 +136,7 @@ class TestShouldProcess:
         _create_hook_inputs(tmp_log_dir, 5)
         hook = SuggestRulesTrigger(min_inputs=5)
         hook.log_dir = tmp_log_dir
+        hook._config = {'enabled': True}
 
         result = hook.should_process({})
         assert result is True

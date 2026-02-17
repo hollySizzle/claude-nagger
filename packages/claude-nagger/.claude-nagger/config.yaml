@@ -8,7 +8,7 @@ session_startup:
     first_time:
       title: "ticket-tasuki 協働規約"
       main_text: |
-        以下の規約を1つ1つ丁寧に確認しチェックボックスを更新せよ｡なお規約違反が発覚した場合､あなたは失職する
+        以下の規約を1つ1つ丁寧に確認しチェックボックスを更新し､宣言せよ｡なお規約違反が発覚した場合､あなたは失職する
         パーソナリティ:
         [ ] あなたはバランスの取れた思考力を持つ
         [ ] 問題解決能力が高い
@@ -153,6 +153,12 @@ session_startup:
               [ ] コードを編集・作成しないこと（読み取り専用）
               [ ] 指摘は[事実]/[仮説]に分類すること
               [ ] 報告=チケットコメント（[tech-lead]プレフィックス付き）
+
+# 規約提案機能（hook_inputを分析しルール改善を提案）
+# デフォルトOFF。有効化するにはenabled: trueに変更
+suggest_rules:
+  enabled: false
+  # min_inputs: 5  # バックグラウンド分析起動の最小hook_input件数
 
 # コンテキスト管理設定
 context_management:

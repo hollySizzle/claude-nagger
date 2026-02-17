@@ -69,7 +69,7 @@ class SuggestRulesTrigger(BaseHook):
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """hook_input件数が閾値以上か確認（enabled設定も考慮）"""
         # suggest_rules.enabled設定で無効化されている場合はスキップ
-        if not self._config.get('enabled', True):
+        if not self._config.get('enabled', False):
             self.log_info("suggest_rules機能が無効化されています (enabled: false)")
             return False
 
