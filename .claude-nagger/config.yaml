@@ -17,6 +17,13 @@ context_management:
     medium_warning: 60000
     critical_warning: 100000
 
+# Discord通知設定
+notifications:
+  discord:
+    enabled: true
+    webhook_url: "${DISCORD_WEBHOOK_URL}"
+    thread_id: "${DISCORD_THREAD_ID}"
+
 # デバッグ設定
 debug:
   enable_logging: false
