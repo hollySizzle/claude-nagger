@@ -1,14 +1,5 @@
 # ファイル編集規約定義
 # 特定のファイルパターンに対して適用される規約を定義します
-#
-# パターン記法:
-#   **/*.scss           - 全階層の.scssファイル
-#   apps/**/*.tsx       - ルート直下apps以下の全階層の.tsxファイル
-#   **/apps/**/*.scss   - どこにあるapps/でも全階層の.scssファイル（モノレポ向け）
-#   src/*.ts            - src直下の.tsファイルのみ（サブディレクトリ除外）
-#   **/test_*.py        - 全階層のtest_で始まるpyファイル
-#   **/*_test.go        - 全階層の_testで終わるgoファイル
-#   **/test/**          - どこにあるtest/でもその中の全ファイル（直下・サブ両方）
 
 rules:
   # 例: View層編集規約
@@ -19,76 +10,4 @@ rules:
   #   token_threshold: 35000
   #   message: |
   #     このファイルを変更する場合は規約を確認してください
-
-  - name: "テストファイル編集規約"
-    patterns:
-      - "**/tests/test_*.py"
-    severity: "warn"
-    token_threshold: 30000
-    message: |
-      テストファイル編集時の確認事項:
-      - テスト仕様書(@docs/specs/claude_nagger_test.md)を確認したか
-      - テストクラス・メソッドの命名規約に従っているか
-      - 関連するE2Eリプレイテストへの影響を考慮したか
-
-  - name: "フィクスチャ管理規約"
-    patterns:
-      - "**/tests/fixtures/**/*.json"
-    severity: "block"
-    token_threshold: 20000
-    message: |
-      フィクスチャ編集時の確認事項:
-      - capture_fixture.py --sanitize でキャプチャしたか(手動編集禁止)
-      - サニタイズ済みか(ホームディレクトリ、セッションID、APIキー)
-      - フィクスチャを使用するテストへの影響を確認したか
-
-  - name: "conftest編集規約"
-    patterns:
-      - "**/tests/conftest.py"
-    severity: "warn"
-    token_threshold: 25000
-    message: |
-      conftest.py編集時の確認事項:
-      - 全テストへの影響範囲を把握しているか
-      - 共通フィクスチャの変更は後方互換性を維持しているか
-
-  - name: "フック開発規約"
-    patterns:
-      - "**/src/domain/hooks/*.py"
-    severity: "block"
-    token_threshold: 20000
-    message: |
-      作業を継続するためには、vibes/docs/rules/claude_code_hook_testing.yaml を熟読し遵守することを宣言してください
-
-  - name: "プラグイン開発規約"
-    patterns:
-      - "**/.claude/plugins/**"
-    severity: "warn"
-    token_threshold: 0
-    message: |
-      プラグイン開発規約（vibes/docs/rules/plugin_development.yaml）を遵守してください:
-      - plugin.jsonのバージョンバンプ必須（キャッシュ反映に必要）
-      - プラグインディレクトリ内でcommit（親リポジトリではなく）
-      - コミットメッセージにissue_{id}を含める
-
-  - name: "プラグインCLAUDE.md利用者向け制約"
-    patterns:
-      - "**/.claude/plugins/**/CLAUDE.md"
-    severity: "warn"
-    token_threshold: 0
-    message: |
-      プラグインのCLAUDE.mdはインストール先プロジェクトのagent/leaderコンテキストに注入されます。
-      以下を遵守してください:
-      - 利用者向け情報のみ記載（subagent一覧・利用規約等）
-      - 開発者向け情報（開発ワークフロー・コミット手順等）は記載禁止
-      - 開発者向け規約はvibes/docs/rules/plugin_development.yamlに集約すること
-
-  - name: "config.yaml同期規約"
-    patterns:
-      - "**/.claude-nagger/config.yaml"
-    severity: "warn"
-    token_threshold: 0
-    message: |
-      config.yamlは以下の2箇所で管理されています。片方を変更した場合、もう一方も同期更新してください:
-      - .claude-nagger/config.yaml（claude-nagger本体・配布用）
-      - .claude/plugins/ticket-tasuki/.claude-nagger/config.yaml（ticket-tasukiプラグイン固有）
+  []

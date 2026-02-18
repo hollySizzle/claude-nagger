@@ -14,6 +14,7 @@
 ### apis - 外部連携仕様
 - [ClaudeCodeBestPracticesAnthropic](@docs/apis/ClaudeCodeBestPracticesAnthropic.md)
 - [ClaudeCodeHooks](@docs/apis/ClaudeCodeHooks.md)
+- [Claude Code Hook Subagent制約](@docs/apis/claude_code_hook_subagent_constraints.md)
 
 ### specs - システム仕様
 - [[TODO: 機能名]仕様書](@docs/specs/_template.md)

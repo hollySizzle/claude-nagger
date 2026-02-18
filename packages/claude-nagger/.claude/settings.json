@@ -115,6 +115,15 @@
             "command": "claude-nagger hook suggest-rules-trigger"
           }
         ]
+      },
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook transcript-storage"
+          }
+        ]
       }
     ],
     "SubagentStart": [
@@ -146,6 +155,17 @@
           {
             "type": "command",
             "command": "claude-nagger hook compact-detected"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "mcp__redmine_epic_grid__.*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-nagger hook redmine-discord"
           }
         ]
       }

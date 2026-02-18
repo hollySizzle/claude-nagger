@@ -1,0 +1,13 @@
+# MCP規約設定
+# MCPツール呼び出し時のパターンマッチ規約を定義します
+# tool_pattern: 正規表現（re.match）でMCPツール名にマッチ
+
+rules:
+  # 例: Redmine更新操作規約
+  # - name: "Redmine更新確認"
+  #   tool_pattern: "mcp__redmine_epic_grid__update.*"
+  #   severity: "warn"
+  #   token_threshold: 25000
+  #   message: |
+  #     Redmineの更新操作を行います。確認してください。
+  []
