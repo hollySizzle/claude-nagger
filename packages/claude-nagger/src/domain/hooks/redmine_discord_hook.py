@@ -7,6 +7,7 @@ Redmine MCPツール（mcp__redmine_epic_grid__*）の実行後に
 import json
 import logging
 import sys
+import time
 from typing import Any, Dict, Optional
 
 from domain.hooks.base_hook import BaseHook, ExitCode
@@ -18,6 +19,9 @@ REDMINE_TOOL_PREFIX = "mcp__redmine_epic_grid__"
 
 # メッセージフォーマット上限
 MAX_SUMMARY_LENGTH = 200
+
+# RedmineチケットURL
+REDMINE_BASE_URL = "https://redmine.giken.or.jp/issues/"
 
 
 class RedmineDiscordHook(BaseHook):
@@ -55,6 +59,12 @@ class RedmineDiscordHook(BaseHook):
             return text
         return text[:max_len] + "..."
 
+    def _ticket_url(self, issue_id: str) -> str:
+        """チケットURLを生成（issue_idが有効な場合のみ）"""
+        if issue_id and issue_id != "?":
+            return f"\n{REDMINE_BASE_URL}{issue_id}"
+        return ""
+
     def _format_message(self, tool_name: str, tool_input: Dict[str, Any]) -> str:
         """ツール種別に応じた通知メッセージを生成
 
@@ -63,22 +73,24 @@ class RedmineDiscordHook(BaseHook):
             tool_input: ツール入力パラメータ
 
         Returns:
-            フォーマット済み通知メッセージ
+            フォーマット済み通知メッセージ（本文200文字上限 + チケットURL）
         """
         # プレフィックスを除去して短縮名を取得
         short_name = tool_name.replace(REDMINE_TOOL_PREFIX, "")
 
-        # add_issue_comment_tool → issue_id + コメント全文
+        # add_issue_comment_tool → issue_id + コメント概要
         if short_name == "add_issue_comment_tool":
             issue_id = tool_input.get("issue_id", "?")
             comment = tool_input.get("comment", "")
-            return f"[Redmine] #{issue_id} コメント追加\n{comment}"
+            body = f"[Redmine] #{issue_id} コメント追加\n{self._truncate(comment)}"
+            return body + self._ticket_url(issue_id)
 
         # update_issue_status_tool → issue_id + ステータス名
         if short_name == "update_issue_status_tool":
             issue_id = tool_input.get("issue_id", "?")
             status = tool_input.get("status_name", "?")
-            return f"[Redmine] #{issue_id} ステータス変更 → {status}"
+            body = f"[Redmine] #{issue_id} ステータス変更 → {status}"
+            return body + self._ticket_url(issue_id)
 
         # create_*_tool → 作成種別 + subject/description概要
         if short_name.startswith("create_"):
@@ -86,7 +98,12 @@ class RedmineDiscordHook(BaseHook):
             subject = tool_input.get("subject", "")
             description = tool_input.get("description", "")
             summary = subject or self._truncate(description)
-            return f"[Redmine] {kind} 作成: {summary}"
+            body = f"[Redmine] {kind} 作成: {self._truncate(summary)}"
+            # create系はissue_idがないため、parent系IDから推測
+            parent_id = (tool_input.get("parent_user_story_id")
+                         or tool_input.get("parent_feature_id")
+                         or tool_input.get("parent_epic_id"))
+            return body + self._ticket_url(parent_id or "")
 
         # update_*_tool → 更新種別 + 変更内容概要
         if short_name.startswith("update_"):
@@ -96,11 +113,14 @@ class RedmineDiscordHook(BaseHook):
             detail_keys = ["subject", "description", "status_name", "assigned_to_id", "progress"]
             details = {k: v for k, v in tool_input.items() if k in detail_keys and v}
             detail_str = ", ".join(f"{k}={v}" for k, v in details.items()) if details else "変更あり"
-            return f"[Redmine] #{issue_id} {kind} 更新: {self._truncate(detail_str)}"
+            body = f"[Redmine] #{issue_id} {kind} 更新: {self._truncate(detail_str)}"
+            return body + self._ticket_url(issue_id)
 
         # その他 → ツール名 + input概要
+        issue_id = tool_input.get("issue_id", "")
         input_summary = self._truncate(json.dumps(tool_input, ensure_ascii=False))
-        return f"[Redmine] {short_name}: {input_summary}"
+        body = f"[Redmine] {short_name}: {input_summary}"
+        return body + self._ticket_url(issue_id)
 
     # --- BaseHook 抽象メソッドの実装 ---
 
@@ -157,7 +177,7 @@ class RedmineDiscordHook(BaseHook):
         Returns:
             ExitCode
         """
-        self._start_time = __import__("time").time()
+        self._start_time = time.time()
 
         # 設定ファイル存在保証
         from application.install_hooks import ensure_config_exists
