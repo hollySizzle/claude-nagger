@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-02-18
+
+### Added
+- Redmine操作Discord通知フック — PostToolUseで全Redmine MCPツール操作をDiscord転送 (issue_6257)
+  - RedmineDiscordHookクラス新規作成 (issue_6258)
+  - CLI `hook redmine-discord` サブコマンド (issue_6259)
+  - install_hooks.py PostToolUse登録 (issue_6260)
+  - ツール種別別メッセージフォーマット（コメント/ステータス/作成/更新/その他）
+  - チケットURLリンク（Markdown hyperlink）付与
+  - secrets.yaml直接読み込み方式でwebhook_url取得
+- CONFIG_TEMPLATEにnotifications.discordセクション追加 (issue_6269)
+
+### Changed
+- init-firewall.sh allowlistにdiscord.com追加 (issue_6269)
+
 ## [2.4.1] - 2026-02-17
 
 ### Changed
