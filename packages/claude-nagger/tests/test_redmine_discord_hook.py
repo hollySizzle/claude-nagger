@@ -206,7 +206,22 @@ class TestFormatMessage:
         assert REDMINE_BASE_URL not in msg
 
 
-# === process テスト（DiscordNotifierモック） ===
+# === process テスト（DiscordNotifier + secrets モック） ===
+
+# secrets.yamlモック用ヘルパー
+MOCK_SECRETS = {"discord": {"webhook_url": "https://discord.com/api/webhooks/test", "thread_id": "12345"}}
+
+
+def _mock_secrets_and_notifier(mock_send_result=None):
+    """ConfigManager._load_secrets + DiscordNotifier を同時モックするコンテキスト"""
+    if mock_send_result is None:
+        mock_send_result = {"success": True}
+    return (
+        patch("infrastructure.config.config_manager.ConfigManager._load_secrets", return_value=MOCK_SECRETS),
+        patch("infrastructure.notifiers.discord_notifier.DiscordNotifier"),
+        mock_send_result,
+    )
+
 
 class TestProcess:
     """process のDiscord送信テスト"""
@@ -215,6 +230,9 @@ class TestProcess:
         """Discord送信成功時にapprove返却"""
         mock_result = {"success": True, "agent_name": "test", "message": "ok"}
         with patch(
+            "infrastructure.config.config_manager.ConfigManager._load_secrets",
+            return_value=MOCK_SECRETS,
+        ), patch(
             "infrastructure.notifiers.discord_notifier.DiscordNotifier"
         ) as mock_cls:
             mock_cls.return_value.send_sync.return_value = mock_result
@@ -224,11 +242,18 @@ class TestProcess:
             })
         assert result["decision"] == "approve"
         mock_cls.return_value.send_sync.assert_called_once()
+        # webhook_url/thread_idが明示渡しされていること
+        call_kwargs = mock_cls.return_value.send_sync.call_args[1]
+        assert call_kwargs["webhook_url"] == "https://discord.com/api/webhooks/test"
+        assert call_kwargs["thread_id"] == "12345"
 
     def test_discord_failure_still_approves(self, hook):
         """Discord送信失敗時もapprove返却（ブロックしない）"""
         mock_result = {"success": False, "error": "webhook error"}
         with patch(
+            "infrastructure.config.config_manager.ConfigManager._load_secrets",
+            return_value=MOCK_SECRETS,
+        ), patch(
             "infrastructure.notifiers.discord_notifier.DiscordNotifier"
         ) as mock_cls:
             mock_cls.return_value.send_sync.return_value = mock_result
@@ -241,6 +266,9 @@ class TestProcess:
     def test_discord_exception_still_approves(self, hook):
         """Discord送信例外時もapprove返却"""
         with patch(
+            "infrastructure.config.config_manager.ConfigManager._load_secrets",
+            return_value=MOCK_SECRETS,
+        ), patch(
             "infrastructure.notifiers.discord_notifier.DiscordNotifier"
         ) as mock_cls:
             mock_cls.return_value.send_sync.side_effect = Exception("connection error")
@@ -253,6 +281,9 @@ class TestProcess:
     def test_message_content_passed_to_notifier(self, hook):
         """生成メッセージがDiscordNotifierに渡される"""
         with patch(
+            "infrastructure.config.config_manager.ConfigManager._load_secrets",
+            return_value=MOCK_SECRETS,
+        ), patch(
             "infrastructure.notifiers.discord_notifier.DiscordNotifier"
         ) as mock_cls:
             mock_cls.return_value.send_sync.return_value = {"success": True}
@@ -263,6 +294,22 @@ class TestProcess:
             sent_msg = mock_cls.return_value.send_sync.call_args[0][0]
             assert "#999" in sent_msg
             assert "クローズ" in sent_msg
+
+    def test_no_webhook_url_skips_send(self, hook):
+        """webhook_url未設定時は送信スキップしてapprove"""
+        empty_secrets = {"discord": {"webhook_url": "", "thread_id": ""}}
+        with patch(
+            "infrastructure.config.config_manager.ConfigManager._load_secrets",
+            return_value=empty_secrets,
+        ), patch(
+            "infrastructure.notifiers.discord_notifier.DiscordNotifier"
+        ) as mock_cls:
+            result = hook.process({
+                "tool_name": "mcp__redmine_epic_grid__update_issue_status_tool",
+                "tool_input": {"issue_id": "100", "status_name": "着手中"}
+            })
+        assert result["decision"] == "approve"
+        mock_cls.return_value.send_sync.assert_not_called()
 
 
 # === install_hooks PostToolUse登録テスト ===

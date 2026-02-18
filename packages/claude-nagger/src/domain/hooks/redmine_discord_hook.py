@@ -152,11 +152,32 @@ class RedmineDiscordHook(BaseHook):
         message = self._format_message(tool_name, tool_input)
         self.log_debug(f"Discord通知メッセージ: {message}")
 
+        # secrets.yamlからwebhook_url/thread_idを直接取得
+        try:
+            from infrastructure.config.config_manager import ConfigManager
+            cm = ConfigManager()
+            secrets = cm._load_secrets()
+            discord_secrets = secrets.get("discord", {})
+            webhook_url = discord_secrets.get("webhook_url", "")
+            thread_id = discord_secrets.get("thread_id", "")
+        except Exception as e:
+            self.log_warning(f"secrets読み込み失敗: {e}")
+            webhook_url = ""
+            thread_id = ""
+
+        if not webhook_url:
+            self.log_warning("Discord webhook_url未設定、通知スキップ")
+            return {"decision": "approve", "reason": ""}
+
         # Discord送信（失敗してもブロックしない）
         try:
             from infrastructure.notifiers.discord_notifier import DiscordNotifier
             notifier = DiscordNotifier()
-            result = notifier.send_sync(message)
+            result = notifier.send_sync(
+                message,
+                webhook_url=webhook_url,
+                thread_id=thread_id if thread_id else None,
+            )
             if result.get("success"):
                 self.log_info(f"Discord通知送信成功: {tool_name}")
             else:
