@@ -93,7 +93,7 @@ class TestTicketUrl:
     """_ticket_url のテスト"""
 
     def test_valid_issue_id(self, hook):
-        assert hook._ticket_url("123") == f"\n{REDMINE_BASE_URL}123"
+        assert hook._ticket_url("123") == f"\n[詳細]({REDMINE_BASE_URL}123)"
 
     def test_unknown_issue_id(self, hook):
         assert hook._ticket_url("?") == ""

@@ -62,7 +62,7 @@ class RedmineDiscordHook(BaseHook):
     def _ticket_url(self, issue_id: str) -> str:
         """チケットURLを生成（issue_idが有効な場合のみ）"""
         if issue_id and issue_id != "?":
-            return f"\n{REDMINE_BASE_URL}{issue_id}"
+            return f"\n[詳細]({REDMINE_BASE_URL}{issue_id})"
         return ""
 
     def _format_message(self, tool_name: str, tool_input: Dict[str, Any]) -> str:
