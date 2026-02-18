@@ -117,16 +117,15 @@ class TestFormatMessage:
         assert "テストコメント" in msg
         assert f"{REDMINE_BASE_URL}100" in msg
 
-    def test_add_issue_comment_long_truncated(self, hook):
-        """add_issue_comment_tool: 長いコメントは切り詰め"""
+    def test_add_issue_comment_long_not_truncated(self, hook):
+        """add_issue_comment_tool: 長いコメントも全文送信"""
         long_comment = "x" * 500
         msg = hook._format_message(
             "mcp__redmine_epic_grid__add_issue_comment_tool",
             {"issue_id": "100", "comment": long_comment}
         )
-        assert "..." in msg
-        # 本文にフルコメントが含まれないこと
-        assert long_comment not in msg
+        # 全文が含まれること
+        assert long_comment in msg
 
     def test_update_issue_status(self, hook):
         """update_issue_status_tool: issue_id + ステータス名 + URL"""

@@ -73,16 +73,16 @@ class RedmineDiscordHook(BaseHook):
             tool_input: ツール入力パラメータ
 
         Returns:
-            フォーマット済み通知メッセージ（本文200文字上限 + チケットURL）
+            フォーマット済み通知メッセージ（全文 + チケットURL）
         """
         # プレフィックスを除去して短縮名を取得
         short_name = tool_name.replace(REDMINE_TOOL_PREFIX, "")
 
-        # add_issue_comment_tool → issue_id + コメント概要
+        # add_issue_comment_tool → issue_id + コメント全文
         if short_name == "add_issue_comment_tool":
             issue_id = tool_input.get("issue_id", "?")
             comment = tool_input.get("comment", "")
-            body = f"[Redmine] #{issue_id} コメント追加\n{self._truncate(comment)}"
+            body = f"[Redmine] #{issue_id} コメント追加\n{comment}"
             return body + self._ticket_url(issue_id)
 
         # update_issue_status_tool → issue_id + ステータス名
@@ -92,20 +92,20 @@ class RedmineDiscordHook(BaseHook):
             body = f"[Redmine] #{issue_id} ステータス変更 → {status}"
             return body + self._ticket_url(issue_id)
 
-        # create_*_tool → 作成種別 + subject/description概要
+        # create_*_tool → 作成種別 + subject/description全文
         if short_name.startswith("create_"):
             kind = short_name.replace("create_", "").replace("_tool", "")
             subject = tool_input.get("subject", "")
             description = tool_input.get("description", "")
-            summary = subject or self._truncate(description)
-            body = f"[Redmine] {kind} 作成: {self._truncate(summary)}"
+            summary = subject or description
+            body = f"[Redmine] {kind} 作成: {summary}"
             # create系はissue_idがないため、parent系IDから推測
             parent_id = (tool_input.get("parent_user_story_id")
                          or tool_input.get("parent_feature_id")
                          or tool_input.get("parent_epic_id"))
             return body + self._ticket_url(parent_id or "")
 
-        # update_*_tool → 更新種別 + 変更内容概要
+        # update_*_tool → 更新種別 + 変更内容全文
         if short_name.startswith("update_"):
             kind = short_name.replace("update_", "").replace("_tool", "")
             issue_id = tool_input.get("issue_id", "?")
@@ -113,10 +113,10 @@ class RedmineDiscordHook(BaseHook):
             detail_keys = ["subject", "description", "status_name", "assigned_to_id", "progress"]
             details = {k: v for k, v in tool_input.items() if k in detail_keys and v}
             detail_str = ", ".join(f"{k}={v}" for k, v in details.items()) if details else "変更あり"
-            body = f"[Redmine] #{issue_id} {kind} 更新: {self._truncate(detail_str)}"
+            body = f"[Redmine] #{issue_id} {kind} 更新: {detail_str}"
             return body + self._ticket_url(issue_id)
 
-        # その他 → ツール名 + input概要
+        # その他 → ツール名 + input概要（fallbackのみtruncate維持）
         issue_id = tool_input.get("issue_id", "")
         input_summary = self._truncate(json.dumps(tool_input, ensure_ascii=False))
         body = f"[Redmine] {short_name}: {input_summary}"
