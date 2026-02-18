@@ -392,6 +392,20 @@ suggested_rules/
         }
     ]
 
+    # デフォルトのPostToolUseフック設定
+    # Redmine MCPツール操作後にDiscord通知を送信
+    DEFAULT_POSTTOOLUSE_HOOKS: list = [
+        {
+            "matcher": "mcp__redmine_epic_grid__.*",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": "claude-nagger hook redmine-discord"
+                }
+            ]
+        }
+    ]
+
     def __init__(self, force: bool = False, dry_run: bool = False):
         """
         Args:
@@ -510,6 +524,7 @@ suggested_rules/
             ("SessionStart", self.DEFAULT_SESSIONSTART_HOOKS),
             ("SubagentStart", self.DEFAULT_SUBAGENTSTART_HOOKS),
             ("SubagentStop", self.DEFAULT_SUBAGENTSTOP_HOOKS),
+            ("PostToolUse", self.DEFAULT_POSTTOOLUSE_HOOKS),
         ]
 
         any_updated = False
