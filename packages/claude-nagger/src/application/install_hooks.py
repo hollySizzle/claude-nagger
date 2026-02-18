@@ -165,6 +165,14 @@ sendmessage_guard:
     - shutdown_response
     - plan_approval_response
 
+# Discord通知設定
+# webhook_url/thread_id は secrets.yaml から自動解決（${VAR} → secrets.yaml discord.* にフォールバック）
+notifications:
+  discord:
+    enabled: true
+    webhook_url: "${DISCORD_WEBHOOK_URL}"
+    thread_id: "${DISCORD_THREAD_ID}"
+
 # トランスクリプト保存設定（raw modeトランスクリプトDB保存）
 transcript_storage:
   enabled: false
