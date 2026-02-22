@@ -37,10 +37,10 @@ class TestSubagentHistoryTableCreation:
         assert "idx_subagent_history_role" in indexes
 
     def test_schema_version_is_6(self, db):
-        """スキーマバージョンが7"""
+        """スキーマバージョンが8"""
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
         version = cursor.fetchone()[0]
-        assert version == 7
+        assert version == 8
 
 
 class TestUnregisterHistoryCopy:
@@ -201,6 +201,48 @@ class TestUnregisterHistoryCopy:
             (agent_id,),
         )
         assert cursor.fetchone()[0] == 0
+
+    def test_unregister_copies_issue_id(self, db):
+        """unregister()がissue_idをsubagent_historyにコピーする（issue_6358）"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-hist-issue"
+        session_id = "session-hist-issue"
+
+        repo.register(agent_id, session_id, "general-purpose", role="coder")
+
+        # subagentsにissue_idを直接設定（マッチング済み状態を模倣）
+        db.conn.execute(
+            "UPDATE subagents SET issue_id = ? WHERE agent_id = ?",
+            ("6358", agent_id),
+        )
+        db.conn.commit()
+
+        repo.unregister(agent_id)
+
+        cursor = db.conn.execute(
+            "SELECT issue_id FROM subagent_history WHERE agent_id = ?",
+            (agent_id,),
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "6358"
+
+    def test_unregister_copies_null_issue_id(self, db):
+        """issue_idがNULLの場合もsubagent_historyにNULLで記録される（issue_6358）"""
+        repo = SubagentRepository(db)
+        agent_id = "agent-no-issue"
+        session_id = "session-no-issue"
+
+        repo.register(agent_id, session_id, "general-purpose")
+        repo.unregister(agent_id)
+
+        cursor = db.conn.execute(
+            "SELECT issue_id FROM subagent_history WHERE agent_id = ?",
+            (agent_id,),
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] is None
 
 
 class TestSubagentHistoryRepository:
@@ -472,9 +514,9 @@ class TestSchemaV4Migration:
         )
         assert cursor.fetchone() is not None
 
-        # バージョン7が記録されている（v4マイグレーション後にv5,v6,v7も実行）
+        # バージョン8が記録されている（v4マイグレーション後にv5,v6,v7,v8も実行）
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
-        assert cursor.fetchone()[0] == 7
+        assert cursor.fetchone()[0] == 8
 
         db.close()
 
@@ -736,3 +778,27 @@ class TestCleanupSessionHistoryCopy:
         assert len(history) == 2
         agent_ids = {h["agent_id"] for h in history}
         assert agent_ids == {"a1", "a2"}
+
+    def test_cleanup_session_copies_issue_id(self, db):
+        """cleanup_session()がissue_idをsubagent_historyにコピーする（issue_6358）"""
+        repo = SubagentRepository(db)
+        session_id = "session-cleanup-issue"
+
+        repo.register("a1", session_id, "gp", role="coder")
+
+        # subagentsにissue_idを直接設定
+        db.conn.execute(
+            "UPDATE subagents SET issue_id = ? WHERE agent_id = ?",
+            ("7890", "a1"),
+        )
+        db.conn.commit()
+
+        repo.cleanup_session(session_id)
+
+        cursor = db.conn.execute(
+            "SELECT issue_id FROM subagent_history WHERE agent_id = ?",
+            ("a1",),
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "7890"

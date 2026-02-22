@@ -199,9 +199,9 @@ class TestSchemaV7Migration:
         columns = {row[1] for row in cursor.fetchall()}
         assert "agent_transcript_path" in columns
 
-        # バージョン7が記録されている
+        # バージョン8が記録されている
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
-        assert cursor.fetchone()[0] == 7
+        assert cursor.fetchone()[0] == 8
 
         db.close()
 

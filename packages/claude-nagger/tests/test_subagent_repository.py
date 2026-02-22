@@ -433,6 +433,75 @@ class TestRegisterTaskSpawns:
         # 有効エントリのみ1件登録
         assert count == 1
 
+    def test_issue_id_extracted(self, db, tmp_path):
+        """promptからissue_idが抽出・記録される（issue_6358）"""
+        repo = SubagentRepository(db)
+        session_id = "session-issue-id"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            # issue_1234を含むprompt
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_ISSUE",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "[ROLE:coder]\nissue_1234: Fix the bug."
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+        assert count == 1
+
+        cursor = db.conn.execute(
+            "SELECT issue_id FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "1234"
+
+    def test_issue_id_none_when_not_present(self, db, tmp_path):
+        """promptにissue_idがない場合はNULL（issue_6358）"""
+        repo = SubagentRepository(db)
+        session_id = "session-no-issue"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_NOISSUE",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "[ROLE:coder]\nFix the bug."
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        repo.register_task_spawns(session_id, str(transcript))
+
+        cursor = db.conn.execute(
+            "SELECT issue_id FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] is None
 
 class TestFindTaskSpawnByToolUseId:
     """find_task_spawn_by_tool_use_idのテスト"""
@@ -600,6 +669,69 @@ class TestMatchTaskToAgentEdgeCases:
         result = repo.match_task_to_agent(session_id, agent_id, "gp", transcript_path=str(transcript))
         # task_spawnが見つからないのでNone
         assert result is None
+
+    def test_exact_match_propagates_issue_id(self, db, tmp_path):
+        """Exact Match時にissue_idがsubagentsに伝搬される（issue_6358）"""
+        repo = SubagentRepository(db)
+        session_id = "session-exact-issue"
+        agent_id = "agent-exact-issue"
+        tool_use_id = "toolu_EXACT_ISSUE"
+
+        repo.register(agent_id, session_id, "gp", role=None)
+
+        # issue_id付きのtask_spawn
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, issue_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, 1, "gp", "coder", "hash", tool_use_id, "5678", datetime.now(timezone.utc).isoformat()),
+        )
+        db.conn.commit()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id,
+                "data": {"type": "agent_progress", "agentId": agent_id}
+            }) + '\n')
+
+        result = repo.match_task_to_agent(session_id, agent_id, "gp", transcript_path=str(transcript))
+        assert result == "coder"
+
+        # subagentsにissue_idが伝搬されている
+        cursor = db.conn.execute(
+            "SELECT issue_id FROM subagents WHERE agent_id = ?", (agent_id,)
+        )
+        assert cursor.fetchone()[0] == "5678"
+
+    def test_fallback_match_propagates_issue_id(self, db):
+        """Fallback Match時にissue_idがsubagentsに伝搬される（issue_6358）"""
+        repo = SubagentRepository(db)
+        session_id = "session-fb-issue"
+        agent_id = "agent-fb-issue"
+
+        repo.register(agent_id, session_id, "gp", role=None)
+
+        # issue_id付きのtask_spawn（transcript_pathなしでフォールバックさせる）
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, issue_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, 1, "gp", "reviewer", "hash", "toolu_FB", "9999", datetime.now(timezone.utc).isoformat()),
+        )
+        db.conn.commit()
+
+        result = repo.match_task_to_agent(session_id, agent_id, "gp")
+        assert result == "reviewer"
+
+        # subagentsにissue_idが伝搬されている
+        cursor = db.conn.execute(
+            "SELECT issue_id FROM subagents WHERE agent_id = ?", (agent_id,)
+        )
+        assert cursor.fetchone()[0] == "9999"
 
 
 class TestQueryMethods:
@@ -926,6 +1058,42 @@ class TestRetryMatchFromAgentProgress:
         )
         matched = cursor.fetchone()[0]
         assert matched == agent_id
+
+    def test_retry_match_propagates_issue_id(self, db, tmp_path):
+        """retry_match時にissue_idがsubagentsに伝搬される（issue_6358）"""
+        repo = SubagentRepository(db)
+        session_id = "session-retry-issue"
+        agent_id = "agent-retry-issue"
+        tool_use_id = "toolu_RETRY_ISSUE"
+
+        repo.register(agent_id, session_id, "gp", role=None)
+
+        # issue_id付きの未マッチtask_spawn
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, issue_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, 1, "gp", "architect", "hash", tool_use_id, "4321", datetime.now(timezone.utc).isoformat()),
+        )
+        db.conn.commit()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id,
+                "data": {"type": "agent_progress", "agentId": agent_id}
+            }) + '\n')
+
+        result = repo.retry_match_from_agent_progress(session_id, agent_id, str(transcript))
+        assert result == "architect"
+
+        # subagentsにissue_idが伝搬されている
+        cursor = db.conn.execute(
+            "SELECT issue_id FROM subagents WHERE agent_id = ?", (agent_id,)
+        )
+        assert cursor.fetchone()[0] == "4321"
 
 
 class TestExceptionHandling:

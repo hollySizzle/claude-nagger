@@ -64,7 +64,7 @@ class SubagentRepository:
         cursor = self._db.conn.execute(
             """
             SELECT agent_id, session_id, agent_type, role, role_source,
-                   leader_transcript_path, created_at
+                   leader_transcript_path, created_at, issue_id
             FROM subagents
             WHERE agent_id = ?
             """,
@@ -78,11 +78,11 @@ class SubagentRepository:
                 INSERT INTO subagent_history
                     (agent_id, session_id, agent_type, role, role_source,
                      leader_transcript_path, started_at, stopped_at,
-                     agent_transcript_path)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     agent_transcript_path, issue_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (row[0], row[1], row[2], row[3], row[4], row[5], row[6], now,
-                 agent_transcript_path),
+                 agent_transcript_path, row[7]),
             )
 
         self._db.conn.execute(
@@ -118,6 +118,8 @@ class SubagentRepository:
 
         # [ROLE:xxx] パターン
         role_pattern = re.compile(r"\[ROLE:([^\]]+)\]")
+        # issue_(\d+) パターン（issue_6358: issue_id伝搬用）
+        issue_id_pattern = re.compile(r"issue_(\d+)")
         now = datetime.now(timezone.utc).isoformat()
         inserted_count = 0
 
@@ -163,6 +165,10 @@ class SubagentRepository:
                     if role is None:
                         continue
 
+                    # issue_(\d+) を抽出（issue_6358: 最初のマッチを使用）
+                    issue_id_match = issue_id_pattern.search(prompt)
+                    issue_id = issue_id_match.group(1) if issue_id_match else None
+
                     # prompt_hash = SHA256(prompt)[:16]
                     prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:16]
 
@@ -170,10 +176,10 @@ class SubagentRepository:
                     cursor = self._db.conn.execute(
                         """
                         INSERT OR IGNORE INTO task_spawns
-                        (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, created_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, issue_id, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                         """,
-                        (session_id, line_num, subagent_type, role, prompt_hash, tool_use_id, now),
+                        (session_id, line_num, subagent_type, role, prompt_hash, tool_use_id, issue_id, now),
                     )
                     inserted_count += cursor.rowcount
 
@@ -192,7 +198,7 @@ class SubagentRepository:
         cursor = self._db.conn.execute(
             """
             SELECT id, session_id, transcript_index, subagent_type, role, prompt_hash,
-                   tool_use_id, matched_agent_id, created_at
+                   tool_use_id, matched_agent_id, issue_id, created_at
             FROM task_spawns
             WHERE tool_use_id = ?
             """,
@@ -211,7 +217,8 @@ class SubagentRepository:
             "prompt_hash": row[5],
             "tool_use_id": row[6],
             "matched_agent_id": row[7],
-            "created_at": row[8],
+            "issue_id": row[8],
+            "created_at": row[9],
         }
 
     def find_parent_tool_use_id(
@@ -314,6 +321,7 @@ class SubagentRepository:
                 if task_spawn and task_spawn.get("matched_agent_id") is None:
                     _logger.info(f"Exact match success: role={task_spawn.get('role')}")
                     matched_role = task_spawn.get("role")
+                    matched_issue_id = task_spawn.get("issue_id")
                     task_id = task_spawn.get("id")
                     transcript_index = task_spawn.get("transcript_index")
 
@@ -326,14 +334,15 @@ class SubagentRepository:
                             (agent_id, task_id),
                         )
 
-                        # subagentsのroleを更新
+                        # subagentsのrole/issue_idを更新（issue_6358）
                         self._db.conn.execute(
                             """
                             UPDATE subagents
-                            SET role = ?, role_source = 'task_match', task_match_index = ?
+                            SET role = ?, role_source = 'task_match', task_match_index = ?,
+                                issue_id = ?
                             WHERE agent_id = ?
                             """,
-                            (matched_role, transcript_index, agent_id),
+                            (matched_role, transcript_index, matched_issue_id, agent_id),
                         )
 
                         self._db.conn.commit()
@@ -362,7 +371,7 @@ class SubagentRepository:
             if role:
                 cursor = self._db.conn.execute(
                     """
-                    SELECT id, role, transcript_index FROM task_spawns
+                    SELECT id, role, transcript_index, issue_id FROM task_spawns
                     WHERE session_id = ? AND role = ? AND matched_agent_id IS NULL
                     AND created_at > ?
                     ORDER BY transcript_index ASC LIMIT 1
@@ -375,7 +384,7 @@ class SubagentRepository:
             if row is None:
                 cursor = self._db.conn.execute(
                     """
-                    SELECT id, role, transcript_index FROM task_spawns
+                    SELECT id, role, transcript_index, issue_id FROM task_spawns
                     WHERE session_id = ? AND subagent_type = ? AND role IS NOT NULL AND matched_agent_id IS NULL
                     AND created_at > ?
                     ORDER BY transcript_index ASC LIMIT 1
@@ -388,7 +397,7 @@ class SubagentRepository:
                 self._db.conn.commit()
                 return None
 
-            task_id, matched_role, transcript_index = row
+            task_id, matched_role, transcript_index, matched_issue_id = row
 
             # task_spawnsをマッチ済みに更新
             self._db.conn.execute(
@@ -396,14 +405,15 @@ class SubagentRepository:
                 (agent_id, task_id),
             )
 
-            # subagentsのroleを更新
+            # subagentsのrole/issue_idを更新（issue_6358）
             self._db.conn.execute(
                 """
                 UPDATE subagents
-                SET role = ?, role_source = 'task_match', task_match_index = ?
+                SET role = ?, role_source = 'task_match', task_match_index = ?,
+                    issue_id = ?
                 WHERE agent_id = ?
                 """,
-                (matched_role, transcript_index, agent_id),
+                (matched_role, transcript_index, matched_issue_id, agent_id),
             )
 
             self._db.conn.commit()
@@ -643,7 +653,7 @@ class SubagentRepository:
         cursor = self._db.conn.execute(
             """
             SELECT agent_id, session_id, agent_type, role, role_source,
-                   leader_transcript_path, created_at
+                   leader_transcript_path, created_at, issue_id
             FROM subagents
             WHERE session_id = ?
             """,
@@ -656,10 +666,10 @@ class SubagentRepository:
                 """
                 INSERT INTO subagent_history
                     (agent_id, session_id, agent_type, role, role_source,
-                     leader_transcript_path, started_at, stopped_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     leader_transcript_path, started_at, stopped_at, issue_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                [(row[0], row[1], row[2], row[3], row[4], row[5], row[6], now)
+                [(row[0], row[1], row[2], row[3], row[4], row[5], row[6], now, row[7])
                  for row in rows],
             )
 
@@ -754,12 +764,13 @@ class SubagentRepository:
             _logger.info("retry_match: task_spawn has no role")
             return None
 
+        matched_issue_id = task_spawn.get("issue_id")
         task_id = task_spawn.get("id")
         transcript_index = task_spawn.get("transcript_index")
 
         _logger.info(f"retry_match: Found task_spawn with role={matched_role}, id={task_id}")
 
-        # 3. マッチしたらsubagentsテーブルのroleを更新
+        # 3. マッチしたらsubagentsテーブルのrole/issue_idを更新
         self._db.conn.execute("BEGIN EXCLUSIVE")
         try:
             # task_spawnsをマッチ済みに更新（まだ未マッチの場合のみ）
@@ -773,14 +784,15 @@ class SubagentRepository:
                 _logger.info("retry_match: task_spawn already matched to another agent")
                 return None
 
-            # subagentsのroleを更新
+            # subagentsのrole/issue_idを更新（issue_6358）
             self._db.conn.execute(
                 """
                 UPDATE subagents
-                SET role = ?, role_source = 'retry_match', task_match_index = ?
+                SET role = ?, role_source = 'retry_match', task_match_index = ?,
+                    issue_id = ?
                 WHERE agent_id = ?
                 """,
-                (matched_role, transcript_index, agent_id),
+                (matched_role, transcript_index, matched_issue_id, agent_id),
             )
 
             self._db.conn.commit()
