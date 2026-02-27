@@ -2,12 +2,11 @@
 # 特定のファイルパターンに対して適用される規約を定義します
 
 rules:
-  # 例: View層編集規約
-  # - name: "View層編集規約"
-  #   patterns:
-  #     - "**/app/views/**/*.erb"
-  #   severity: "block"  # block: 完全ブロック, warn: 警告のみ
-  #   token_threshold: 35000
-  #   message: |
-  #     このファイルを変更する場合は規約を確認してください
-  []
+  - name: "ticket-tasuki独立リポジトリ警告"
+    patterns:
+      - ".claude/plugins/ticket-tasuki/**/*"
+    severity: "warn"
+    message: |
+      .claude/plugins/ticket-tasuki/ は独立gitリポジトリです（origin: github.com/hollySizzle/ticket-tasuki）。
+      親リポジトリ（claude-nagger）でコミットしてもこのディレクトリの変更は反映されません。
+      変更後は cd .claude/plugins/ticket-tasuki/ && git add && git commit でticket-tasukiリポジトリ側でもコミットしてください。
