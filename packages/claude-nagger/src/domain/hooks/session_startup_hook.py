@@ -295,21 +295,47 @@ class SessionStartupHook(BaseHook):
                 db.close()
                 return False
 
-            # issue_6057: leader/subagent区別
-            # SubagentStart時にleaderのtranscript_pathを保存済み。
-            # 現在のtranscript_pathがleaderのものと一致 → 呼び出し元はleader → subagent検出スキップ
-            # 一致しない → 呼び出し元はsubagent自身 → ブロッキング対象
-            current_transcript = input_data.get('transcript_path', '')
-            leader_transcript = record.leader_transcript_path
-            if leader_transcript and current_transcript == leader_transcript:
+            # issue_6952: tool_use_id transcript parseによるleader/subagent判定
+            # （issue_6057 transcript_path比較を置換: leader/subagentで同一値のため機能しなかった）
+            #
+            # 判定ロジック:
+            # 1. Anthropic公式agent_idフィールド存在時はtranscript parseバイパス（将来対応）
+            # 2. tool_use_idでmain transcript検索 → 見つかれば呼び出し元はleader → スキップ
+            # 3. tool_use_idフィールド不在時はフォールバック（subagent扱い=安全側で続行）
+
+            # D: Anthropic公式対応併存設計（将来のagent_id対応）
+            if 'agent_id' in input_data:
+                # Anthropic公式フィールド存在時はtranscript parseバイパス
+                # agent_idでleader/subagent判定が直接可能になった場合に実装
                 self.log_info(
-                    f"⏭️ Skipping subagent blocking: caller is leader "
-                    f"(transcript={current_transcript})"
+                    f"🔮 agent_id field detected in PreToolUse payload "
+                    f"(agent_id={input_data['agent_id']}). "
+                    f"Future: use this for direct leader/subagent identification."
                 )
-                # leaderのPreToolUseではsubagentをブロックしない
-                # subagent自身のPreToolUseで再度claim_next_unprocessedが呼ばれる
-                db.close()
-                return False
+                # 現時点ではフォールスルー（agent_idの値の使い方が確定していないため）
+
+            # B: tool_use_id transcript parse判定
+            tool_use_id = input_data.get('tool_use_id', '')
+            current_transcript = input_data.get('transcript_path', '')
+            if tool_use_id and current_transcript:
+                if subagent_repo.is_leader_tool_use(current_transcript, tool_use_id):
+                    self.log_info(
+                        f"⏭️ Skipping subagent blocking: caller is leader "
+                        f"(tool_use_id={tool_use_id})"
+                    )
+                    # leaderのPreToolUseではsubagentをブロックしない
+                    # subagent自身のPreToolUseで再度claim_next_unprocessedが呼ばれる
+                    db.close()
+                    return False
+            else:
+                # C: フォールバック — tool_use_idまたはtranscript_pathがない場合
+                # 安全側: subagent扱いで続行（ブロッキング対象として処理続行）
+                self.log_warning(
+                    f"⚠️ tool_use_id or transcript_path missing in PreToolUse payload. "
+                    f"Falling back to subagent assumption. "
+                    f"(tool_use_id={'present' if tool_use_id else 'missing'}, "
+                    f"transcript_path={'present' if current_transcript else 'missing'})"
+                )
 
             agent_type = record.agent_type
             agent_id = record.agent_id

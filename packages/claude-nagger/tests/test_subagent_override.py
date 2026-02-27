@@ -421,33 +421,37 @@ class TestSessionStartupHookShouldProcessSubagent:
         assert hook._is_subagent is False
 
     def test_leader_transcript_skips_subagent_blocking(self):
-        """issue_6057: leaderのtranscript_pathと一致する場合はsubagentブロッキングをスキップ"""
+        """issue_6952: leaderのtool_use_idがtranscriptに見つかる場合はsubagentブロッキングをスキップ"""
         hook = self._make_hook()
 
         mock_db = MagicMock()
         mock_subagent_repo = MagicMock()
         mock_session_repo = MagicMock()
 
-        leader_transcript = "/home/user/.claude/projects/test/leader-session.jsonl"
-
         mock_subagent_repo.is_any_active.return_value = True
         mock_record = MagicMock()
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-abc"
         mock_record.role = None
-        mock_record.leader_transcript_path = leader_transcript
+        mock_record.leader_transcript_path = "/home/user/.claude/projects/test/leader-session.jsonl"
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # tool_use_idがleader transcriptに見つかる → leader判定
+        mock_subagent_repo.is_leader_tool_use.return_value = True
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    # leaderと同じtranscript_pathでPreToolUse → スキップ
+                    # leaderのtool_use_id + transcript_path → スキップ
                     result = hook.should_process({
                         "session_id": "test-session",
-                        "transcript_path": leader_transcript,
+                        "transcript_path": "/home/user/.claude/projects/test/leader-session.jsonl",
+                        "tool_use_id": "toolu_LEADER_001",
                     })
 
         assert result is False
+        mock_subagent_repo.is_leader_tool_use.assert_called_once_with(
+            "/home/user/.claude/projects/test/leader-session.jsonl", "toolu_LEADER_001"
+        )
 
     def test_subagent_transcript_triggers_blocking(self):
         """issue_6057: subagentのtranscript_pathはleaderと異なるためブロッキング発火"""
