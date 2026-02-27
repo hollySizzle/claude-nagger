@@ -1,15 +1,13 @@
 """task_spawn_guard.py のテスト
 
 ticket-tasuki プラグインの PreToolUse hook スクリプトを
-subprocess経由で呼び出し、ブロック・許可・迂回検知の動作を検証する。
+subprocess経由で呼び出し、ブロック・許可の動作を検証する。
 """
 
 import json
 import os
 import subprocess
 import sys
-import tempfile
-import time
 
 import pytest
 
@@ -69,83 +67,49 @@ def _make_task_input(
     }
 
 
-def _cleanup_block_record(session_id: str):
-    """テスト後のブロック記録ファイルを削除"""
-    path = os.path.join(
-        tempfile.gettempdir(),
-        f"task_spawn_guard_block_{session_id}.json",
-    )
-    try:
-        os.remove(path)
-    except OSError:
-        pass
-
-
-class TestBasicBlocking:
-    """既存のticket-tasuki:*直接起動ブロック機能"""
+class TestTicketTasukiBlocking:
+    """ticket-tasuki:* 直接起動ブロック（既存機能）"""
 
     def test_block_ticket_tasuki_direct(self):
         """ticket-tasuki:coder を team_name なしで呼ぶとブロック"""
         data = _make_task_input(subagent_type="ticket-tasuki:coder")
         rc, out = _run_guard(data)
-        _cleanup_block_record(data["session_id"])
 
         assert rc == 0
         assert out is not None
-        decision = out["hookSpecificOutput"]["permissionDecision"]
-        assert decision == "deny"
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_block_ticket_tasuki_scribe(self):
         """ticket-tasuki:scribe も同様にブロック"""
         data = _make_task_input(subagent_type="ticket-tasuki:scribe")
         rc, out = _run_guard(data)
-        _cleanup_block_record(data["session_id"])
 
         assert rc == 0
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_allow_ticket_tasuki_with_team_name(self):
-        """team_name 指定ありなら許可（issue_id警告は出る場合あり）"""
+        """team_name 指定ありなら許可"""
         data = _make_task_input(
             subagent_type="ticket-tasuki:coder",
             team_name="my-team",
+            prompt="issue_1234: 実装タスク",
         )
         rc, out = _run_guard(data)
 
         assert rc == 0
-        # issue_id警告が出る（denyではない）
-        if out is not None:
-            assert "permissionDecision" not in out["hookSpecificOutput"] or \
-                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
+        assert out is None  # issue_id付きなので完全許可
 
-    def test_allow_non_ticket_tasuki(self):
-        """ticket-tasuki以外のsubagent_typeは許可（ブロックなし）"""
-        data = _make_task_input(subagent_type="coder")
+    def test_block_message_contains_info(self):
+        """ブロックメッセージに必要な情報が含まれる"""
+        data = _make_task_input(subagent_type="ticket-tasuki:coder")
         rc, out = _run_guard(data)
 
-        assert rc == 0
-        # issue_id警告は出るがブロックはされない
-        if out is not None:
-            assert "permissionDecision" not in out["hookSpecificOutput"] or \
-                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
-
-    def test_allow_general_purpose_without_block(self):
-        """ブロック記録なしのgeneral-purposeは許可（ブロックなし）"""
-        session_id = "test-no-block-session"
-        _cleanup_block_record(session_id)
-        data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=session_id,
-            prompt="Web検索でReactのドキュメントを調べてください",
-        )
-        rc, out = _run_guard(data)
-
-        assert rc == 0
-        # issue_id警告は出るがブロックはされない
-        if out is not None:
-            assert "permissionDecision" not in out["hookSpecificOutput"] or \
-                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "ticket-tasuki:coder" in reason
+        assert "Agent Teams" in reason
+        assert "迂回禁止" in reason
+        assert "general-purpose" in reason
 
     def test_ignore_non_task_tool(self):
         """Task以外のツール名は無視"""
@@ -161,257 +125,137 @@ class TestBasicBlocking:
         assert out is None
 
 
-class TestBlockMessageContent:
-    """#6103: ブロックメッセージに迂回禁止が明記されているか"""
+class TestTeamNameRequirement:
+    """team_name未指定のTask spawnブロック（新機能）"""
 
-    def test_block_message_contains_circumvention_warning(self):
-        """ブロックメッセージに迂回禁止の注意書きが含まれる"""
-        data = _make_task_input(subagent_type="ticket-tasuki:coder")
-        rc, out = _run_guard(data)
-        _cleanup_block_record(data["session_id"])
-
-        assert out is not None
-        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
-        assert "迂回禁止" in reason
-        assert "general-purpose" in reason
-        assert "代替エージェント" in reason
-
-    def test_block_message_contains_original_info(self):
-        """ブロックメッセージに従来の情報も含まれる"""
-        data = _make_task_input(subagent_type="ticket-tasuki:coder")
-        rc, out = _run_guard(data)
-        _cleanup_block_record(data["session_id"])
-
-        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
-        assert "ticket-tasuki:coder" in reason
-        assert "Agent Teams" in reason
-
-
-class TestCircumventionDetection:
-    """#6102: 迂回検知機能"""
-
-    def setup_method(self):
-        """各テスト前にセッション固有のブロック記録をクリア"""
-        self.session_id = f"test-circumvention-{os.getpid()}"
-        _cleanup_block_record(self.session_id)
-
-    def teardown_method(self):
-        _cleanup_block_record(self.session_id)
-
-    def _trigger_block(self):
-        """ブロックを発生させてブロック記録を作成"""
-        data = _make_task_input(
-            subagent_type="ticket-tasuki:coder",
-            session_id=self.session_id,
-        )
-        _run_guard(data)
-
-    def test_detect_circumvention_with_redmine_prompt(self):
-        """ブロック後にredmine関連のpromptでgeneral-purposeを起動すると警告"""
-        self._trigger_block()
-
-        data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=self.session_id,
-            prompt="Redmineのチケット#123にコメントを追加してください",
-        )
+    def test_block_general_purpose_without_team_name(self):
+        """general-purpose を team_name なしで起動するとブロック"""
+        data = _make_task_input(subagent_type="general-purpose")
         rc, out = _run_guard(data)
 
         assert rc == 0
         assert out is not None
-        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
-        assert "迂回検知" in out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "team_name" in out["hookSpecificOutput"]["permissionDecisionReason"]
 
-    def test_detect_circumvention_with_ticket_tasuki_prompt(self):
-        """ブロック後にticket-tasuki言及のpromptで警告"""
-        self._trigger_block()
-
-        data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=self.session_id,
-            prompt="ticket-tasukiのscribe機能を使ってチケットを作成して",
-        )
+    def test_block_coder_without_team_name(self):
+        """非ホワイトリストの coder を team_name なしで起動するとブロック"""
+        data = _make_task_input(subagent_type="coder")
         rc, out = _run_guard(data)
 
         assert rc == 0
         assert out is not None
-        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
-    def test_detect_circumvention_with_issue_create_prompt(self):
-        """ブロック後にissue操作系のpromptで警告"""
-        self._trigger_block()
-
-        data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=self.session_id,
-            prompt="issue create a new task for the sprint",
-        )
+    def test_block_empty_subagent_type_without_team_name(self):
+        """subagent_type未指定 + team_name未指定でブロック"""
+        data = _make_task_input(subagent_type="")
         rc, out = _run_guard(data)
 
         assert rc == 0
         assert out is not None
-        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
-    def test_detect_circumvention_japanese_ticket_prompt(self):
-        """ブロック後に日本語のチケット操作系promptで警告"""
-        self._trigger_block()
-
-        data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=self.session_id,
-            prompt="チケット起票をお願いします",
-        )
-        rc, out = _run_guard(data)
-
-        assert rc == 0
-        assert out is not None
-        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
-
-    def test_no_circumvention_for_unrelated_prompt(self):
-        """ブロック後でもticket-tasuki無関係のpromptは許可（ブロックなし）"""
-        self._trigger_block()
-
-        data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=self.session_id,
-            prompt="Reactコンポーネントのユニットテストを書いてください",
-        )
-        rc, out = _run_guard(data)
-
-        assert rc == 0
-        # issue_id警告は出るがブロックはされない
-        if out is not None:
-            assert "permissionDecision" not in out["hookSpecificOutput"] or \
-                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
-
-    def test_no_circumvention_with_team_name(self):
-        """ブロック後でもteam_name指定ありなら迂回検知しない"""
-        self._trigger_block()
-
+    def test_allow_general_purpose_with_team_name(self):
+        """general-purpose でも team_name 指定ありなら許可"""
         data = _make_task_input(
             subagent_type="general-purpose",
             team_name="my-team",
-            session_id=self.session_id,
-            prompt="Redmineチケットを更新してください",
+            prompt="issue_1234: 調査タスク",
         )
         rc, out = _run_guard(data)
 
         assert rc == 0
-        # issue_id警告は出るがブロック/ask判定はされない
-        if out is not None:
-            assert "permissionDecision" not in out["hookSpecificOutput"] or \
-                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
+        assert out is None
 
-    def test_no_circumvention_for_specific_subagent_type(self):
-        """ブロック後でもcoder等の特定subagent_typeは迂回検知対象外"""
-        self._trigger_block()
-
-        data = _make_task_input(
-            subagent_type="coder",
-            session_id=self.session_id,
-            prompt="Redmineの設定ファイルを修正してください",
-        )
+    def test_block_message_contains_alternatives(self):
+        """ブロックメッセージに代替手段が含まれる"""
+        data = _make_task_input(subagent_type="general-purpose")
         rc, out = _run_guard(data)
-
-        assert rc == 0
-        # issue_id警告は出るがブロックはされない
-        if out is not None:
-            assert "permissionDecision" not in out["hookSpecificOutput"] or \
-                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
-
-    def test_circumvention_warning_contains_blocked_type(self):
-        """迂回警告メッセージにブロックされたsubagent_typeが含まれる"""
-        self._trigger_block()
-
-        data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=self.session_id,
-            prompt="Redmineのチケットにコメントしてください",
-        )
-        _, out = _run_guard(data)
 
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
-        assert "ticket-tasuki:coder" in reason
+        assert "SendMessage" in reason
+        assert "Explore" in reason
+        assert "Plan" in reason
 
-    def test_block_record_expires(self):
-        """ブロック記録はTTL後に失効する"""
-        self._trigger_block()
+    def test_block_unknown_subagent_type(self):
+        """未知のsubagent_typeもteam_nameなしではブロック"""
+        data = _make_task_input(subagent_type="my-custom-agent")
+        rc, out = _run_guard(data)
 
-        # ブロック記録のタイムスタンプを過去に変更
-        path = os.path.join(
-            tempfile.gettempdir(),
-            f"task_spawn_guard_block_{self.session_id}.json",
-        )
-        with open(path) as f:
-            record = json.load(f)
-        record["blocked_at"] = time.time() - 400  # TTL(300秒)を超過
-        with open(path, "w") as f:
-            json.dump(record, f)
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
+
+class TestTeamExemptTypes:
+    """ビルトイン軽量エージェントのホワイトリスト"""
+
+    @pytest.mark.parametrize("agent_type", ["Explore", "Plan", "Bash"])
+    def test_allow_exempt_types_without_team_name(self, agent_type):
+        """ホワイトリスト対象はteam_name不要で許可"""
         data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=self.session_id,
-            prompt="Redmineのチケットにコメントしてください",
+            subagent_type=agent_type,
+            prompt="issue_1234: テスト",
         )
         rc, out = _run_guard(data)
 
         assert rc == 0
-        # TTL超過で迂回検知はされない（issue_id警告は出る場合あり）
-        if out is not None:
-            assert "permissionDecision" not in out["hookSpecificOutput"] or \
-                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
+        assert out is None  # 完全許可
 
-    def test_detect_circumvention_in_description(self):
-        """promptだけでなくdescriptionの内容でも迂回検知"""
-        self._trigger_block()
-
+    def test_allow_explore_without_issue_id(self):
+        """Exploreはissue_id無しでもブロックはされない（ユーザー確認要求）"""
         data = _make_task_input(
-            subagent_type="general-purpose",
-            session_id=self.session_id,
-            prompt="以下のタスクを実行してください",
-            description="Redmineチケット管理を行う",
+            subagent_type="Explore",
+            prompt="コードベースを調べてください",
         )
         rc, out = _run_guard(data)
 
         assert rc == 0
         assert out is not None
+        # issue_id欠落時はユーザー確認を要求する
         assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
 
-    def test_empty_subagent_type_also_detected(self):
-        """subagent_type未指定（空文字）でも迂回検知対象"""
-        self._trigger_block()
-
+    def test_allow_statusline_setup(self):
+        """statusline-setupは許可"""
         data = _make_task_input(
-            subagent_type="",
-            session_id=self.session_id,
-            prompt="ticket_tasukiでチケットを更新してください",
+            subagent_type="statusline-setup",
+            prompt="issue_1234: ステータスライン設定",
         )
         rc, out = _run_guard(data)
 
         assert rc == 0
+        assert out is None
+
+    def test_allow_claude_code_guide(self):
+        """claude-code-guideは許可"""
+        data = _make_task_input(
+            subagent_type="claude-code-guide",
+            prompt="issue_1234: Claude Code の使い方",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_case_sensitive_whitelist(self):
+        """ホワイトリストは大文字小文字を区別する"""
+        data = _make_task_input(subagent_type="explore")  # 小文字
+        rc, out = _run_guard(data)
+
+        assert rc == 0
         assert out is not None
-        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 class TestIssueIdCheck:
-    """#6218: promptにissue_{id}が含まれるかのトレーサビリティチェック"""
+    """promptにissue_{id}が含まれるかのトレーサビリティチェック"""
 
     def test_no_warning_with_issue_id(self):
-        """issue_{id}がpromptに含まれていれば警告なし"""
+        """issue_{id}がpromptに含まれていれば警告なし（ホワイトリスト型）"""
         data = _make_task_input(
-            subagent_type="coder",
-            prompt="issue_6218: task_spawn_guardにチェックを追加する",
-        )
-        rc, out = _run_guard(data)
-
-        assert rc == 0
-        assert out is None  # 出力なし = 完全許可
-
-    def test_no_warning_with_issue_id_in_middle(self):
-        """issue_{id}がprompt中間にあっても警告なし"""
-        data = _make_task_input(
-            subagent_type="coder",
-            prompt="以下のタスクを実行: issue_1234 のバグ修正",
+            subagent_type="Explore",
+            prompt="issue_6218: コードベースを調査する",
         )
         rc, out = _run_guard(data)
 
@@ -419,61 +263,30 @@ class TestIssueIdCheck:
         assert out is None
 
     def test_warning_without_issue_id(self):
-        """issue_{id}がpromptに含まれていなければ警告あり"""
+        """issue_{id}がpromptに含まれていなければユーザー確認要求（ホワイトリスト型）"""
         data = _make_task_input(
-            subagent_type="coder",
-            prompt="バグ修正を実行してください",
+            subagent_type="Explore",
+            prompt="コードベースを調べてください",
         )
         rc, out = _run_guard(data)
 
         assert rc == 0
         assert out is not None
         hook_output = out["hookSpecificOutput"]
-        # 警告メッセージが含まれる
         assert "issue_{id}" in hook_output["permissionDecisionReason"]
-        # ブロックではない（permissionDecisionがdeny/askでない）
-        assert "permissionDecision" not in hook_output or \
-            hook_output.get("permissionDecision") not in ("deny", "ask")
+        # ユーザー確認を要求する
+        assert hook_output["permissionDecision"] == "ask"
 
-    def test_warning_with_empty_prompt(self):
-        """空promptでも警告あり"""
-        data = _make_task_input(
-            subagent_type="coder",
-            prompt="",
-        )
-        rc, out = _run_guard(data)
-
-        assert rc == 0
-        assert out is not None
-        assert "issue_{id}" in out["hookSpecificOutput"]["permissionDecisionReason"]
-
-    def test_warning_does_not_block(self):
-        """issue_id警告はブロック（deny）しない"""
-        data = _make_task_input(
-            subagent_type="coder",
-            prompt="テスト実装を行う",
-        )
-        rc, out = _run_guard(data)
-
-        assert rc == 0
-        assert out is not None
-        # permissionDecisionキーが存在しないか、deny/askでないことを確認
-        hook_output = out["hookSpecificOutput"]
-        assert "permissionDecision" not in hook_output or \
-            hook_output["permissionDecision"] not in ("deny", "ask")
-
-    def test_existing_block_takes_priority_over_issue_id_warn(self):
+    def test_ticket_tasuki_deny_takes_priority(self):
         """ticket-tasuki直接起動のdeny判定はissue_id警告より優先"""
         data = _make_task_input(
             subagent_type="ticket-tasuki:coder",
-            prompt="テスト実装",  # issue_idなし
+            prompt="テスト実装",
         )
         rc, out = _run_guard(data)
-        _cleanup_block_record(data["session_id"])
 
         assert rc == 0
         assert out is not None
-        # deny判定が優先される
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_team_name_with_issue_id_no_output(self):
@@ -486,7 +299,19 @@ class TestIssueIdCheck:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None  # 完全に出力なし
+        assert out is None
+
+    def test_non_whitelisted_deny_takes_priority_over_issue_id_warn(self):
+        """非ホワイトリストのdeny判定はissue_id警告より優先"""
+        data = _make_task_input(
+            subagent_type="general-purpose",
+            prompt="コードベースを調べてください",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_issue_id_various_formats(self):
         """各種issue_{id}フォーマットを正しく検出"""
@@ -500,7 +325,7 @@ class TestIssueIdCheck:
             ("ISSUE_123", False),  # 大文字
         ]
         for prompt, should_have_id in test_cases:
-            data = _make_task_input(subagent_type="coder", prompt=prompt)
+            data = _make_task_input(subagent_type="Explore", prompt=prompt)
             rc, out = _run_guard(data)
             assert rc == 0, f"Failed for prompt: {prompt}"
             if should_have_id:
@@ -548,20 +373,18 @@ class TestEdgeCases:
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
-    def test_missing_session_id_no_circumvention_check(self):
-        """session_id がない場合は迂回検知をスキップ"""
+    def test_non_whitelisted_without_session_id_still_blocked(self):
+        """session_idがなくても非ホワイトリストはブロックされる"""
         data = {
             "hook_event_name": "PreToolUse",
             "tool_name": "Task",
             "tool_input": {
                 "subagent_type": "general-purpose",
-                "prompt": "Redmine チケットを作成",
+                "prompt": "テスト",
             },
         }
         rc, out = _run_guard(data)
 
         assert rc == 0
-        # issue_id警告は出るがブロック/ask判定はされない
-        if out is not None:
-            assert "permissionDecision" not in out["hookSpecificOutput"] or \
-                out["hookSpecificOutput"].get("permissionDecision") not in ("deny", "ask")
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
