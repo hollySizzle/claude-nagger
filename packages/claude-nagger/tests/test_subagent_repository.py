@@ -326,7 +326,7 @@ class TestRegisterTaskSpawns:
     """register_task_spawnsのテスト"""
 
     def test_register_task_spawns_with_role(self, db, tmp_path):
-        """ROLEありのTask tool_useが登録される"""
+        """subagent_typeありのTask tool_useが登録される（role=subagent_type）"""
         repo = SubagentRepository(db)
         session_id = "session-task-spawn"
 
@@ -342,8 +342,8 @@ class TestRegisterTaskSpawns:
                             "id": "toolu_01TEST",
                             "name": "Task",
                             "input": {
-                                "subagent_type": "general-purpose",
-                                "prompt": "[ROLE:coder]\nFix the bug."
+                                "subagent_type": "ticket-tasuki:coder",
+                                "prompt": "Fix the bug."
                             }
                         }
                     ]
@@ -361,11 +361,11 @@ class TestRegisterTaskSpawns:
         )
         row = cursor.fetchone()
         assert row is not None
-        assert row[0] == "coder"
+        assert row[0] == "ticket-tasuki:coder"
         assert row[1] == "toolu_01TEST"
 
-    def test_register_task_spawns_without_role_skipped(self, db, tmp_path):
-        """ROLEなしのTask tool_useはスキップされる"""
+    def test_register_task_spawns_with_subagent_type_registered(self, db, tmp_path):
+        """subagent_typeあり + team_nameなし → subagent_typeがroleとして登録（issue_6987）"""
         repo = SubagentRepository(db)
         session_id = "session-task-no-role"
 
@@ -390,8 +390,16 @@ class TestRegisterTaskSpawns:
 
         count = repo.register_task_spawns(session_id, str(transcript))
 
-        # ROLEがないのでスキップ
-        assert count == 0
+        # subagent_typeがあるので登録される（issue_6987）
+        assert count == 1
+
+        cursor = db.conn.execute(
+            "SELECT role FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "general-purpose"
 
     def test_register_task_spawns_file_not_exists(self, db):
         """存在しないファイルを指定した場合は0を返す"""
@@ -422,11 +430,11 @@ class TestRegisterTaskSpawns:
                 "type": "assistant",
                 "message": {"content": [{"type": "tool_use", "name": "Bash", "id": "t1", "input": {}}]}
             }) + '\n')
-            # 有効なTask
+            # 有効なTask（subagent_typeでrole決定）
             f.write(json.dumps({
                 "type": "assistant",
                 "message": {"content": [{"type": "tool_use", "name": "Task", "id": "t2",
-                            "input": {"subagent_type": "gp", "prompt": "[ROLE:coder]work"}}]}
+                            "input": {"subagent_type": "gp", "prompt": "work"}}]}
             }) + '\n')
 
         count = repo.register_task_spawns(session_id, str(transcript))
@@ -440,7 +448,7 @@ class TestRegisterTaskSpawns:
 
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
-            # issue_1234を含むprompt
+            # issue_1234を含むprompt（subagent_typeでrole決定）
             f.write(json.dumps({
                 "type": "assistant",
                 "message": {
@@ -451,7 +459,7 @@ class TestRegisterTaskSpawns:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "general-purpose",
-                                "prompt": "[ROLE:coder]\nissue_1234: Fix the bug."
+                                "prompt": "issue_1234: Fix the bug."
                             }
                         }
                     ]
@@ -486,7 +494,7 @@ class TestRegisterTaskSpawns:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "general-purpose",
-                                "prompt": "[ROLE:coder]\nFix the bug."
+                                "prompt": "Fix the bug."
                             }
                         }
                     ]
@@ -543,8 +551,8 @@ class TestRegisterTaskSpawns:
         assert row[0] == "coder"
         assert row[1] == "toolu_TEAM01"
 
-    def test_register_task_spawns_role_tag_priority_over_team_name(self, db, tmp_path):
-        """[ROLE:xxx]あり + team_name/nameあり → [ROLE:xxx]が優先（issue_6974）"""
+    def test_register_task_spawns_team_name_priority_over_subagent_type(self, db, tmp_path):
+        """team_name/nameあり + subagent_typeあり → nameが優先（issue_6987）"""
         repo = SubagentRepository(db)
         session_id = "session-role-priority"
 
@@ -560,7 +568,7 @@ class TestRegisterTaskSpawns:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "general-purpose",
-                                "prompt": "[ROLE:reviewer]\nReview the code.",
+                                "prompt": "Review the code.",
                                 "team_name": "dev-team",
                                 "name": "coder"
                             }
@@ -573,17 +581,17 @@ class TestRegisterTaskSpawns:
 
         assert count == 1
 
-        # [ROLE:xxx]が優先されることを確認
+        # team_name/nameが優先されることを確認
         cursor = db.conn.execute(
             "SELECT role FROM task_spawns WHERE session_id = ?",
             (session_id,)
         )
         row = cursor.fetchone()
         assert row is not None
-        assert row[0] == "reviewer"
+        assert row[0] == "coder"
 
-    def test_register_task_spawns_team_name_without_name_skipped(self, db, tmp_path):
-        """team_nameあり + nameなし → スキップ（issue_6974）"""
+    def test_register_task_spawns_team_name_without_name_fallback_subagent_type(self, db, tmp_path):
+        """team_nameあり + nameなし + subagent_typeあり → subagent_typeがrole（issue_6987）"""
         repo = SubagentRepository(db)
         session_id = "session-team-no-name"
 
@@ -609,8 +617,16 @@ class TestRegisterTaskSpawns:
 
         count = repo.register_task_spawns(session_id, str(transcript))
 
-        # nameがないのでスキップ
-        assert count == 0
+        # team_name+nameの条件を満たさないがsubagent_typeがあるので登録（issue_6987）
+        assert count == 1
+
+        cursor = db.conn.execute(
+            "SELECT role FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "general-purpose"
 
     def test_register_task_spawns_agent_tool_name_with_team(self, db, tmp_path):
         """name='Agent' + team_name/nameあり → nameがroleになる（issue_6982）"""
@@ -652,8 +668,8 @@ class TestRegisterTaskSpawns:
         assert row[0] == "coder"
         assert row[1] == "toolu_AGENT_TEAM01"
 
-    def test_register_task_spawns_agent_tool_name_with_role_tag(self, db, tmp_path):
-        """name='Agent' + [ROLE:xxx]あり → ROLE優先（issue_6982）"""
+    def test_register_task_spawns_agent_tool_name_team_name_priority(self, db, tmp_path):
+        """name='Agent' + team_name/nameあり → nameが優先（issue_6987）"""
         repo = SubagentRepository(db)
         session_id = "session-agent-role-tag"
 
@@ -669,9 +685,9 @@ class TestRegisterTaskSpawns:
                             "name": "Agent",
                             "input": {
                                 "subagent_type": "general-purpose",
-                                "prompt": "[ROLE:reviewer]\nReview the code.",
+                                "prompt": "Review the code.",
                                 "team_name": "dev-team",
-                                "name": "coder"
+                                "name": "reviewer"
                             }
                         }
                     ]
@@ -682,7 +698,7 @@ class TestRegisterTaskSpawns:
 
         assert count == 1
 
-        # [ROLE:xxx]が優先されることを確認
+        # team_name/nameが優先されることを確認
         cursor = db.conn.execute(
             "SELECT role FROM task_spawns WHERE session_id = ?",
             (session_id,)
@@ -691,8 +707,8 @@ class TestRegisterTaskSpawns:
         assert row is not None
         assert row[0] == "reviewer"
 
-    def test_register_task_spawns_agent_tool_name_without_role_skipped(self, db, tmp_path):
-        """name='Agent' + ROLEなし + team_nameなし → スキップ（issue_6982）"""
+    def test_register_task_spawns_agent_subagent_type_as_role(self, db, tmp_path):
+        """name='Agent' + subagent_typeあり + team_nameなし → subagent_typeがrole（issue_6987）"""
         repo = SubagentRepository(db)
         session_id = "session-agent-no-role"
 
@@ -717,7 +733,43 @@ class TestRegisterTaskSpawns:
 
         count = repo.register_task_spawns(session_id, str(transcript))
 
-        # ROLEなし + team_nameなし → スキップ
+        # subagent_typeがあるので登録される（issue_6987）
+        assert count == 1
+
+        cursor = db.conn.execute(
+            "SELECT role FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "general-purpose"
+
+    def test_register_task_spawns_no_subagent_type_no_team_name_skipped(self, db, tmp_path):
+        """subagent_typeなし + team_nameなし → スキップ（issue_6987）"""
+        repo = SubagentRepository(db)
+        session_id = "session-no-role-at-all"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_NOROLE_NOTYPE01",
+                            "name": "Task",
+                            "input": {
+                                "prompt": "Do something."
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+
+        # subagent_typeなし + team_nameなし → スキップ
         assert count == 0
 
 class TestFindTaskSpawnByToolUseId:
