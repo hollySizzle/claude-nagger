@@ -5,7 +5,7 @@ from infrastructure.db.hook_log_repository import HookLogRepository
 from infrastructure.db.nagger_state_db import NaggerStateDB
 from infrastructure.db.session_repository import SessionRepository
 from infrastructure.db.subagent_history_repository import SubagentHistoryRepository
-from infrastructure.db.subagent_repository import SubagentRepository
+from infrastructure.db.subagent_repository import SubagentRepository, SUBAGENT_TOOL_NAMES
 
 __all__ = [
     "NaggerStateDB",
@@ -16,4 +16,5 @@ __all__ = [
     "SessionRepository",
     "SubagentHistoryRepository",
     "SubagentRepository",
+    "SUBAGENT_TOOL_NAMES",
 ]

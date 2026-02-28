@@ -612,6 +612,114 @@ class TestRegisterTaskSpawns:
         # nameがないのでスキップ
         assert count == 0
 
+    def test_register_task_spawns_agent_tool_name_with_team(self, db, tmp_path):
+        """name='Agent' + team_name/nameあり → nameがroleになる（issue_6982）"""
+        repo = SubagentRepository(db)
+        session_id = "session-agent-team"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_AGENT_TEAM01",
+                            "name": "Agent",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "Implement the feature.",
+                                "team_name": "dev-team",
+                                "name": "coder"
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+
+        assert count == 1
+
+        # nameがroleとして登録されることを確認
+        cursor = db.conn.execute(
+            "SELECT role, tool_use_id FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "coder"
+        assert row[1] == "toolu_AGENT_TEAM01"
+
+    def test_register_task_spawns_agent_tool_name_with_role_tag(self, db, tmp_path):
+        """name='Agent' + [ROLE:xxx]あり → ROLE優先（issue_6982）"""
+        repo = SubagentRepository(db)
+        session_id = "session-agent-role-tag"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_AGENT_ROLE01",
+                            "name": "Agent",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "[ROLE:reviewer]\nReview the code.",
+                                "team_name": "dev-team",
+                                "name": "coder"
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+
+        assert count == 1
+
+        # [ROLE:xxx]が優先されることを確認
+        cursor = db.conn.execute(
+            "SELECT role FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "reviewer"
+
+    def test_register_task_spawns_agent_tool_name_without_role_skipped(self, db, tmp_path):
+        """name='Agent' + ROLEなし + team_nameなし → スキップ（issue_6982）"""
+        repo = SubagentRepository(db)
+        session_id = "session-agent-no-role"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_AGENT_NOROLE01",
+                            "name": "Agent",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "Do something without role."
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+
+        # ROLEなし + team_nameなし → スキップ
+        assert count == 0
+
 class TestFindTaskSpawnByToolUseId:
     """find_task_spawn_by_tool_use_idのテスト"""
 

@@ -15,6 +15,11 @@ from shared.structured_logging import DEFAULT_LOG_DIR, StructuredLogger
 _logger = StructuredLogger(name="SubagentRepository", log_dir=DEFAULT_LOG_DIR)
 
 
+
+# Claude Code v2.1.x以降はsubagent生成を name='Agent' で記録。
+# 旧バージョン互換のため 'Task' も維持（issue_6974）
+SUBAGENT_TOOL_NAMES = {"Task", "Agent"}
+
 class SubagentRepository:
     """subagentの登録・識別・Claim操作。"""
 
@@ -93,11 +98,12 @@ class SubagentRepository:
 
     # === Task tool_useマッチング（Phase 1） ===
     def register_task_spawns(self, session_id: str, transcript_path: str) -> int:
-        """親transcriptからTask tool_useを解析し、未登録分をINSERT。
+        """親transcriptからsubagent tool_useを解析し、未登録分をINSERT。
 
         解析対象:
         - トップレベル type='assistant' のエントリを対象
-        - message.content[] 内の type='tool_use' かつ name='Task' ブロックを抽出
+        - message.content[] 内の type='tool_use' かつ name in SUBAGENT_TOOL_NAMES ブロックを抽出
+          （name='Task' および name='Agent' に対応、issue_6982）
         - tool_use.input から subagent_type, prompt を取得
         - prompt から [ROLE:xxx] を正規表現で抽出
         - prompt_hash = SHA256(prompt)[:16]
@@ -143,10 +149,10 @@ class SubagentRepository:
                 content_list = message.get("content", [])
 
                 for content_item in content_list:
-                    # type='tool_use' かつ name='Task' を抽出
+                    # type='tool_use' かつ name in SUBAGENT_TOOL_NAMES を抽出（issue_6982）
                     if content_item.get("type") != "tool_use":
                         continue
-                    if content_item.get("name") != "Task":
+                    if content_item.get("name") not in SUBAGENT_TOOL_NAMES:
                         continue
 
                     # input から subagent_type, prompt を取得
@@ -161,7 +167,7 @@ class SubagentRepository:
                     role_match = role_pattern.search(prompt)
                     role = role_match.group(1) if role_match else None
 
-                    # ROLEがないTask tool_useはスキップ（issue_5947）
+                    # ROLEがないtool_useはスキップ（issue_5947）
                     # team-agent（TeamCreate方式）はROLEタグなし→nameをroleとして使用（issue_6974）
                     if role is None:
                         if tool_input.get("team_name") and tool_input.get("name"):

@@ -12,7 +12,7 @@ from typing import Dict, Any, Optional
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from domain.hooks.base_hook import BaseHook
-from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository, SubagentHistoryRepository
+from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository, SubagentHistoryRepository, SUBAGENT_TOOL_NAMES
 from shared.constants import SUGGESTED_RULES_FILENAME, SUGGESTED_RULES_DIRNAME
 
 
@@ -166,7 +166,7 @@ class SessionStartupHook(BaseHook):
 
         2つのパターンを検索:
         1. 最初のuserメッセージ（subagent自身のtranscript）
-        2. 最後のTask tool_useのprompt（親セッションtranscript）
+        2. 最後のsubagent tool_useのprompt（親セッションtranscript）
 
         Args:
             transcript_path: トランスクリプトJSONLファイルパス
@@ -216,7 +216,7 @@ class SessionStartupHook(BaseHook):
                         if match:
                             role_from_user = match.group(1)
 
-                    # パターン2: assistant内のTask tool_use prompt
+                    # パターン2: assistant内のsubagent tool_use prompt
                     if entry_type == 'assistant':
                         message = entry.get('message', {})
                         content = message.get('content', [])
@@ -224,7 +224,7 @@ class SessionStartupHook(BaseHook):
                             for block in content:
                                 if (isinstance(block, dict)
                                     and block.get('type') == 'tool_use'
-                                    and block.get('name') == 'Task'):
+                                    and block.get('name') in SUBAGENT_TOOL_NAMES):
                                     prompt = block.get('input', {}).get('prompt', '')
                                     match = re.search(r'\[ROLE:([^\]]+)\]', prompt)
                                     if match:
@@ -261,10 +261,10 @@ class SessionStartupHook(BaseHook):
         """
         self.log_info(f"📋 SessionStartupHook - Input data keys: {input_data.keys()}")
 
-        # Taskツール（subagent生成）はスキップ（subagent自身のツール呼び出しで発火する）
+        # subagent生成ツールはスキップ（subagent自身のツール呼び出しで発火する）
         tool_name = input_data.get('tool_name', '')
-        if tool_name == 'Task':
-            self.log_debug("Skipping Task tool (subagent spawn)")
+        if tool_name in SUBAGENT_TOOL_NAMES:
+            self.log_debug("Skipping subagent tool (subagent spawn)")
             return False
 
         # 設定で無効化されている場合はスキップ（base設定）
