@@ -162,8 +162,12 @@ class SubagentRepository:
                     role = role_match.group(1) if role_match else None
 
                     # ROLEがないTask tool_useはスキップ（issue_5947）
+                    # team-agent（TeamCreate方式）はROLEタグなし→nameをroleとして使用（issue_6974）
                     if role is None:
-                        continue
+                        if tool_input.get("team_name") and tool_input.get("name"):
+                            role = tool_input.get("name")
+                        else:
+                            continue
 
                     # issue_(\d+) を抽出（issue_6358: 最初のマッチを使用）
                     issue_id_match = issue_id_pattern.search(prompt)

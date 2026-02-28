@@ -503,6 +503,115 @@ class TestRegisterTaskSpawns:
         assert row is not None
         assert row[0] is None
 
+    def test_register_task_spawns_team_agent_name_as_role(self, db, tmp_path):
+        """[ROLE:xxx]なし + team_name/nameあり → nameがroleになる（issue_6974）"""
+        repo = SubagentRepository(db)
+        session_id = "session-team-agent"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_TEAM01",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "Implement the feature.",
+                                "team_name": "dev-team",
+                                "name": "coder"
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+
+        assert count == 1
+
+        # nameがroleとして登録されることを確認
+        cursor = db.conn.execute(
+            "SELECT role, tool_use_id FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "coder"
+        assert row[1] == "toolu_TEAM01"
+
+    def test_register_task_spawns_role_tag_priority_over_team_name(self, db, tmp_path):
+        """[ROLE:xxx]あり + team_name/nameあり → [ROLE:xxx]が優先（issue_6974）"""
+        repo = SubagentRepository(db)
+        session_id = "session-role-priority"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_PRIORITY01",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "[ROLE:reviewer]\nReview the code.",
+                                "team_name": "dev-team",
+                                "name": "coder"
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+
+        assert count == 1
+
+        # [ROLE:xxx]が優先されることを確認
+        cursor = db.conn.execute(
+            "SELECT role FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        assert row[0] == "reviewer"
+
+    def test_register_task_spawns_team_name_without_name_skipped(self, db, tmp_path):
+        """team_nameあり + nameなし → スキップ（issue_6974）"""
+        repo = SubagentRepository(db)
+        session_id = "session-team-no-name"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_NONAME01",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "Do something.",
+                                "team_name": "dev-team"
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+
+        # nameがないのでスキップ
+        assert count == 0
+
 class TestFindTaskSpawnByToolUseId:
     """find_task_spawn_by_tool_use_idのテスト"""
 
