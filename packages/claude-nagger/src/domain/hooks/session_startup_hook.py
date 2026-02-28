@@ -162,11 +162,10 @@ class SessionStartupHook(BaseHook):
         return resolved
 
     def _parse_role_from_transcript(self, transcript_path: str) -> Optional[str]:
-        """トランスクリプトJSONLから[ROLE:xxx]パターンを抽出
+        """トランスクリプトJSONLからsubagentロールを抽出
 
-        2つのパターンを検索:
-        1. 最初のuserメッセージ（subagent自身のtranscript）
-        2. 最後のsubagent tool_useのprompt（親セッションtranscript）
+        assistant内のsubagent tool_useブロックからinput.name（TeamCreate方式）
+        またはinput.subagent_type（フォールバック）でロールを取得。
 
         Args:
             transcript_path: トランスクリプトJSONLファイルパス
@@ -183,9 +182,7 @@ class SessionStartupHook(BaseHook):
                 self.log_debug(f"Transcript file not found: {transcript_path}")
                 return None
 
-            role_from_user = None
             role_from_task = None
-            first_user_seen = False
 
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -196,27 +193,7 @@ class SessionStartupHook(BaseHook):
 
                     entry_type = entry.get('type', '')
 
-                    # パターン1: 最初のuserメッセージ
-                    if entry_type == 'user' and not first_user_seen:
-                        first_user_seen = True
-                        message = entry.get('message', {})
-                        content = message.get('content', '')
-
-                        # contentがリストの場合（複数ブロック）はテキスト部分を結合
-                        if isinstance(content, list):
-                            text_parts = []
-                            for block in content:
-                                if isinstance(block, dict) and block.get('type') == 'text':
-                                    text_parts.append(block.get('text', ''))
-                                elif isinstance(block, str):
-                                    text_parts.append(block)
-                            content = '\n'.join(text_parts)
-
-                        match = re.search(r'\[ROLE:([^\]]+)\]', content)
-                        if match:
-                            role_from_user = match.group(1)
-
-                    # パターン2: assistant内のsubagent tool_use prompt
+                    # assistant内のsubagent tool_useからロール抽出
                     if entry_type == 'assistant':
                         message = entry.get('message', {})
                         content = message.get('content', [])
@@ -225,17 +202,15 @@ class SessionStartupHook(BaseHook):
                                 if (isinstance(block, dict)
                                     and block.get('type') == 'tool_use'
                                     and block.get('name') in SUBAGENT_TOOL_NAMES):
-                                    prompt = block.get('input', {}).get('prompt', '')
-                                    match = re.search(r'\[ROLE:([^\]]+)\]', prompt)
-                                    if match:
-                                        role_from_task = match.group(1)
+                                    input_data = block.get('input', {})
+                                    if input_data.get('team_name') and input_data.get('name'):
+                                        role_from_task = input_data.get('name')  # TeamCreate方式
+                                    elif input_data.get('subagent_type'):
+                                        role_from_task = input_data.get('subagent_type')  # フォールバック
 
-            # userメッセージ優先（subagent自身のtranscriptの場合）
-            # Task tool_useはフォールバック（親transcriptの場合）
-            result = role_from_user or role_from_task
-            if result:
-                self.log_info(f"🏷️ Parsed role from transcript: {result}")
-            return result
+            if role_from_task:
+                self.log_info(f"🏷️ Parsed role from transcript: {role_from_task}")
+            return role_from_task
 
         except Exception as e:
             self.log_error(f"Error parsing role from transcript: {e}")
