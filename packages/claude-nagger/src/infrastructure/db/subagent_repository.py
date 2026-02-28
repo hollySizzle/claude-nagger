@@ -105,7 +105,7 @@ class SubagentRepository:
         - message.content[] 内の type='tool_use' かつ name in SUBAGENT_TOOL_NAMES ブロックを抽出
           （name='Task' および name='Agent' に対応、issue_6982）
         - tool_use.input から subagent_type, prompt を取得
-        - prompt から [ROLE:xxx] を正規表現で抽出
+        - role決定: team_name/name → subagent_type → skip（issue_6986）
         - prompt_hash = SHA256(prompt)[:16]
         - transcript_index = 行番号
 
@@ -122,8 +122,6 @@ class SubagentRepository:
         if not path.exists():
             return 0
 
-        # [ROLE:xxx] パターン
-        role_pattern = re.compile(r"\[ROLE:([^\]]+)\]")
         # issue_(\d+) パターン（issue_6358: issue_id伝搬用）
         issue_id_pattern = re.compile(r"issue_(\d+)")
         now = datetime.now(timezone.utc).isoformat()
@@ -163,17 +161,14 @@ class SubagentRepository:
                     # tool_use.id を取得（issue_5947）
                     tool_use_id = content_item.get("id")
 
-                    # [ROLE:xxx] を抽出
-                    role_match = role_pattern.search(prompt)
-                    role = role_match.group(1) if role_match else None
-
-                    # ROLEがないtool_useはスキップ（issue_5947）
-                    # team-agent（TeamCreate方式）はROLEタグなし→nameをroleとして使用（issue_6974）
+                    # role決定: team_name/name → subagent_type → skip（issue_6986）
+                    role = None
+                    if tool_input.get("team_name") and tool_input.get("name"):
+                        role = tool_input.get("name")  # TeamCreate方式
+                    elif subagent_type:
+                        role = subagent_type  # Task/Agent方式フォールバック
                     if role is None:
-                        if tool_input.get("team_name") and tool_input.get("name"):
-                            role = tool_input.get("name")
-                        else:
-                            continue
+                        continue
 
                     # issue_(\d+) を抽出（issue_6358: 最初のマッチを使用）
                     issue_id_match = issue_id_pattern.search(prompt)
