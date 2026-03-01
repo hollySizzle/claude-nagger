@@ -5,6 +5,7 @@ from .file_convention_matcher import FileConventionMatcher
 from .command_convention_matcher import CommandConventionMatcher
 from .base_convention_matcher import BaseConventionMatcher
 from .rule_suggester import RuleSuggester, PatternSuggestion
+from .leader_detection import is_leader_tool_use
 
 __all__ = [
     'HookManager',
@@ -13,4 +14,5 @@ __all__ = [
     'BaseConventionMatcher',
     'RuleSuggester',
     'PatternSuggestion',
+    'is_leader_tool_use',
 ]

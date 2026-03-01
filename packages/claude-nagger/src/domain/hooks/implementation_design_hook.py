@@ -10,6 +10,7 @@ from domain.hooks.base_hook import BaseHook
 from domain.services.file_convention_matcher import FileConventionMatcher
 from domain.services.command_convention_matcher import CommandConventionMatcher
 from domain.services.mcp_convention_matcher import McpConventionMatcher
+from domain.services.leader_detection import is_leader_tool_use
 from infrastructure.config.config_manager import ConfigManager
 from shared.structured_logging import get_logger
 
@@ -63,6 +64,44 @@ class ImplementationDesignHook(BaseHook):
         self.log_debug(f"Converted relative path '{file_path}' to absolute: '{normalized}' (base_dir={base_dir})")
         return normalized
 
+    def _filter_rules_by_scope(self, rule_infos: list, input_data: dict) -> list:
+        """scopeに基づくルールフィルタリング
+
+        scope="leader"のルールはleaderのtool_useの場合のみ適用。
+        scope=Noneのルールは全agent対象。
+        """
+        if not rule_infos:
+            return rule_infos
+
+        # scope付きルールが存在するか確認
+        has_scoped_rules = any(r.get('scope') for r in rule_infos)
+        if not has_scoped_rules:
+            return rule_infos
+
+        # leader判定用のデータ取得
+        tool_use_id = input_data.get('tool_use_id', '')
+        transcript_path = input_data.get('transcript_path', '')
+        caller_is_leader = False
+        if tool_use_id and transcript_path:
+            caller_is_leader = is_leader_tool_use(transcript_path, tool_use_id)
+
+        filtered = []
+        for rule_info in rule_infos:
+            scope = rule_info.get('scope')
+            if scope == 'leader':
+                if caller_is_leader:
+                    filtered.append(rule_info)
+                else:
+                    self.impl_logger.info(
+                        f"SCOPE SKIP: Rule '{rule_info['rule_name']}' scope=leader, "
+                        f"but caller is not leader"
+                    )
+            else:
+                # scope=None: 全agent対象
+                filtered.append(rule_info)
+
+        return filtered
+
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """
         処理対象かどうかを判定（ファイル編集とコマンド実行の両方）
@@ -102,12 +141,24 @@ class ImplementationDesignHook(BaseHook):
             self.impl_logger.info(f"MCP TOOL DETECTED: tool_name='{tool_name}'")
             rule_infos = self.mcp_matcher.get_confirmation_message(tool_name, tool_input)
             if rule_infos:
+                # scopeフィルタリング
+                rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
+                if not rule_infos:
+                    self.impl_logger.info("MCP: All rules filtered by scope, skipping")
+                    return False
+
                 session_id = input_data.get('session_id', '')
                 if session_id:
                     has_unprocessed_rule = False
                     for rule_info in rule_infos:
                         rule_name = rule_info['rule_name']
+                        severity = rule_info.get('severity', 'block')
                         self.impl_logger.info(f"MCP RULE MATCHED CHECK: session_id='{session_id}', rule_name='{rule_name}'")
+
+                        # deny: マーカー不使用・常に処理対象
+                        if severity == 'deny':
+                            has_unprocessed_rule = True
+                            continue
 
                         is_processed = self.is_rule_processed(session_id, rule_name)
                         self.impl_logger.info(f"MCP MARKER CHECK: is_rule_processed={is_processed}")
@@ -180,6 +231,12 @@ class ImplementationDesignHook(BaseHook):
         rule_infos = self.matcher.get_confirmation_message(absolute_path)
         
         if rule_infos:
+            # scopeフィルタリング
+            rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
+            if not rule_infos:
+                self.impl_logger.info("FILE: All rules filtered by scope, skipping")
+                return False
+
             # マッチした全ルールについてログ出力
             for rule_info in rule_infos:
                 self.log_info(f"✅ RULE MATCHED: {rule_info['rule_name']} - Severity: {rule_info['severity']}")
@@ -192,8 +249,14 @@ class ImplementationDesignHook(BaseHook):
                 has_unprocessed_rule = False
                 for rule_info in rule_infos:
                     rule_name = rule_info['rule_name']
+                    severity = rule_info.get('severity', 'block')
                     self.impl_logger.info(f"RULE MATCHED CHECK: session_id='{session_id}', rule_name='{rule_name}'")
                     
+                    # deny: マーカー不使用・常に処理対象
+                    if severity == 'deny':
+                        has_unprocessed_rule = True
+                        continue
+
                     is_processed = self.is_rule_processed(session_id, rule_name)
                     self.impl_logger.info(f"MARKER CHECK: is_rule_processed={is_processed}")
                     if is_processed:
@@ -345,7 +408,7 @@ class ImplementationDesignHook(BaseHook):
             input_data: 入力データ
 
         Returns:
-            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve', 'reason': 'メッセージ'}
+            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve'/'deny', 'reason': 'メッセージ'}
         """
         tool_name = input_data.get('tool_name', '')
         tool_input = input_data.get('tool_input', {})
@@ -376,13 +439,30 @@ class ImplementationDesignHook(BaseHook):
                 'reason': 'No rules matched'
             }
         
+        # scopeフィルタリング
+        rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
+        if not rule_infos:
+            return {
+                'decision': 'approve',
+                'reason': 'No rules matched after scope filtering'
+            }
+        
         # 全マッチルールのメッセージを結合してブロック
         messages = []
         block_rule_names = []
+        has_deny = False
         for rule_info in rule_infos:
             severity = rule_info['severity']
             message = rule_info['message']
             rule_name = rule_info['rule_name']
+            
+            # deny: マーカーチェック・作成をスキップ（常時deny）
+            if severity == 'deny':
+                self.impl_logger.info(f"FILE RULE DENY: Rule '{rule_name}' (severity: deny) denying file edit: {absolute_path}")
+                messages.append(message)
+                block_rule_names.append(rule_name)
+                has_deny = True
+                continue
             
             # 規約名別マーカーをチェック
             if session_id and self.is_rule_processed(session_id, rule_name):
@@ -408,8 +488,10 @@ class ImplementationDesignHook(BaseHook):
         
         # 複数メッセージを結合
         combined_message = "\n\n---\n\n".join(messages)
+        # deny含む場合はdeny決定（WARN_ONLY変換を防止）
+        decision = 'deny' if has_deny else 'block'
         return {
-            'decision': 'block',
+            'decision': decision,
             'reason': combined_message
         }
     def run(self) -> int:
@@ -431,7 +513,7 @@ class ImplementationDesignHook(BaseHook):
             input_data: 全体の入力データ
 
         Returns:
-            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve', 'reason': 'メッセージ'}
+            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve'/'deny', 'reason': 'メッセージ'}
         """
         command = tool_input.get('command', '')
         if not command:
@@ -454,11 +536,31 @@ class ImplementationDesignHook(BaseHook):
                 'reason': 'No command rules matched'
             }
         
+        # scopeフィルタリング
+        rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
+        if not rule_infos:
+            return {
+                'decision': 'approve',
+                'reason': 'No command rules matched after scope filtering'
+            }
+        
         # 全マッチルールについて処理
         messages = []
+        has_deny = False
         for rule_info in rule_infos:
+            rule_name = rule_info['rule_name']
+            severity = rule_info['severity']
+            message = rule_info['message']
+            
             # コマンド規約マッチしたログ
-            self.impl_logger.info(f"COMMAND RULE MATCHED: {rule_info['rule_name']} (severity: {rule_info['severity']}, threshold: {rule_info.get('token_threshold', 'default')}) for command: {command}")
+            self.impl_logger.info(f"COMMAND RULE MATCHED: {rule_name} (severity: {severity}, threshold: {rule_info.get('token_threshold', 'default')}) for command: {command}")
+            
+            # deny: マーカーチェック・作成をスキップ（常時deny）
+            if severity == 'deny':
+                self.impl_logger.info(f"COMMAND RULE DENY: Rule '{rule_name}' (severity: deny) denying command: {command}")
+                messages.append(message)
+                has_deny = True
+                continue
             
             # セッション内で同じコマンドが既に処理済みかチェック
             if session_id and self.is_command_processed(session_id, command):
@@ -499,11 +601,8 @@ class ImplementationDesignHook(BaseHook):
                 self.mark_command_processed(session_id, command, current_tokens or 0)
                 self.log_info(f"📝 Marked command as processed: {command}")
             
-            severity = rule_info['severity']
-            message = rule_info['message']
-            
-            self.log_info(f"🚨 Command rule matched - Severity: {severity}, Rule: {rule_info['rule_name']}")
-            self.impl_logger.info(f"COMMAND RULE BLOCKING: Rule '{rule_info['rule_name']}' (severity: {severity}) blocking command: {command}")
+            self.log_info(f"🚨 Command rule matched - Severity: {severity}, Rule: {rule_name}")
+            self.impl_logger.info(f"COMMAND RULE BLOCKING: Rule '{rule_name}' (severity: {severity}) blocking command: {command}")
             messages.append(message)
         
         if not messages:
@@ -515,8 +614,9 @@ class ImplementationDesignHook(BaseHook):
         
         # 複数メッセージを結合
         combined_message = "\n\n---\n\n".join(messages)
+        decision = 'deny' if has_deny else 'block'
         return {
-            'decision': 'block',
+            'decision': decision,
             'reason': combined_message
         }
 
@@ -552,7 +652,7 @@ class ImplementationDesignHook(BaseHook):
             input_data: 全体の入力データ
 
         Returns:
-            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve', 'reason': 'メッセージ'}
+            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve'/'deny', 'reason': 'メッセージ'}
         """
         tool_input = input_data.get('tool_input', {})
         self.impl_logger.info(f"MCP PROCESS: tool_name='{tool_name}'")
@@ -567,14 +667,30 @@ class ImplementationDesignHook(BaseHook):
                 'reason': 'No MCP rules matched'
             }
 
+        # scopeフィルタリング
+        rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
+        if not rule_infos:
+            return {
+                'decision': 'approve',
+                'reason': 'No MCP rules matched after scope filtering'
+            }
+
         # 全マッチルールについて処理
         messages = []
+        has_deny = False
         for rule_info in rule_infos:
             rule_name = rule_info['rule_name']
             severity = rule_info['severity']
             message = rule_info['message']
 
             self.impl_logger.info(f"MCP RULE MATCHED: {rule_name} (severity: {severity}, threshold: {rule_info.get('token_threshold', 'default')}) for tool: {tool_name}")
+
+            # deny: マーカーチェック・作成をスキップ（常時deny）
+            if severity == 'deny':
+                self.impl_logger.info(f"MCP RULE DENY: Rule '{rule_name}' (severity: deny) denying MCP tool: {tool_name}")
+                messages.append(message)
+                has_deny = True
+                continue
 
             # セッション内で同じルールが既に処理済みかチェック
             if session_id and self.is_rule_processed(session_id, rule_name):
@@ -621,8 +737,9 @@ class ImplementationDesignHook(BaseHook):
 
         # 複数メッセージを結合
         combined_message = "\n\n---\n\n".join(messages)
+        decision = 'deny' if has_deny else 'block'
         return {
-            'decision': 'block',
+            'decision': decision,
             'reason': combined_message
         }
 

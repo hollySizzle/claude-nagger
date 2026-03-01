@@ -15,9 +15,10 @@ class ConventionRule:
     """規約ルール"""
     name: str
     patterns: List[str]
-    severity: str  # 'block' or 'warn'
+    severity: str  # 'block', 'warn', 'deny'
     message: str
-    token_threshold: Optional[int] = None  # 規約別トークン閾値
+    token_threshold: Optional[int] = None
+    scope: Optional[str] = None  # 'leader' or None（全agent対象）  # 規約別トークン閾値
 
 
 class FileConventionMatcher:
@@ -67,7 +68,8 @@ class FileConventionMatcher:
                     patterns=rule_data['patterns'],
                     severity=rule_data.get('severity', 'warn'),
                     message=rule_data['message'],
-                    token_threshold=rule_data.get('token_threshold')
+                    token_threshold=rule_data.get('token_threshold'),
+                    scope=rule_data.get('scope')
                 )
                 rules.append(rule)
                 self.logger.debug(f"Loaded rule: {rule.name} with patterns: {rule.patterns}")
@@ -183,7 +185,8 @@ class FileConventionMatcher:
                 'rule_name': rule.name,
                 'severity': rule.severity,
                 'message': formatted_message,
-                'token_threshold': rule.token_threshold
+                'token_threshold': rule.token_threshold,
+                'scope': rule.scope
             })
         
         return results

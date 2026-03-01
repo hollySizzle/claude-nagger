@@ -16,10 +16,11 @@ class McpConventionRule:
     """MCP規約ルール"""
     name: str
     tool_pattern: str  # 正規表現パターン（re.match）
-    severity: str  # 'block', 'warn', 'info'
+    severity: str  # 'block', 'warn', 'info', 'deny'
     message: str
     token_threshold: Optional[int] = None
-    input_match: Optional[Dict[str, str]] = None  # tool_inputフィールド条件（AND評価、re.fullmatch）
+    input_match: Optional[Dict[str, str]] = None
+    scope: Optional[str] = None  # 'leader' or None（全agent対象）  # tool_inputフィールド条件（AND評価、re.fullmatch）
 
 
 class McpConventionMatcher(BaseConventionMatcher):
@@ -80,7 +81,8 @@ class McpConventionMatcher(BaseConventionMatcher):
                     severity=rule_data.get('severity', 'warn'),
                     message=rule_data['message'],
                     token_threshold=rule_data.get('token_threshold'),
-                    input_match=rule_data.get('input_match')
+                    input_match=rule_data.get('input_match'),
+                    scope=rule_data.get('scope')
                 )
                 rules.append(rule)
                 self.logger.debug(f"Loaded MCP rule: {rule.name} with pattern: {rule.tool_pattern}, input_match: {rule.input_match}")
@@ -220,7 +222,8 @@ class McpConventionMatcher(BaseConventionMatcher):
                 'severity': rule.severity,
                 'message': rule.message,
                 'tool_name': tool_name,
-                'token_threshold': rule.token_threshold
+                'token_threshold': rule.token_threshold,
+                'scope': rule.scope
             })
 
         return results

@@ -293,7 +293,8 @@ class SessionStartupHook(BaseHook):
             tool_use_id = input_data.get('tool_use_id', '')
             current_transcript = input_data.get('transcript_path', '')
             if tool_use_id and current_transcript:
-                if subagent_repo.is_leader_tool_use(current_transcript, tool_use_id):
+                from domain.services.leader_detection import is_leader_tool_use
+                if is_leader_tool_use(current_transcript, tool_use_id):
                     self.log_info(
                         f"⏭️ Skipping subagent blocking: caller is leader "
                         f"(tool_use_id={tool_use_id})"

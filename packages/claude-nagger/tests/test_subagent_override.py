@@ -435,21 +435,20 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record.role = None
         mock_record.leader_transcript_path = "/home/user/.claude/projects/test/leader-session.jsonl"
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
-        # tool_use_idがleader transcriptに見つかる → leader判定
-        mock_subagent_repo.is_leader_tool_use.return_value = True
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    # leaderのtool_use_id + transcript_path → スキップ
-                    result = hook.should_process({
-                        "session_id": "test-session",
-                        "transcript_path": "/home/user/.claude/projects/test/leader-session.jsonl",
-                        "tool_use_id": "toolu_LEADER_001",
-                    })
+                    with patch('domain.services.leader_detection.is_leader_tool_use', return_value=True) as mock_leader:
+                        # leaderのtool_use_id + transcript_path → スキップ
+                        result = hook.should_process({
+                            "session_id": "test-session",
+                            "transcript_path": "/home/user/.claude/projects/test/leader-session.jsonl",
+                            "tool_use_id": "toolu_LEADER_001",
+                        })
 
         assert result is False
-        mock_subagent_repo.is_leader_tool_use.assert_called_once_with(
+        mock_leader.assert_called_once_with(
             "/home/user/.claude/projects/test/leader-session.jsonl", "toolu_LEADER_001"
         )
 
