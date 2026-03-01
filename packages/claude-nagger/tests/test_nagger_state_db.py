@@ -418,7 +418,7 @@ class TestSubagentRepository:
         assert count2 == 0  # 重複なし
 
     def test_match_task_to_agent(self, subagent_repo, tmp_path):
-        """task_spawnとagentのマッチング"""
+        """transcript_pathなしのmatch_task_to_agentはNone返却（issue_7016: フォールバック廃止）"""
         # transcriptファイル作成
         transcript_path = tmp_path / "transcript.jsonl"
         entries = [
@@ -452,15 +452,9 @@ class TestSubagentRepository:
             agent_type="reviewer"
         )
 
-        # マッチング
+        # transcript_pathなしではStep 0スキップ → None（フォールバック廃止）
         role = subagent_repo.match_task_to_agent("session-1", "agent-1", "reviewer")
-
-        assert role == "reviewer"
-
-        # agent確認
-        record = subagent_repo.get("agent-1")
-        assert record.role == "reviewer"
-        assert record.role_source == "task_match"
+        assert role is None
 
     def test_claim_next_unprocessed_排他消去法(self, subagent_repo):
         """未処理1件なら確定で取得（2フェーズ方式）"""
@@ -709,7 +703,7 @@ class TestSubagentRepository:
         assert rows[0][0] == "reviewer"
 
     def test_match_task_to_agent_role優先(self, subagent_repo, tmp_path):
-        """roleパラメータ指定時、roleで完全一致マッチ優先（issue_5947）"""
+        """role引数指定してもフォールバック廃止によりNone返却（issue_7016）"""
         transcript_path = tmp_path / "transcript.jsonl"
         entries = [
             {
@@ -754,14 +748,12 @@ class TestSubagentRepository:
         subagent_repo.register_task_spawns("session-1", str(transcript_path))
         subagent_repo.register("agent-1", "session-1", "coder")
 
-        # role="coder"を指定すると、subagent_type=coderのエントリではなく
-        # role=coderのエントリにマッチする
+        # transcript_pathなし → フォールバック廃止によりNone
         role = subagent_repo.match_task_to_agent("session-1", "agent-1", "coder", role="coder")
-
-        assert role == "coder"
+        assert role is None
 
     def test_match_task_to_agent_role指定なしはsubagent_type(self, subagent_repo, tmp_path):
-        """roleパラメータ未指定時、subagent_typeでマッチ"""
+        """role未指定・transcript_pathなしではフォールバック廃止によりNone返却（issue_7016）"""
         transcript_path = tmp_path / "transcript.jsonl"
         entries = [
             {
@@ -789,11 +781,9 @@ class TestSubagentRepository:
         subagent_repo.register_task_spawns("session-1", str(transcript_path))
         subagent_repo.register("agent-1", "session-1", "coder")
 
-        # role未指定でsubagent_type=coderでマッチ
+        # transcript_pathなし → フォールバック廃止によりNone
         role = subagent_repo.match_task_to_agent("session-1", "agent-1", "coder")
-
-        # roleは "scribe"（task_spawnのrole）
-        assert role == "scribe"
+        assert role is None
 
     def test_cleanup_old_task_spawns(self, subagent_repo, tmp_path):
         """古い未マッチエントリの削除（issue_5947）"""
@@ -1086,7 +1076,7 @@ class TestSubagentRepository:
         assert cursor.fetchone()[0] == "agent-1"
 
     def test_match_task_to_agent_agent_progressなしはフォールバック(self, subagent_repo, tmp_path):
-        """agent_progressがない場合は従来のマッチングにフォールバック（issue_5947）"""
+        """agent_progressがない場合はNone返却（issue_7016: フォールバック廃止）"""
         parent_transcript_path = tmp_path / "parent_transcript.jsonl"
         parent_entries = [
             {
@@ -1128,13 +1118,13 @@ class TestSubagentRepository:
 
         subagent_repo.register("agent-1", "session-1", "coder")
 
-        # フォールバック: subagent_typeでマッチ
+        # agent_progressなし → Step 0失敗 → None（フォールバック廃止）
         role = subagent_repo.match_task_to_agent(
             "session-1", "agent-1", "coder",
             transcript_path=str(subagent_transcript_path)
         )
 
-        assert role == "scribe"
+        assert role is None
 
 
 # === SessionRepository単体テスト ===

@@ -1,8 +1,7 @@
 """SubagentRepositoryのユニットテスト
 
-issue_5955: テスト分離・TTL機能のテスト
-- フォールバックマッチングのTTL検証
-- テスト間の分離（tmp_path経由のDB使用）
+issue_5955: テスト分離
+issue_7016: Step 1/Step 2廃止、Step 0（agent_progressベース正確マッチ）のみに簡素化
 """
 
 import json
@@ -12,56 +11,25 @@ import pytest
 
 from infrastructure.db.nagger_state_db import NaggerStateDB
 from infrastructure.db.subagent_repository import SubagentRepository
-from shared.constants import TASK_SPAWN_TTL_MINUTES
 
 
 class TestSubagentRepositoryTTL:
-    """フォールバックマッチングのTTL機能テスト（issue_5955）"""
+    """フォールバックマッチング廃止によりStep 0（agent_progressベース）のみ（issue_7016）
 
-    def test_ttl_expired_entry_not_matched(self, db):
-        """TTL切れエントリがフォールバックマッチング対象外になることを確認
+    TTLはStep 1/Step 2フォールバックにのみ適用されていたため、
+    Step 0のみのフローではTTLテストは不要。
+    Step 0はtranscript_pathベースの正確マッチングのため、TTL制限を受けない。
+    """
 
-        created_atを古い時刻（TTL超過）に設定したエントリはマッチしない
-        """
+    def test_no_fallback_without_transcript_path(self, db):
+        """transcript_pathなしの場合、フォールバックせずNone返却（issue_7016）"""
         repo = SubagentRepository(db)
-        session_id = "test-session-ttl-expired"
-        agent_id = "agent-ttl-test"
+        session_id = "test-session-no-fallback"
+        agent_id = "agent-no-fallback"
 
-        # subagentを登録
         repo.register(agent_id, session_id, "general-purpose", role=None)
 
-        # TTL超過のtask_spawn（6分前 > 5分TTL）
-        expired_time = (datetime.now(timezone.utc) - timedelta(minutes=TASK_SPAWN_TTL_MINUTES + 1)).isoformat()
-        db.conn.execute(
-            """
-            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (session_id, 1, "general-purpose", "coder", "hash_expired", expired_time),
-        )
-        db.conn.commit()
-
-        # フォールバックマッチング試行（transcript_pathなしでフォールバックを強制）
-        result = repo.match_task_to_agent(
-            session_id, agent_id, "general-purpose", role="coder", transcript_path=None
-        )
-
-        # TTL切れのためマッチしない
-        assert result is None
-
-    def test_ttl_valid_entry_matched(self, db):
-        """TTL内のエントリがフォールバックマッチングでマッチすることを確認
-
-        created_atが直近（TTL以内）のエントリはマッチする
-        """
-        repo = SubagentRepository(db)
-        session_id = "test-session-ttl-valid"
-        agent_id = "agent-ttl-valid"
-
-        # subagentを登録
-        repo.register(agent_id, session_id, "general-purpose", role=None)
-
-        # TTL内のtask_spawn（1分前 < 5分TTL）
+        # TTL内のtask_spawn
         recent_time = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
         db.conn.execute(
             """
@@ -72,129 +40,59 @@ class TestSubagentRepositoryTTL:
         )
         db.conn.commit()
 
-        # フォールバックマッチング試行
+        # transcript_pathなし → Step 0スキップ → None
         result = repo.match_task_to_agent(
             session_id, agent_id, "general-purpose", role="coder", transcript_path=None
         )
-
-        # TTL内なのでマッチする
-        assert result == "coder"
-
-    def test_ttl_boundary_just_within(self, db):
-        """TTL境界値テスト: ちょうどTTL以内のエントリはマッチする"""
-        repo = SubagentRepository(db)
-        session_id = "test-session-ttl-boundary-in"
-        agent_id = "agent-ttl-boundary-in"
-
-        repo.register(agent_id, session_id, "general-purpose", role=None)
-
-        # TTLちょうど（5分前 - 余裕10秒）
-        boundary_time = (datetime.now(timezone.utc) - timedelta(minutes=TASK_SPAWN_TTL_MINUTES - 0.17)).isoformat()
-        db.conn.execute(
-            """
-            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (session_id, 1, "general-purpose", "tester", "hash_boundary_in", boundary_time),
-        )
-        db.conn.commit()
-
-        result = repo.match_task_to_agent(
-            session_id, agent_id, "general-purpose", role="tester", transcript_path=None
-        )
-
-        # TTL内なのでマッチ
-        assert result == "tester"
-
-    def test_ttl_boundary_just_expired(self, db):
-        """TTL境界値テスト: TTLをわずかに超えたエントリはマッチしない"""
-        repo = SubagentRepository(db)
-        session_id = "test-session-ttl-boundary-out"
-        agent_id = "agent-ttl-boundary-out"
-
-        repo.register(agent_id, session_id, "general-purpose", role=None)
-
-        # TTLをわずかに超過（5分 + 30秒）
-        expired_time = (datetime.now(timezone.utc) - timedelta(minutes=TASK_SPAWN_TTL_MINUTES + 0.5)).isoformat()
-        db.conn.execute(
-            """
-            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (session_id, 1, "general-purpose", "reviewer", "hash_boundary_out", expired_time),
-        )
-        db.conn.commit()
-
-        result = repo.match_task_to_agent(
-            session_id, agent_id, "general-purpose", role="reviewer", transcript_path=None
-        )
-
-        # TTL超過のためマッチしない
         assert result is None
 
-    def test_ttl_applies_to_subagent_type_fallback(self, db):
-        """TTLがsubagent_typeフォールバックマッチにも適用される"""
+    def test_no_fallback_with_role_param(self, db):
+        """role引数を渡してもフォールバックマッチングは行われない（issue_7016）"""
         repo = SubagentRepository(db)
-        session_id = "test-session-ttl-type-fallback"
-        agent_id = "agent-ttl-type-fallback"
+        session_id = "test-session-no-role-fallback"
+        agent_id = "agent-no-role-fallback"
 
         repo.register(agent_id, session_id, "general-purpose", role=None)
 
-        # TTL超過のtask_spawn（subagent_typeマッチのみ）
-        expired_time = (datetime.now(timezone.utc) - timedelta(minutes=TASK_SPAWN_TTL_MINUTES + 2)).isoformat()
-        db.conn.execute(
-            """
-            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (session_id, 1, "general-purpose", "coder", "hash_type_expired", expired_time),
-        )
-        db.conn.commit()
-
-        # roleを指定せずsubagent_typeでのフォールバック
-        result = repo.match_task_to_agent(
-            session_id, agent_id, "general-purpose", role=None, transcript_path=None
-        )
-
-        # TTL超過のためマッチしない
-        assert result is None
-
-    def test_ttl_mixed_valid_and_expired(self, db):
-        """TTL内とTTL超過のエントリが混在する場合、TTL内のみマッチ"""
-        repo = SubagentRepository(db)
-        session_id = "test-session-ttl-mixed"
-        agent_id = "agent-ttl-mixed"
-
-        repo.register(agent_id, session_id, "general-purpose", role=None)
-
-        # TTL超過エントリ（古い、transcript_index=1）
-        expired_time = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-        db.conn.execute(
-            """
-            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (session_id, 1, "general-purpose", "old-role", "hash_old", expired_time),
-        )
-
-        # TTL内エントリ（新しい、transcript_index=2）
         recent_time = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
         db.conn.execute(
             """
             INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
             VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (session_id, 2, "general-purpose", "new-role", "hash_new", recent_time),
+            (session_id, 1, "general-purpose", "coder", "hash_role", recent_time),
         )
         db.conn.commit()
 
-        # subagent_typeでフォールバックマッチ
+        # role指定してもStep 1は廃止されたためNone
+        result = repo.match_task_to_agent(
+            session_id, agent_id, "general-purpose", role="coder", transcript_path=None
+        )
+        assert result is None
+
+    def test_no_fallback_subagent_type_match(self, db):
+        """subagent_typeのみ一致してもフォールバックマッチングは行われない（issue_7016）"""
+        repo = SubagentRepository(db)
+        session_id = "test-session-no-type-fallback"
+        agent_id = "agent-no-type-fallback"
+
+        repo.register(agent_id, session_id, "general-purpose", role=None)
+
+        recent_time = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, 1, "general-purpose", "coder", "hash_type", recent_time),
+        )
+        db.conn.commit()
+
+        # subagent_type一致でもStep 2は廃止されたためNone
         result = repo.match_task_to_agent(
             session_id, agent_id, "general-purpose", role=None, transcript_path=None
         )
-
-        # TTL内のnew-roleのみマッチ
-        assert result == "new-role"
+        assert result is None
 
 
 class TestSubagentRepositoryExactMatch:
@@ -992,7 +890,7 @@ class TestMatchTaskToAgentEdgeCases:
     """match_task_to_agentのエッジケース"""
 
     def test_exact_match_already_matched(self, db, tmp_path):
-        """exact matchでtask_spawnが既にマッチ済みの場合はフォールバック"""
+        """exact matchでtask_spawnが既にマッチ済みの場合はNone返却"""
         repo = SubagentRepository(db)
         session_id = "session-already"
         agent_id = "agent-new"
@@ -1020,11 +918,11 @@ class TestMatchTaskToAgentEdgeCases:
             }) + '\n')
 
         result = repo.match_task_to_agent(session_id, agent_id, "gp", transcript_path=str(transcript))
-        # 既にマッチ済みなのでNone（フォールバックにも該当なし）
+        # 既にマッチ済みなのでNone（フォールバック廃止、issue_7016）
         assert result is None
 
     def test_exact_match_no_task_spawn_found(self, db, tmp_path):
-        """parentToolUseIDがあるがtask_spawnが見つからない場合はフォールバック"""
+        """parentToolUseIDがあるがtask_spawnが見つからない場合はNone返却"""
         repo = SubagentRepository(db)
         session_id = "session-notfound"
         agent_id = "agent-notfound"
@@ -1079,15 +977,15 @@ class TestMatchTaskToAgentEdgeCases:
         )
         assert cursor.fetchone()[0] == "5678"
 
-    def test_fallback_match_propagates_issue_id(self, db):
-        """Fallback Match時にissue_idがsubagentsに伝搬される（issue_6358）"""
+    def test_no_transcript_path_returns_none(self, db):
+        """transcript_pathなしの場合、フォールバックせずNone返却（issue_7016）"""
         repo = SubagentRepository(db)
         session_id = "session-fb-issue"
         agent_id = "agent-fb-issue"
 
         repo.register(agent_id, session_id, "gp", role=None)
 
-        # issue_id付きのtask_spawn（transcript_pathなしでフォールバックさせる）
+        # task_spawnが存在してもtranscript_pathなしではマッチしない
         db.conn.execute(
             """
             INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, issue_id, created_at)
@@ -1097,14 +995,9 @@ class TestMatchTaskToAgentEdgeCases:
         )
         db.conn.commit()
 
+        # transcript_pathなし → Step 0スキップ → None（フォールバック廃止、issue_7016）
         result = repo.match_task_to_agent(session_id, agent_id, "gp")
-        assert result == "reviewer"
-
-        # subagentsにissue_idが伝搬されている
-        cursor = db.conn.execute(
-            "SELECT issue_id FROM subagents WHERE agent_id = ?", (agent_id,)
-        )
-        assert cursor.fetchone()[0] == "9999"
+        assert result is None
 
 
 class TestQueryMethods:

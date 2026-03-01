@@ -3,13 +3,13 @@
 import hashlib
 import json
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
 from domain.models.records import SubagentRecord
 from infrastructure.db.nagger_state_db import NaggerStateDB
-from shared.constants import TASK_SPAWN_TTL_MINUTES, VALID_ROLE_VALUES
+from shared.constants import VALID_ROLE_VALUES
 from shared.structured_logging import DEFAULT_LOG_DIR, StructuredLogger
 
 _logger = StructuredLogger(name="SubagentRepository", log_dir=DEFAULT_LOG_DIR)
@@ -320,30 +320,18 @@ class SubagentRepository:
         role: str = None,
         transcript_path: str = None,
     ) -> Optional[str]:
-        """未マッチのtask_spawnから、agent_typeが一致する最古を取得し、マッチング。
+        """agent_progressベースの正確マッチング（Step 0のみ）。
 
-        アルゴリズム（issue_5947改善）:
-        0. transcript_pathがある場合、agent_progressでtool_use_idを取得し正確マッチ
-        1. BEGIN EXCLUSIVE
-        2. Step 1: roleが指定されている場合、roleで完全一致マッチ
-           SELECT * FROM task_spawns WHERE session_id = ? AND role = ? AND matched_agent_id IS NULL
-           ORDER BY transcript_index ASC LIMIT 1
-        3. Step 2: roleマッチなければsubagent_typeでマッチ（ROLEありエントリのみ）
-           SELECT * FROM task_spawns WHERE session_id = ? AND subagent_type = ? AND role IS NOT NULL AND matched_agent_id IS NULL
-           ORDER BY transcript_index ASC LIMIT 1
-        4. if found:
-           UPDATE task_spawns SET matched_agent_id = ? WHERE id = ?
-           UPDATE subagents SET role = ?, role_source = 'task_match', task_match_index = ? WHERE agent_id = ?
-           COMMIT
-           return role
-        5. else: COMMIT, return None
+        transcript_pathからagent_progressのparentToolUseIDを取得し、
+        対応するtask_spawnと正確にマッチする。
+        role解決はPreToolUse時のretry_match_from_agent_progress()に委譲。
 
         Args:
             session_id: セッションID
             agent_id: マッチ対象のエージェントID
-            agent_type: エージェントタイプ
-            role: 優先マッチするrole（オプション）
-            transcript_path: 親transcriptパス（オプション、issue_5947）
+            agent_type: エージェントタイプ（後方互換、未使用）
+            role: 後方互換のため残存（未使用）
+            transcript_path: 親transcriptパス
 
         Returns:
             マッチしたrole（存在しない場合None）
@@ -391,74 +379,12 @@ class SubagentRepository:
                 else:
                     _logger.info(f"Exact match failed: task_spawn={task_spawn}")
             else:
-                _logger.info("No agent_progress found, falling back")
+                _logger.info("No agent_progress found, falling back to retry_match")
         else:
-            _logger.info("No transcript_path, falling back")
+            _logger.info("No transcript_path, role resolution deferred to retry_match")
 
-        # フォールバック: 従来のマッチングロジック
-        _logger.info("Fallback matching started")
-        self._db.conn.execute("BEGIN EXCLUSIVE")
-        try:
-            row = None
-
-            # TTLチェック用の閾値時刻を計算（issue_5955）
-            # SQLiteのdatetime()とPythonのISO8601形式が異なるため、Pythonで計算
-            ttl_threshold = (datetime.now(timezone.utc) - timedelta(minutes=TASK_SPAWN_TTL_MINUTES)).isoformat()
-
-            # Step 1: roleが指定されている場合、roleで完全一致マッチ
-            if role:
-                cursor = self._db.conn.execute(
-                    """
-                    SELECT id, role, transcript_index, issue_id FROM task_spawns
-                    WHERE session_id = ? AND role = ? AND matched_agent_id IS NULL
-                    AND created_at > ?
-                    ORDER BY transcript_index ASC LIMIT 1
-                    """,
-                    (session_id, role, ttl_threshold),
-                )
-                row = cursor.fetchone()
-
-            # Step 2: roleマッチなければsubagent_typeでマッチ（ROLEありエントリのみ）
-            if row is None:
-                cursor = self._db.conn.execute(
-                    """
-                    SELECT id, role, transcript_index, issue_id FROM task_spawns
-                    WHERE session_id = ? AND subagent_type = ? AND role IS NOT NULL AND matched_agent_id IS NULL
-                    AND created_at > ?
-                    ORDER BY transcript_index ASC LIMIT 1
-                    """,
-                    (session_id, agent_type, ttl_threshold),
-                )
-                row = cursor.fetchone()
-
-            if row is None:
-                self._db.conn.commit()
-                return None
-
-            task_id, matched_role, transcript_index, matched_issue_id = row
-
-            # task_spawnsをマッチ済みに更新
-            self._db.conn.execute(
-                "UPDATE task_spawns SET matched_agent_id = ? WHERE id = ?",
-                (agent_id, task_id),
-            )
-
-            # subagentsのrole/issue_idを更新（issue_6358）
-            self._db.conn.execute(
-                """
-                UPDATE subagents
-                SET role = ?, role_source = 'task_match', task_match_index = ?,
-                    issue_id = ?
-                WHERE agent_id = ?
-                """,
-                (matched_role, transcript_index, matched_issue_id, agent_id),
-            )
-
-            self._db.conn.commit()
-            return matched_role
-        except Exception:
-            self._db.conn.rollback()
-            raise
+        # Step 0失敗時: role解決はPreToolUse時のretry_match_from_agent_progress()に委譲
+        return None
 
     # === Claimパターン（Phase 2） ===
     def claim_next_unprocessed(self, session_id: str) -> Optional[SubagentRecord]:
