@@ -1594,3 +1594,215 @@ class TestIsLeaderToolUse:
 
         result = repo.is_leader_tool_use(str(transcript), "")
         assert result is False
+
+
+class TestTeamCreateStep0Match:
+    """TeamCreate方式subagentのStep 0マッチングテスト（issue_7017）
+
+    TeamCreate方式（team_name/name付き）のtask_spawnが
+    agent_progressベースのStep 0正確マッチングで成功することを確認。
+    """
+
+    def test_team_create_step0_exact_match(self, db, tmp_path):
+        """TeamCreate方式task_spawnがStep 0で正確マッチ成功"""
+        repo = SubagentRepository(db)
+        session_id = "session-team-step0"
+        agent_id = "agent-team-step0"
+        tool_use_id = "toolu_TEAM_STEP0"
+
+        repo.register(agent_id, session_id, "general-purpose", role=None)
+
+        # TeamCreate方式の親transcriptを作成（team_name/name付き）
+        parent_transcript = tmp_path / "parent_transcript.jsonl"
+        with open(parent_transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": tool_use_id,
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "Implement feature for issue_7017.",
+                                "team_name": "dev-team",
+                                "name": "coder-t2"
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        # task_spawnsを登録
+        count = repo.register_task_spawns(session_id, str(parent_transcript))
+        assert count == 1
+
+        # task_spawnのroleがname値（TeamCreate方式）であることを確認
+        cursor = db.conn.execute(
+            "SELECT role, tool_use_id FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row[0] == "coder-t2"
+        assert row[1] == tool_use_id
+
+        # agent_progressを含むsubagent transcriptを作成
+        agent_transcript = tmp_path / "agent_transcript.jsonl"
+        with open(agent_transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id,
+                "data": {
+                    "type": "agent_progress",
+                    "agentId": agent_id,
+                }
+            }) + '\n')
+
+        # Step 0正確マッチング
+        result = repo.match_task_to_agent(
+            session_id, agent_id, "general-purpose",
+            transcript_path=str(agent_transcript)
+        )
+
+        # マッチ成功: roleがTeamCreate方式のname値
+        assert result == "coder-t2"
+
+        # matched_agent_idが正しく設定されている
+        cursor = db.conn.execute(
+            "SELECT matched_agent_id FROM task_spawns WHERE tool_use_id = ?",
+            (tool_use_id,)
+        )
+        assert cursor.fetchone()[0] == agent_id
+
+        # subagentsのrole/role_sourceも更新されている
+        record = repo.get(agent_id)
+        assert record.role == "coder-t2"
+        assert record.role_source == "task_match"
+
+    def test_team_create_step0_fail_then_retry_match_success(self, db, tmp_path):
+        """Step 0失敗（agent_progressなし）→ retry_matchで成功するE2Eフロー"""
+        repo = SubagentRepository(db)
+        session_id = "session-team-retry"
+        agent_id = "agent-team-retry"
+        tool_use_id = "toolu_TEAM_RETRY"
+
+        repo.register(agent_id, session_id, "general-purpose", role=None)
+
+        # TeamCreate方式のtask_spawnを直接登録
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, 1, "general-purpose", "tester-t3", "hash_team",
+             tool_use_id, datetime.now(timezone.utc).isoformat()),
+        )
+        db.conn.commit()
+
+        # agent_progressがないtranscript（Step 0失敗を再現）
+        empty_transcript = tmp_path / "empty_transcript.jsonl"
+        with open(empty_transcript, 'w') as f:
+            f.write(json.dumps({"type": "user", "message": {"content": "Hello"}}) + '\n')
+
+        # Step 0マッチ → agent_progressがないのでNone
+        result = repo.match_task_to_agent(
+            session_id, agent_id, "general-purpose",
+            transcript_path=str(empty_transcript)
+        )
+        assert result is None
+
+        # 後にagent_progressが到達したtranscriptで retry_match
+        retry_transcript = tmp_path / "retry_transcript.jsonl"
+        with open(retry_transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id,
+                "data": {
+                    "type": "agent_progress",
+                    "agentId": agent_id,
+                }
+            }) + '\n')
+
+        # retry_match_from_agent_progressで成功
+        retry_result = repo.retry_match_from_agent_progress(
+            session_id, agent_id, str(retry_transcript)
+        )
+
+        assert retry_result == "tester-t3"
+
+        # subagentsが正しく更新されている
+        record = repo.get(agent_id)
+        assert record.role == "tester-t3"
+        assert record.role_source == "retry_match"
+
+        # task_spawnがマッチ済みになっている
+        cursor = db.conn.execute(
+            "SELECT matched_agent_id FROM task_spawns WHERE tool_use_id = ?",
+            (tool_use_id,)
+        )
+        assert cursor.fetchone()[0] == agent_id
+
+    def test_team_create_matched_agent_id_set_correctly(self, db, tmp_path):
+        """matched_agent_idが正しいagent_idで設定される（受入条件2）"""
+        repo = SubagentRepository(db)
+        session_id = "session-team-matched"
+        agent_id_1 = "agent-team-first"
+        agent_id_2 = "agent-team-second"
+        tool_use_id_1 = "toolu_TEAM_M1"
+        tool_use_id_2 = "toolu_TEAM_M2"
+
+        repo.register(agent_id_1, session_id, "general-purpose", role=None)
+        repo.register(agent_id_2, session_id, "general-purpose", role=None)
+
+        # 2つのTeamCreate方式task_spawnを登録
+        now = datetime.now(timezone.utc).isoformat()
+        db.conn.execute(
+            """
+            INSERT INTO task_spawns (session_id, transcript_index, subagent_type, role, prompt_hash, tool_use_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?), (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (session_id, 1, "general-purpose", "coder-t2", "hash1", tool_use_id_1, now,
+             session_id, 2, "general-purpose", "tester-t3", "hash2", tool_use_id_2, now),
+        )
+        db.conn.commit()
+
+        # agent_1用transcript
+        transcript_1 = tmp_path / "transcript_1.jsonl"
+        with open(transcript_1, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id_1,
+                "data": {"type": "agent_progress", "agentId": agent_id_1}
+            }) + '\n')
+
+        # agent_2用transcript
+        transcript_2 = tmp_path / "transcript_2.jsonl"
+        with open(transcript_2, 'w') as f:
+            f.write(json.dumps({
+                "type": "progress",
+                "parentToolUseID": tool_use_id_2,
+                "data": {"type": "agent_progress", "agentId": agent_id_2}
+            }) + '\n')
+
+        # 各agentがそれぞれの正しいtask_spawnにマッチする
+        result_1 = repo.match_task_to_agent(
+            session_id, agent_id_1, "general-purpose",
+            transcript_path=str(transcript_1)
+        )
+        result_2 = repo.match_task_to_agent(
+            session_id, agent_id_2, "general-purpose",
+            transcript_path=str(transcript_2)
+        )
+
+        assert result_1 == "coder-t2"
+        assert result_2 == "tester-t3"
+
+        # matched_agent_idが正しいagent_idで設定されている
+        cursor = db.conn.execute(
+            "SELECT tool_use_id, matched_agent_id FROM task_spawns WHERE session_id = ? ORDER BY transcript_index",
+            (session_id,)
+        )
+        rows = cursor.fetchall()
+        assert rows[0] == (tool_use_id_1, agent_id_1)
+        assert rows[1] == (tool_use_id_2, agent_id_2)
