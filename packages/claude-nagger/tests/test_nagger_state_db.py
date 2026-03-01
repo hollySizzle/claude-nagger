@@ -398,7 +398,7 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "coder",
-                                "prompt": "[ROLE:coder] タスク1"
+                                "prompt": "タスク1"
                             }
                         }
                     ]
@@ -430,8 +430,8 @@ class TestSubagentRepository:
                             "type": "tool_use",
                             "name": "Task",
                             "input": {
-                                "subagent_type": "coder",
-                                "prompt": "[ROLE:reviewer] レビュータスク"
+                                "subagent_type": "reviewer",
+                                "prompt": "レビュータスク"
                             }
                         }
                     ]
@@ -449,11 +449,11 @@ class TestSubagentRepository:
         subagent_repo.register(
             agent_id="agent-1",
             session_id="session-1",
-            agent_type="coder"
+            agent_type="reviewer"
         )
 
         # マッチング
-        role = subagent_repo.match_task_to_agent("session-1", "agent-1", "coder")
+        role = subagent_repo.match_task_to_agent("session-1", "agent-1", "reviewer")
 
         assert role == "reviewer"
 
@@ -656,8 +656,8 @@ class TestSubagentRepository:
 
     # === issue_5947: ROLEマッチング改善テスト ===
 
-    def test_register_task_spawns_ROLEなしはスキップ(self, subagent_repo, tmp_path):
-        """ROLEタグがないTask tool_useは登録されない（issue_5947）"""
+    def test_register_task_spawns_subagent_typeなしはスキップ(self, subagent_repo, tmp_path):
+        """subagent_typeもteam_name/nameもないTask tool_useは登録されない（issue_6987）"""
         transcript_path = tmp_path / "transcript.jsonl"
         entries = [
             {
@@ -668,8 +668,7 @@ class TestSubagentRepository:
                             "type": "tool_use",
                             "name": "Task",
                             "input": {
-                                "subagent_type": "coder",
-                                "prompt": "タスク1（ROLEなし）"
+                                "prompt": "タスク1（subagent_typeなし）"
                             }
                         }
                     ]
@@ -684,7 +683,7 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "reviewer",
-                                "prompt": "[ROLE:reviewer] タスク2（ROLEあり）"
+                                "prompt": "タスク2（subagent_typeあり）"
                             }
                         }
                     ]
@@ -698,7 +697,7 @@ class TestSubagentRepository:
         # 登録
         count = subagent_repo.register_task_spawns("session-1", str(transcript_path))
 
-        # ROLEありの1件のみ登録
+        # subagent_typeありの1件のみ登録
         assert count == 1
 
         # DB確認
@@ -722,7 +721,9 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "coder",
-                                "prompt": "[ROLE:tester] テストタスク"
+                                "prompt": "テストタスク",
+                                "team_name": "dev-team",
+                                "name": "tester"
                             }
                         }
                     ]
@@ -737,7 +738,9 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "coder",
-                                "prompt": "[ROLE:coder] コーディングタスク"
+                                "prompt": "コーディングタスク",
+                                "team_name": "dev-team",
+                                "name": "coder"
                             }
                         }
                     ]
@@ -758,7 +761,7 @@ class TestSubagentRepository:
         assert role == "coder"
 
     def test_match_task_to_agent_role指定なしはsubagent_type(self, subagent_repo, tmp_path):
-        """roleパラメータ未指定時、subagent_typeでマッチ（ROLEありエントリのみ）"""
+        """roleパラメータ未指定時、subagent_typeでマッチ"""
         transcript_path = tmp_path / "transcript.jsonl"
         entries = [
             {
@@ -770,7 +773,9 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "coder",
-                                "prompt": "[ROLE:scribe] ドキュメントタスク"
+                                "prompt": "ドキュメントタスク",
+                                "team_name": "dev-team",
+                                "name": "scribe"
                             }
                         }
                     ]
@@ -878,7 +883,7 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "coder",
-                                "prompt": "[ROLE:coder] コーディングタスク"
+                                "prompt": "コーディングタスク"
                             }
                         }
                     ]
@@ -913,7 +918,7 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "reviewer",
-                                "prompt": "[ROLE:reviewer] レビュータスク"
+                                "prompt": "レビュータスク"
                             }
                         }
                     ]
@@ -998,7 +1003,7 @@ class TestSubagentRepository:
 
     def test_match_task_to_agent_agent_progress正確マッチ(self, subagent_repo, tmp_path):
         """agent_progressを使った正確なマッチング（issue_5947）"""
-        # 親transcript: Task tool_use（2件）
+        # 親transcript: Task tool_use（2件、異なるrole）
         parent_transcript_path = tmp_path / "parent_transcript.jsonl"
         parent_entries = [
             {
@@ -1011,7 +1016,9 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "coder",
-                                "prompt": "[ROLE:tester] テストタスク"
+                                "prompt": "テストタスク",
+                                "team_name": "dev-team",
+                                "name": "tester"
                             }
                         }
                     ]
@@ -1027,7 +1034,9 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "coder",
-                                "prompt": "[ROLE:coder] コーディングタスク"
+                                "prompt": "コーディングタスク",
+                                "team_name": "dev-team",
+                                "name": "coder"
                             }
                         }
                     ]
@@ -1090,7 +1099,9 @@ class TestSubagentRepository:
                             "name": "Task",
                             "input": {
                                 "subagent_type": "coder",
-                                "prompt": "[ROLE:scribe] ドキュメントタスク"
+                                "prompt": "ドキュメントタスク",
+                                "team_name": "dev-team",
+                                "name": "scribe"
                             }
                         }
                     ]
