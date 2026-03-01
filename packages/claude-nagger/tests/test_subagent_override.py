@@ -680,49 +680,87 @@ class TestParseRoleFromTranscript:
                 f.write(json.dumps(entry, ensure_ascii=False) + '\n')
         return str(transcript)
 
-    def test_basic_role_extraction(self, tmp_path):
-        """基本的な[ROLE:xxx]抽出"""
+    def test_team_create_name_extraction(self, tmp_path):
+        """TeamCreate方式: input.team_name + input.name → role=name"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "[ROLE:coder]\nPlease fix the bug."}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_01", "name": "Task",
+                 "input": {"team_name": "dev-team", "name": "coder",
+                           "subagent_type": "general-purpose", "prompt": "Fix bug."}},
+            ]}},
         ])
         assert hook._parse_role_from_transcript(path) == "coder"
 
-    def test_role_in_list_content(self, tmp_path):
-        """contentがリスト形式の場合"""
+    def test_subagent_type_fallback(self, tmp_path):
+        """subagent_typeフォールバック: team_nameなし → role=subagent_type"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": [
-                {"type": "text", "text": "[ROLE:reviewer]\nReview this PR."},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_02", "name": "Task",
+                 "input": {"subagent_type": "ticket-tasuki:coder", "prompt": "Fix bug."}},
+            ]}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "ticket-tasuki:coder"
+
+    def test_team_name_priority_over_subagent_type(self, tmp_path):
+        """team_name/nameがsubagent_typeより優先される"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_03", "name": "Task",
+                 "input": {"team_name": "dev-team", "name": "reviewer",
+                           "subagent_type": "general-purpose", "prompt": "Review."}},
             ]}},
         ])
         assert hook._parse_role_from_transcript(path) == "reviewer"
 
     def test_no_role_returns_none(self, tmp_path):
-        """[ROLE:xxx]がない場合はNone"""
+        """subagent tool_useがない場合はNone"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
             {"type": "user", "message": {"content": "Just a normal message."}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "Hello!"},
+            ]}},
         ])
         assert hook._parse_role_from_transcript(path) is None
 
-    def test_only_first_user_message_checked(self, tmp_path):
-        """最初のuserメッセージのみ検索"""
+    def test_no_subagent_type_no_team_name_returns_none(self, tmp_path):
+        """subagent_typeもteam_name/nameもない場合はNone"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "No role here."}},
-            {"type": "user", "message": {"content": "[ROLE:tester]\nThis should be ignored."}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_04", "name": "Task",
+                 "input": {"prompt": "Do something."}},
+            ]}},
         ])
         assert hook._parse_role_from_transcript(path) is None
 
-    def test_skips_non_user_entries(self, tmp_path):
-        """user以外のエントリはスキップ"""
+    def test_skips_non_assistant_entries(self, tmp_path):
+        """assistant以外のエントリはスキップされ、assistantのtool_useが取得される"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "assistant", "message": {"content": "[ROLE:fake]\nNot a user."}},
-            {"type": "user", "message": {"content": "[ROLE:planner]\nPlan the work."}},
+            {"type": "user", "message": {"content": "Hello."}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_05", "name": "Task",
+                 "input": {"subagent_type": "planner", "prompt": "Plan the work."}},
+            ]}},
         ])
         assert hook._parse_role_from_transcript(path) == "planner"
+
+    def test_skips_non_subagent_tool_use(self, tmp_path):
+        """SUBAGENT_TOOL_NAMES以外のtool_useはスキップされる"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_06", "name": "Bash",
+                 "input": {"command": "ls"}},
+                {"type": "tool_use", "id": "toolu_07", "name": "Task",
+                 "input": {"subagent_type": "coder", "prompt": "Fix."}},
+            ]}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "coder"
 
     def test_none_transcript_path(self):
         """transcript_pathがNoneの場合"""
@@ -740,7 +778,10 @@ class TestParseRoleFromTranscript:
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
             f.write("not valid json\n")
-            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:debug]\nOK"}}) + '\n')
+            f.write(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_08", "name": "Task",
+                 "input": {"subagent_type": "debug", "prompt": "OK"}},
+            ]}}) + '\n')
         assert hook._parse_role_from_transcript(str(transcript)) == "debug"
 
     def test_empty_file(self, tmp_path):
@@ -750,13 +791,31 @@ class TestParseRoleFromTranscript:
         transcript.write_text("")
         assert hook._parse_role_from_transcript(str(transcript)) is None
 
-    def test_content_string_list_mixed(self, tmp_path):
-        """contentリスト内に文字列要素が混在する場合"""
+    def test_last_tool_use_wins(self, tmp_path):
+        """複数のsubagent tool_useがある場合、最後のものが採用される"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": ["[ROLE:ops]\nDo the thing."]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_09", "name": "Task",
+                 "input": {"subagent_type": "first-role", "prompt": "First."}},
+            ]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_10", "name": "Task",
+                 "input": {"subagent_type": "last-role", "prompt": "Last."}},
+            ]}},
         ])
-        assert hook._parse_role_from_transcript(path) == "ops"
+        assert hook._parse_role_from_transcript(path) == "last-role"
+
+    def test_agent_tool_name(self, tmp_path):
+        """name='Agent'のtool_useも認識される"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_11", "name": "Agent",
+                 "input": {"subagent_type": "explorer", "prompt": "Explore."}},
+            ]}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "explorer"
 
 
 class TestShouldProcessRoleParsing:
@@ -773,10 +832,13 @@ class TestShouldProcessRoleParsing:
         """transcript解析でroleがDBに保存される（retry_matchがNoneの場合のフォールバック）"""
         hook = self._make_hook()
 
-        # トランスクリプトファイル作成
+        # トランスクリプトファイル作成（assistant tool_useからrole抽出）
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
-            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:coder]\nFix bug."}}) + '\n')
+            f.write(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_01", "name": "Task",
+                 "input": {"subagent_type": "coder", "prompt": "Fix bug."}},
+            ]}}) + '\n')
 
         mock_db = MagicMock()
         mock_subagent_repo = MagicMock()
@@ -807,9 +869,13 @@ class TestShouldProcessRoleParsing:
         """マーカーに既存roleがある場合はtranscript解析しない"""
         hook = self._make_hook()
 
+        # transcriptにrole情報があっても無視される
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
-            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:reviewer]\nReview."}}) + '\n')
+            f.write(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_01", "name": "Task",
+                 "input": {"subagent_type": "reviewer", "prompt": "Review."}},
+            ]}}) + '\n')
 
         mock_db = MagicMock()
         mock_subagent_repo = MagicMock()
@@ -872,7 +938,10 @@ class TestShouldProcessRoleParsing:
 
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
-            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:coder]\nWork."}}) + '\n')
+            f.write(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_01", "name": "Task",
+                 "input": {"subagent_type": "coder", "prompt": "Work."}},
+            ]}}) + '\n')
 
         mock_db = MagicMock()
         mock_subagent_repo = MagicMock()
@@ -1107,7 +1176,10 @@ class TestShouldProcessRetryMatch:
 
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
-            f.write(json.dumps({"type": "user", "message": {"content": "[ROLE:reviewer]\nReview."}}) + '\n')
+            f.write(json.dumps({"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_01", "name": "Task",
+                 "input": {"subagent_type": "reviewer", "prompt": "Review."}},
+            ]}}) + '\n')
 
         mock_db = MagicMock()
         mock_subagent_repo = MagicMock()
@@ -1289,7 +1361,7 @@ class TestResolveSubagentConfigSuffixFallback:
 
 
 class TestParseRoleFromTranscriptHyphen:
-    """_parse_role_from_transcriptのハイフン対応テスト"""
+    """_parse_role_from_transcriptのハイフン付きrole名テスト"""
 
     BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
 
@@ -1308,33 +1380,49 @@ class TestParseRoleFromTranscriptHyphen:
         return str(transcript)
 
     def test_role_with_numeric_suffix(self, tmp_path):
-        """[ROLE:coder-2]がマッチすること"""
+        """input.nameに数字サフィックス付き（coder-2）がそのまま返ること"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "[ROLE:coder-2]\nPlease fix the bug."}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_01", "name": "Task",
+                 "input": {"team_name": "dev-team", "name": "coder-2",
+                           "subagent_type": "general-purpose", "prompt": "Fix bug."}},
+            ]}},
         ])
         assert hook._parse_role_from_transcript(path) == "coder-2"
 
     def test_role_without_suffix_still_works(self, tmp_path):
-        """[ROLE:coder]が引き続きマッチすること（回帰テスト）"""
+        """input.nameにサフィックスなし（coder）が引き続き動作すること（回帰テスト）"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "[ROLE:coder]\nPlease fix the bug."}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_02", "name": "Task",
+                 "input": {"team_name": "dev-team", "name": "coder",
+                           "subagent_type": "general-purpose", "prompt": "Fix bug."}},
+            ]}},
         ])
         assert hook._parse_role_from_transcript(path) == "coder"
 
     def test_role_with_hyphen_non_numeric(self, tmp_path):
-        """[ROLE:tech-lead]がマッチすること"""
+        """input.nameにハイフン付き非数字（tech-lead）がそのまま返ること"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "[ROLE:tech-lead]\nReview this code."}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_03", "name": "Task",
+                 "input": {"team_name": "dev-team", "name": "tech-lead",
+                           "subagent_type": "general-purpose", "prompt": "Review."}},
+            ]}},
         ])
         assert hook._parse_role_from_transcript(path) == "tech-lead"
 
     def test_role_tester_with_suffix(self, tmp_path):
-        """[ROLE:tester-3]がマッチすること"""
+        """input.nameに数字サフィックス付き（tester-3）がそのまま返ること"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
-            {"type": "user", "message": {"content": "[ROLE:tester-3]\nRun tests."}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_04", "name": "Task",
+                 "input": {"team_name": "dev-team", "name": "tester-3",
+                           "subagent_type": "general-purpose", "prompt": "Run tests."}},
+            ]}},
         ])
         assert hook._parse_role_from_transcript(path) == "tester-3"
