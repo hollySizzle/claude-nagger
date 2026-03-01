@@ -772,6 +772,110 @@ class TestRegisterTaskSpawns:
         # subagent_typeなし + team_nameなし → スキップ
         assert count == 0
 
+
+class TestRoleRegressionNoFalsePositive:
+    """回帰テスト: prompt本文中の[ROLE:xxx]リテラルが誤検出されないことの確認（issue_6992）"""
+
+    def test_register_task_spawns_prompt_role_literal_ignored(self, db, tmp_path):
+        """register_task_spawns: prompt本文に[ROLE:xxx]があってもroleはsubagent_type値"""
+        repo = SubagentRepository(db)
+        session_id = "session-regression-role"
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_REGRESSION01",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "[ROLE:coder]\nFix the bug."
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        count = repo.register_task_spawns(session_id, str(transcript))
+        assert count == 1
+
+        cursor = db.conn.execute(
+            "SELECT role FROM task_spawns WHERE session_id = ?",
+            (session_id,)
+        )
+        row = cursor.fetchone()
+        assert row is not None
+        # [ROLE:coder]のcoderではなく、subagent_type値がroleになる
+        assert row[0] == "general-purpose"
+
+    def test_parse_role_from_transcript_prompt_role_literal_ignored(self, tmp_path):
+        """_parse_role_from_transcript: prompt本文に[ROLE:xxx]があってもroleはinput.subagent_type値"""
+        from unittest.mock import patch
+        from domain.hooks.session_startup_hook import SessionStartupHook
+
+        with patch.object(SessionStartupHook, '_load_config', return_value={"enabled": True}):
+            hook = SessionStartupHook()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w', encoding='utf-8') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_REGRESSION02",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "[ROLE:reviewer]\nReview the code."
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        result = hook._parse_role_from_transcript(str(transcript))
+        # [ROLE:reviewer]のreviewerではなく、subagent_type値がroleになる
+        assert result == "general-purpose"
+
+    def test_parse_role_from_transcript_prompt_role_literal_with_team_name(self, tmp_path):
+        """_parse_role_from_transcript: team_name/name + prompt内[ROLE:xxx] → input.name値"""
+        from unittest.mock import patch
+        from domain.hooks.session_startup_hook import SessionStartupHook
+
+        with patch.object(SessionStartupHook, '_load_config', return_value={"enabled": True}):
+            hook = SessionStartupHook()
+
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w', encoding='utf-8') as f:
+            f.write(json.dumps({
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "toolu_REGRESSION03",
+                            "name": "Task",
+                            "input": {
+                                "subagent_type": "general-purpose",
+                                "prompt": "[ROLE:reviewer]\nReview the code.",
+                                "team_name": "dev-team",
+                                "name": "coder"
+                            }
+                        }
+                    ]
+                }
+            }) + '\n')
+
+        result = hook._parse_role_from_transcript(str(transcript))
+        # [ROLE:reviewer]のreviewerではなく、input.name値がroleになる
+        assert result == "coder"
+
 class TestFindTaskSpawnByToolUseId:
     """find_task_spawn_by_tool_use_idのテスト"""
 
