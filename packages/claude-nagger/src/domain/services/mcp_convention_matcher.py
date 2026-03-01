@@ -20,7 +20,7 @@ class McpConventionRule:
     message: str
     token_threshold: Optional[int] = None
     input_match: Optional[Dict[str, str]] = None
-    scope: Optional[str] = None  # 'leader' or None（全agent対象）  # tool_inputフィールド条件（AND評価、re.fullmatch）
+    scope: Optional[str] = None  # 'leader' or None（全agent対象）
 
 
 class McpConventionMatcher(BaseConventionMatcher):

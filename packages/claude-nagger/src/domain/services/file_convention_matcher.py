@@ -18,7 +18,7 @@ class ConventionRule:
     severity: str  # 'block', 'warn', 'deny'
     message: str
     token_threshold: Optional[int] = None
-    scope: Optional[str] = None  # 'leader' or None（全agent対象）  # 規約別トークン閾値
+    scope: Optional[str] = None  # 'leader' or None（全agent対象）
 
 
 class FileConventionMatcher:

@@ -368,7 +368,8 @@ class TestDenySeverityProcess:
                 'session_id': 'test-session',
             })
 
-        assert result['decision'] == 'deny'
+        assert result['decision'] == 'block'
+        assert result.get('skip_warn_only') is True
         assert 'Edit denied' in result['reason']
 
     def test_file_block_returns_block_decision(self, hook):
@@ -389,6 +390,7 @@ class TestDenySeverityProcess:
                 })
 
         assert result['decision'] == 'block'
+        assert result.get('skip_warn_only') is not True
 
     def test_deny_skips_marker(self, hook):
         """deny severityはマーカー作成をスキップ"""
@@ -410,8 +412,8 @@ class TestDenySeverityProcess:
         # deny時はマーカーが作成されない
         mock_marker.assert_not_called()
 
-    def test_command_deny_returns_deny_decision(self, hook):
-        """コマンド: deny severity → decision='deny'"""
+    def test_command_deny_returns_block_with_skip(self, hook):
+        """コマンド: deny severity → decision='block' + skip_warn_only=True"""
         with patch.object(hook.command_matcher, 'get_confirmation_message') as mock_match:
             mock_match.return_value = [{
                 'rule_name': 'deny-push',
@@ -426,10 +428,11 @@ class TestDenySeverityProcess:
                 'session_id': 'test-session',
             })
 
-        assert result['decision'] == 'deny'
+        assert result['decision'] == 'block'
+        assert result.get('skip_warn_only') is True
 
-    def test_mcp_deny_returns_deny_decision(self, hook):
-        """MCPツール: deny severity → decision='deny'"""
+    def test_mcp_deny_returns_block_with_skip(self, hook):
+        """MCPツール: deny severity → decision='block' + skip_warn_only=True"""
         with patch.object(hook.mcp_matcher, 'get_confirmation_message') as mock_match:
             mock_match.return_value = [{
                 'rule_name': 'deny-mcp',
@@ -444,7 +447,8 @@ class TestDenySeverityProcess:
                 'session_id': 'test-session',
             })
 
-        assert result['decision'] == 'deny'
+        assert result['decision'] == 'block'
+        assert result.get('skip_warn_only') is True
 
 
 class TestDenyScopeIntegration:
@@ -479,7 +483,8 @@ class TestDenyScopeIntegration:
                 'transcript_path': str(transcript),
             })
 
-        assert result['decision'] == 'deny'
+        assert result['decision'] == 'block'
+        assert result.get('skip_warn_only') is True
         assert 'Leader edit denied' in result['reason']
 
     def test_deny_leader_scope_from_subagent_edit(self, hook, tmp_path):
@@ -536,37 +541,103 @@ class TestDenyWarnOnlyNotConverted:
         """blockはWARN_ONLYでapproveに変換される（従来動作確認）"""
         from src.domain.hooks.base_hook import PermissionModeBehavior
 
-        hook = ImplementationDesignHook()
-        hook._current_permission_mode_behavior = PermissionModeBehavior.WARN_ONLY
-
-        # process()の結果をシミュレート
+        # process()の結果をシミュレート（通常block、skip_warn_onlyなし）
         result = {'decision': 'block', 'reason': 'Blocked'}
-        behavior = hook._current_permission_mode_behavior
+        behavior = PermissionModeBehavior.WARN_ONLY
         decision = result['decision']
 
         # BaseHook.run()内のWARN_ONLY変換ロジックを再現
-        if behavior == PermissionModeBehavior.WARN_ONLY and decision == 'block':
+        if behavior == PermissionModeBehavior.WARN_ONLY and decision == 'block' and not result.get('skip_warn_only'):
             decision = 'approve'
 
         assert decision == 'approve'
 
     def test_deny_not_converted_in_warn_only(self):
-        """denyはWARN_ONLYでもdenyのまま（変換されない）"""
+        """deny(skip_warn_only=True)はWARN_ONLYでもblockのまま（変換されない）"""
         from src.domain.hooks.base_hook import PermissionModeBehavior
 
-        hook = ImplementationDesignHook()
-        hook._current_permission_mode_behavior = PermissionModeBehavior.WARN_ONLY
-
-        result = {'decision': 'deny', 'reason': 'Denied'}
-        behavior = hook._current_permission_mode_behavior
+        # process()の結果をシミュレート（deny相当: block + skip_warn_only=True）
+        result = {'decision': 'block', 'reason': 'Denied', 'skip_warn_only': True}
+        behavior = PermissionModeBehavior.WARN_ONLY
         decision = result['decision']
 
         # BaseHook.run()内のWARN_ONLY変換ロジックを再現
-        if behavior == PermissionModeBehavior.WARN_ONLY and decision == 'block':
+        if behavior == PermissionModeBehavior.WARN_ONLY and decision == 'block' and not result.get('skip_warn_only'):
             decision = 'approve'
 
-        # denyは'block'ではないので変換されない
-        assert decision == 'deny'
+        # skip_warn_only=Trueなので変換されない
+        assert decision == 'block'
+
+
+class TestDenyWarnOnlyIntegration:
+    """BaseHook.run()経由のdeny+WARN_ONLY統合テスト"""
+
+    def test_deny_not_converted_via_run(self):
+        """BaseHook.run()経由: deny(skip_warn_only)はWARN_ONLYでもdeny出力"""
+        input_data = {
+            'hook_event_name': 'PreToolUse',
+            'tool_name': 'Edit',
+            'tool_input': {'file_path': '/test/file.md'},
+            'session_id': 'test-session',
+            'permission_mode': 'dontAsk',
+        }
+        stdin_json = json.dumps(input_data)
+
+        hook = ImplementationDesignHook()
+
+        with patch('sys.stdin', MagicMock(read=MagicMock(return_value=stdin_json))):
+            with patch.object(hook, 'should_skip_session', return_value=False):
+                with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+                    mock_match.return_value = [{
+                        'rule_name': 'deny-edit',
+                        'severity': 'deny',
+                        'message': 'Denied by rule',
+                        'token_threshold': None,
+                        'scope': None,
+                    }]
+                    with patch('builtins.print') as mock_print:
+                        exit_code = hook.run()
+
+        # denyなのでexit_code=0（正常終了）、出力にpermissionDecision=denyが含まれる
+        assert exit_code == 0
+        mock_print.assert_called_once()
+        output = mock_print.call_args[0][0]
+        output_data = json.loads(output)
+        assert output_data['hookSpecificOutput']['permissionDecision'] == 'deny'
+
+    def test_block_converted_via_run(self):
+        """BaseHook.run()経由: blockはWARN_ONLYでallow出力に変換"""
+        input_data = {
+            'hook_event_name': 'PreToolUse',
+            'tool_name': 'Edit',
+            'tool_input': {'file_path': '/test/file.md'},
+            'session_id': 'test-session',
+            'permission_mode': 'dontAsk',
+        }
+        stdin_json = json.dumps(input_data)
+
+        hook = ImplementationDesignHook()
+
+        with patch('sys.stdin', MagicMock(read=MagicMock(return_value=stdin_json))):
+            with patch.object(hook, 'should_skip_session', return_value=False):
+                with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+                    mock_match.return_value = [{
+                        'rule_name': 'block-edit',
+                        'severity': 'block',
+                        'message': 'Blocked by rule',
+                        'token_threshold': None,
+                        'scope': None,
+                    }]
+                    with patch.object(hook, 'is_rule_processed', return_value=False):
+                        with patch('builtins.print') as mock_print:
+                            exit_code = hook.run()
+
+        # blockはWARN_ONLYでallowに変換される
+        assert exit_code == 0
+        mock_print.assert_called_once()
+        output = mock_print.call_args[0][0]
+        output_data = json.loads(output)
+        assert output_data['hookSpecificOutput']['permissionDecision'] == 'allow'
 
 
 class TestShouldProcessDenyAlwaysFires:

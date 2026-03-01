@@ -408,7 +408,7 @@ class ImplementationDesignHook(BaseHook):
             input_data: 入力データ
 
         Returns:
-            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve'/'deny', 'reason': 'メッセージ'}
+            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve', 'reason': 'メッセージ', 'skip_warn_only': bool}
         """
         tool_name = input_data.get('tool_name', '')
         tool_input = input_data.get('tool_input', {})
@@ -488,12 +488,14 @@ class ImplementationDesignHook(BaseHook):
         
         # 複数メッセージを結合
         combined_message = "\n\n---\n\n".join(messages)
-        # deny含む場合はdeny決定（WARN_ONLY変換を防止）
-        decision = 'deny' if has_deny else 'block'
-        return {
-            'decision': decision,
+        result = {
+            'decision': 'block',
             'reason': combined_message
         }
+        # deny含む場合はWARN_ONLY変換をスキップ
+        if has_deny:
+            result['skip_warn_only'] = True
+        return result
     def run(self) -> int:
         """
         BaseHookのrun()を呼び出してコンテクスト制御を有効化
@@ -513,7 +515,7 @@ class ImplementationDesignHook(BaseHook):
             input_data: 全体の入力データ
 
         Returns:
-            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve'/'deny', 'reason': 'メッセージ'}
+            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve', 'reason': 'メッセージ', 'skip_warn_only': bool}
         """
         command = tool_input.get('command', '')
         if not command:
@@ -614,11 +616,14 @@ class ImplementationDesignHook(BaseHook):
         
         # 複数メッセージを結合
         combined_message = "\n\n---\n\n".join(messages)
-        decision = 'deny' if has_deny else 'block'
-        return {
-            'decision': decision,
+        result = {
+            'decision': 'block',
             'reason': combined_message
         }
+        # deny含む場合はWARN_ONLY変換をスキップ
+        if has_deny:
+            result['skip_warn_only'] = True
+        return result
 
     def _get_mcp_threshold(self, rule_info: dict) -> int:
         """
@@ -652,7 +657,7 @@ class ImplementationDesignHook(BaseHook):
             input_data: 全体の入力データ
 
         Returns:
-            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve'/'deny', 'reason': 'メッセージ'}
+            ClaudeCode Hook出力形式の辞書 {'decision': 'block'/'approve', 'reason': 'メッセージ', 'skip_warn_only': bool}
         """
         tool_input = input_data.get('tool_input', {})
         self.impl_logger.info(f"MCP PROCESS: tool_name='{tool_name}'")
@@ -737,11 +742,14 @@ class ImplementationDesignHook(BaseHook):
 
         # 複数メッセージを結合
         combined_message = "\n\n---\n\n".join(messages)
-        decision = 'deny' if has_deny else 'block'
-        return {
-            'decision': decision,
+        result = {
+            'decision': 'block',
             'reason': combined_message
         }
+        # deny含む場合はWARN_ONLY変換をスキップ
+        if has_deny:
+            result['skip_warn_only'] = True
+        return result
 
 
 def main():

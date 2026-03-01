@@ -941,9 +941,9 @@ class BaseHook(ABC):
                 self.mark_session_processed(session_id, current_tokens or 0)
                 self.log_debug(f"Created session marker after successful processing with {current_tokens or 0} tokens")
 
-            # dontAskモード: ブロック(deny)を警告(allow)に変換
+            # dontAskモード: ブロックを警告(allow)に変換（skip_warn_only=True時は変換しない）
             decision = result['decision']
-            if behavior == PermissionModeBehavior.WARN_ONLY and decision == 'block':
+            if behavior == PermissionModeBehavior.WARN_ONLY and decision == 'block' and not result.get('skip_warn_only'):
                 self.log_info(f"Converting block to allow due to WARN_ONLY mode (dontAsk)")
                 decision = 'approve'
                 # 理由に警告を追加
