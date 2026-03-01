@@ -14,6 +14,14 @@ from domain.services.leader_detection import is_leader_tool_use
 from infrastructure.config.config_manager import ConfigManager
 from shared.structured_logging import get_logger
 
+# severity優先度: 値が小さいほど高優先（deny > block > warn > info）
+SEVERITY_PRIORITY = {'deny': 0, 'block': 1, 'warn': 2, 'info': 3}
+
+
+def _sort_by_severity(rule_infos: list) -> list:
+    """ルールをseverity優先度でソート（deny > block > warn > info）"""
+    return sorted(rule_infos, key=lambda r: SEVERITY_PRIORITY.get(r.get('severity', 'info'), 9))
+
 
 class ImplementationDesignHook(BaseHook):
     """実装設計書編集時の規約確認フック"""
@@ -68,6 +76,7 @@ class ImplementationDesignHook(BaseHook):
         """scopeに基づくルールフィルタリング
 
         scope="leader"のルールはleaderのtool_useの場合のみ適用。
+        scope=role名のルールは該当roleのsubagentの場合のみ適用。
         scope=Noneのルールは全agent対象。
         """
         if not rule_infos:
@@ -85,10 +94,18 @@ class ImplementationDesignHook(BaseHook):
         if tool_use_id and transcript_path:
             caller_is_leader = is_leader_tool_use(transcript_path, tool_use_id)
 
+        # subagentのrole取得（scope=role名判定用）
+        caller_roles = set()
+        if not caller_is_leader:
+            caller_roles = self._get_caller_roles(input_data)
+
         filtered = []
         for rule_info in rule_infos:
             scope = rule_info.get('scope')
-            if scope == 'leader':
+            if scope is None:
+                # scope=None: 全agent対象
+                filtered.append(rule_info)
+            elif scope == 'leader':
                 if caller_is_leader:
                     filtered.append(rule_info)
                 else:
@@ -97,10 +114,46 @@ class ImplementationDesignHook(BaseHook):
                         f"but caller is not leader"
                     )
             else:
-                # scope=None: 全agent対象
-                filtered.append(rule_info)
+                # scope=role名: subagentのroleと照合
+                if scope in caller_roles:
+                    filtered.append(rule_info)
+                else:
+                    self.impl_logger.info(
+                        f"SCOPE SKIP: Rule '{rule_info['rule_name']}' scope={scope}, "
+                        f"caller roles={caller_roles}"
+                    )
 
         return filtered
+
+    def _get_caller_roles(self, input_data: dict) -> set:
+        """現在のcaller（subagent）のroleセットを取得
+
+        session_idからSubagentRepositoryを参照し、
+        処理済みsubagentのroleを返す。
+        """
+        session_id = input_data.get('session_id', '')
+        if not session_id:
+            return set()
+
+        try:
+            from infrastructure.db import NaggerStateDB, SubagentRepository
+            db = NaggerStateDB(NaggerStateDB.resolve_db_path())
+            subagent_repo = SubagentRepository(db)
+            records = subagent_repo.get_active(session_id)
+            db.close()
+
+            # 処理済みsubagentのroleを収集
+            roles = set()
+            for record in records:
+                if record.role and record.startup_processed:
+                    roles.add(record.role)
+
+            if roles:
+                self.impl_logger.info(f"CALLER ROLES: session={session_id}, roles={roles}")
+            return roles
+        except Exception as e:
+            self.impl_logger.warning(f"Failed to get caller roles: {e}")
+            return set()
 
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """
@@ -439,14 +492,15 @@ class ImplementationDesignHook(BaseHook):
                 'reason': 'No rules matched'
             }
         
-        # scopeフィルタリング
+        # scopeフィルタリング + severity優先度ソート
         rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
         if not rule_infos:
             return {
                 'decision': 'approve',
                 'reason': 'No rules matched after scope filtering'
             }
-        
+        rule_infos = _sort_by_severity(rule_infos)
+
         # 全マッチルールのメッセージを結合してブロック
         messages = []
         block_rule_names = []
@@ -455,7 +509,7 @@ class ImplementationDesignHook(BaseHook):
             severity = rule_info['severity']
             message = rule_info['message']
             rule_name = rule_info['rule_name']
-            
+
             # deny: マーカーチェック・作成をスキップ（常時deny）
             if severity == 'deny':
                 self.impl_logger.info(f"FILE RULE DENY: Rule '{rule_name}' (severity: deny) denying file edit: {absolute_path}")
@@ -538,14 +592,15 @@ class ImplementationDesignHook(BaseHook):
                 'reason': 'No command rules matched'
             }
         
-        # scopeフィルタリング
+        # scopeフィルタリング + severity優先度ソート
         rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
         if not rule_infos:
             return {
                 'decision': 'approve',
                 'reason': 'No command rules matched after scope filtering'
             }
-        
+        rule_infos = _sort_by_severity(rule_infos)
+
         # 全マッチルールについて処理
         messages = []
         has_deny = False
@@ -553,7 +608,7 @@ class ImplementationDesignHook(BaseHook):
             rule_name = rule_info['rule_name']
             severity = rule_info['severity']
             message = rule_info['message']
-            
+
             # コマンド規約マッチしたログ
             self.impl_logger.info(f"COMMAND RULE MATCHED: {rule_name} (severity: {severity}, threshold: {rule_info.get('token_threshold', 'default')}) for command: {command}")
             
@@ -672,13 +727,14 @@ class ImplementationDesignHook(BaseHook):
                 'reason': 'No MCP rules matched'
             }
 
-        # scopeフィルタリング
+        # scopeフィルタリング + severity優先度ソート
         rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
         if not rule_infos:
             return {
                 'decision': 'approve',
                 'reason': 'No MCP rules matched after scope filtering'
             }
+        rule_infos = _sort_by_severity(rule_infos)
 
         # 全マッチルールについて処理
         messages = []

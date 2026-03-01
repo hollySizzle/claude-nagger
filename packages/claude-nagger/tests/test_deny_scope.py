@@ -696,3 +696,192 @@ class TestShouldProcessDenyAlwaysFires:
 
         # 閾値未到達: スキップ可能
         assert result is False
+
+
+class TestScopeRoleName:
+    """scope=role名によるrole別ツール制限テスト（issue_7030 T5）"""
+
+    @pytest.fixture
+    def hook(self):
+        return ImplementationDesignHook()
+
+    def test_scope_coder_matches_coder_role(self, hook):
+        """scope=coderのルールはrole=coderのsubagentに適用"""
+        rule_infos = [
+            {'rule_name': 'deny-coder-edit', 'severity': 'deny',
+             'message': 'Coder deny', 'scope': 'coder'},
+        ]
+        input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
+
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=False):
+            with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
+                result = hook._filter_rules_by_scope(rule_infos, input_data)
+
+        assert len(result) == 1
+        assert result[0]['rule_name'] == 'deny-coder-edit'
+
+    def test_scope_coder_skips_tester_role(self, hook):
+        """scope=coderのルールはrole=testerのsubagentには適用されない"""
+        rule_infos = [
+            {'rule_name': 'deny-coder-edit', 'severity': 'deny',
+             'message': 'Coder deny', 'scope': 'coder'},
+        ]
+        input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
+
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=False):
+            with patch.object(hook, '_get_caller_roles', return_value={'tester'}):
+                result = hook._filter_rules_by_scope(rule_infos, input_data)
+
+        assert len(result) == 0
+
+    def test_scope_role_and_none_mixed(self, hook):
+        """scope=role名とscope=Noneの混合: roleマッチ+全agent対象の両方が返る"""
+        rule_infos = [
+            {'rule_name': 'global-rule', 'severity': 'warn',
+             'message': 'Global warning', 'scope': None},
+            {'rule_name': 'coder-rule', 'severity': 'deny',
+             'message': 'Coder deny', 'scope': 'coder'},
+            {'rule_name': 'tester-rule', 'severity': 'block',
+             'message': 'Tester block', 'scope': 'tester'},
+        ]
+        input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
+
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=False):
+            with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
+                result = hook._filter_rules_by_scope(rule_infos, input_data)
+
+        assert len(result) == 2
+        names = {r['rule_name'] for r in result}
+        assert 'global-rule' in names
+        assert 'coder-rule' in names
+        assert 'tester-rule' not in names
+
+    def test_scope_leader_not_affected_by_role(self, hook):
+        """scope=leaderはrole名マッチではなくleader判定で処理される"""
+        rule_infos = [
+            {'rule_name': 'leader-rule', 'severity': 'deny',
+             'message': 'Leader only', 'scope': 'leader'},
+        ]
+        input_data = {'tool_use_id': 'toolu_leader', 'transcript_path': '/test/t.jsonl'}
+
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=True):
+            with patch.object(hook, '_get_caller_roles', return_value=set()):
+                result = hook._filter_rules_by_scope(rule_infos, input_data)
+
+        assert len(result) == 1
+        assert result[0]['rule_name'] == 'leader-rule'
+
+    def test_scope_role_from_leader_skipped(self, hook):
+        """leaderはrole名スコープルールの対象外"""
+        rule_infos = [
+            {'rule_name': 'coder-rule', 'severity': 'deny',
+             'message': 'Coder deny', 'scope': 'coder'},
+        ]
+        input_data = {'tool_use_id': 'toolu_leader', 'transcript_path': '/test/t.jsonl'}
+
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=True):
+            result = hook._filter_rules_by_scope(rule_infos, input_data)
+
+        assert len(result) == 0
+
+    def test_scope_none_regression(self, hook):
+        """scope=Noneの回帰テスト: 全agent（leader/subagent）に適用"""
+        rule_infos = [
+            {'rule_name': 'global-rule', 'severity': 'block',
+             'message': 'Global', 'scope': None},
+        ]
+        # leader
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=True):
+            result_leader = hook._filter_rules_by_scope(
+                rule_infos, {'tool_use_id': 'toolu_l', 'transcript_path': '/t.jsonl'}
+            )
+        # subagent
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=False):
+            with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
+                result_sub = hook._filter_rules_by_scope(
+                    rule_infos, {'tool_use_id': 'toolu_s', 'transcript_path': '/t.jsonl'}
+                )
+
+        assert len(result_leader) == 1
+        assert len(result_sub) == 1
+
+
+class TestDenyPriority:
+    """deny優先度テスト（deny > block > warn）（issue_7030 T6）"""
+
+    def test_sort_by_severity(self):
+        """_sort_by_severity: deny > block > warn > info の順にソート"""
+        from src.domain.hooks.implementation_design_hook import _sort_by_severity
+        rules = [
+            {'rule_name': 'warn-rule', 'severity': 'warn', 'message': 'W'},
+            {'rule_name': 'deny-rule', 'severity': 'deny', 'message': 'D'},
+            {'rule_name': 'block-rule', 'severity': 'block', 'message': 'B'},
+            {'rule_name': 'info-rule', 'severity': 'info', 'message': 'I'},
+        ]
+        sorted_rules = _sort_by_severity(rules)
+        assert [r['severity'] for r in sorted_rules] == ['deny', 'block', 'warn', 'info']
+
+    def test_deny_plus_block_returns_skip_warn_only(self):
+        """deny+blockルール同時マッチ → skip_warn_only=True"""
+        hook = ImplementationDesignHook()
+        with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+            mock_match.return_value = [
+                {'rule_name': 'block-rule', 'severity': 'block',
+                 'message': 'Block msg', 'token_threshold': None, 'scope': None},
+                {'rule_name': 'deny-rule', 'severity': 'deny',
+                 'message': 'Deny msg', 'token_threshold': None, 'scope': None},
+            ]
+            with patch.object(hook, 'is_rule_processed', return_value=False):
+                result = hook.process({
+                    'tool_name': 'Edit',
+                    'tool_input': {'file_path': '/test/file.md'},
+                    'session_id': 'test-session',
+                })
+
+        assert result['decision'] == 'block'
+        assert result.get('skip_warn_only') is True
+        # deny message appears first (priority sort)
+        assert result['reason'].index('Deny msg') < result['reason'].index('Block msg')
+
+    def test_block_only_no_skip_warn_only(self):
+        """blockのみ → skip_warn_only未設定"""
+        hook = ImplementationDesignHook()
+        with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+            mock_match.return_value = [
+                {'rule_name': 'block-rule', 'severity': 'block',
+                 'message': 'Block msg', 'token_threshold': None, 'scope': None},
+            ]
+            with patch.object(hook, 'is_rule_processed', return_value=False):
+                result = hook.process({
+                    'tool_name': 'Edit',
+                    'tool_input': {'file_path': '/test/file.md'},
+                    'session_id': 'test-session',
+                })
+
+        assert result['decision'] == 'block'
+        assert result.get('skip_warn_only') is not True
+
+    def test_deny_message_first_in_combined(self):
+        """複数severity混合時、deny→block→warnの順でメッセージ結合"""
+        hook = ImplementationDesignHook()
+        with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+            mock_match.return_value = [
+                {'rule_name': 'warn-rule', 'severity': 'warn',
+                 'message': 'WARN_MSG', 'token_threshold': None, 'scope': None},
+                {'rule_name': 'deny-rule', 'severity': 'deny',
+                 'message': 'DENY_MSG', 'token_threshold': None, 'scope': None},
+                {'rule_name': 'block-rule', 'severity': 'block',
+                 'message': 'BLOCK_MSG', 'token_threshold': None, 'scope': None},
+            ]
+            with patch.object(hook, 'is_rule_processed', return_value=False):
+                result = hook.process({
+                    'tool_name': 'Edit',
+                    'tool_input': {'file_path': '/test/file.md'},
+                    'session_id': 'test-session',
+                })
+
+        reason = result['reason']
+        deny_pos = reason.index('DENY_MSG')
+        block_pos = reason.index('BLOCK_MSG')
+        warn_pos = reason.index('WARN_MSG')
+        assert deny_pos < block_pos < warn_pos
