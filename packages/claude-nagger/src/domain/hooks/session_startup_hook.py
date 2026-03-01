@@ -161,14 +161,18 @@ class SessionStartupHook(BaseHook):
         self.log_info(f"🔧 Resolved subagent config for '{agent_type}': enabled={resolved.get('enabled')}")
         return resolved
 
-    def _parse_role_from_transcript(self, transcript_path: str) -> Optional[str]:
+    def _parse_role_from_transcript(self, transcript_path: str, parent_tool_use_id: Optional[str] = None) -> Optional[str]:
         """トランスクリプトJSONLからsubagentロールを抽出
 
         assistant内のsubagent tool_useブロックからinput.name（TeamCreate方式）
         またはinput.subagent_type（フォールバック）でロールを取得。
 
+        parent_tool_use_id指定時は該当tool_useのみ対象。
+        未指定または見つからない場合は最後のtool_use（従来動作）にフォールバック。
+
         Args:
             transcript_path: トランスクリプトJSONLファイルパス
+            parent_tool_use_id: 特定subagentに対応するtool_useのID（任意）
 
         Returns:
             抽出されたロール文字列、未検出時はNone
@@ -183,6 +187,7 @@ class SessionStartupHook(BaseHook):
                 return None
 
             role_from_task = None
+            role_by_id = None  # parent_tool_use_idで特定されたロール
 
             with open(path, 'r', encoding='utf-8') as f:
                 for line in f:
@@ -203,14 +208,30 @@ class SessionStartupHook(BaseHook):
                                     and block.get('type') == 'tool_use'
                                     and block.get('name') in SUBAGENT_TOOL_NAMES):
                                     input_data = block.get('input', {})
-                                    if input_data.get('team_name') and input_data.get('name'):
-                                        role_from_task = input_data.get('name')  # TeamCreate方式
-                                    elif input_data.get('subagent_type'):
-                                        role_from_task = input_data.get('subagent_type')  # フォールバック
+                                    block_id = block.get('id', '')
 
-            if role_from_task:
-                self.log_info(f"🏷️ Parsed role from transcript: {role_from_task}")
-            return role_from_task
+                                    # ロール抽出
+                                    extracted_role = None
+                                    if input_data.get('team_name') and input_data.get('name'):
+                                        extracted_role = input_data.get('name')  # TeamCreate方式
+                                    elif input_data.get('subagent_type'):
+                                        extracted_role = input_data.get('subagent_type')  # フォールバック
+
+                                    if extracted_role:
+                                        # parent_tool_use_idで正確マッチ
+                                        if parent_tool_use_id and block_id == parent_tool_use_id:
+                                            role_by_id = extracted_role
+                                        # 従来動作: 最後のtool_useで上書き
+                                        role_from_task = extracted_role
+
+            # parent_tool_use_idマッチ優先、なければ従来フォールバック
+            result = role_by_id or role_from_task
+            if result:
+                if role_by_id:
+                    self.log_info(f"Parsed role from transcript (by tool_use_id): {result}")
+                else:
+                    self.log_info(f"Parsed role from transcript (fallback last): {result}")
+            return result
 
         except Exception as e:
             self.log_error(f"Error parsing role from transcript: {e}")
@@ -331,7 +352,13 @@ class SessionStartupHook(BaseHook):
                         role = retry_role
                     else:
                         # フォールバック: transcriptから解析
-                        parsed_role = self._parse_role_from_transcript(transcript_path)
+                        # parentToolUseIDで特定subagentのtool_useを正確に特定
+                        parent_tool_use_id = subagent_repo.find_parent_tool_use_id(
+                            transcript_path, agent_id
+                        )
+                        parsed_role = self._parse_role_from_transcript(
+                            transcript_path, parent_tool_use_id
+                        )
                         if parsed_role:
                             subagent_repo.update_role(agent_id, parsed_role, 'transcript_parse')
                             role = parsed_role

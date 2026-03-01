@@ -817,6 +817,124 @@ class TestParseRoleFromTranscript:
         assert hook._parse_role_from_transcript(path) == "explorer"
 
 
+class TestParseRoleWithParentToolUseId:
+    """_parse_role_from_transcript parent_tool_use_id対応テスト（issue_7029）"""
+
+    BASE_CONFIG = TestSessionStartupHookSubagentOverride.BASE_CONFIG
+
+    def _make_hook(self, config=None):
+        config = config if config is not None else self.BASE_CONFIG
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            return SessionStartupHook()
+
+    def _write_transcript(self, tmp_path, lines):
+        """JSONL形式のトランスクリプトファイルを作成"""
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w', encoding='utf-8') as f:
+            for entry in lines:
+                f.write(json.dumps(entry, ensure_ascii=False) + '\n')
+        return str(transcript)
+
+    def test_parallel_subagent_correct_role_by_id(self, tmp_path):
+        """並列subagent: parent_tool_use_idで正確にrole取得"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_CODER", "name": "Task",
+                 "input": {"team_name": "dev", "name": "coder", "prompt": "Code."}},
+                {"type": "tool_use", "id": "toolu_TESTER", "name": "Task",
+                 "input": {"team_name": "dev", "name": "tester", "prompt": "Test."}},
+                {"type": "tool_use", "id": "toolu_REVIEWER", "name": "Task",
+                 "input": {"team_name": "dev", "name": "reviewer", "prompt": "Review."}},
+            ]}},
+        ])
+        # 各subagentが自分のtool_useを正確に特定
+        assert hook._parse_role_from_transcript(path, "toolu_CODER") == "coder"
+        assert hook._parse_role_from_transcript(path, "toolu_TESTER") == "tester"
+        assert hook._parse_role_from_transcript(path, "toolu_REVIEWER") == "reviewer"
+
+    def test_parallel_subagent_without_id_gets_last(self, tmp_path):
+        """並列subagent: parent_tool_use_idなしは最後のtool_use（従来動作）"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_CODER", "name": "Task",
+                 "input": {"team_name": "dev", "name": "coder", "prompt": "Code."}},
+                {"type": "tool_use", "id": "toolu_TESTER", "name": "Task",
+                 "input": {"team_name": "dev", "name": "tester", "prompt": "Test."}},
+            ]}},
+        ])
+        # parent_tool_use_id未指定は最後のtool_use
+        assert hook._parse_role_from_transcript(path) == "tester"
+
+    def test_unmatched_id_falls_back_to_last(self, tmp_path):
+        """parentToolUseID不一致時のフォールバック動作"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_CODER", "name": "Task",
+                 "input": {"team_name": "dev", "name": "coder", "prompt": "Code."}},
+                {"type": "tool_use", "id": "toolu_TESTER", "name": "Task",
+                 "input": {"team_name": "dev", "name": "tester", "prompt": "Test."}},
+            ]}},
+        ])
+        # 存在しないIDの場合はフォールバック（最後のtool_use）
+        assert hook._parse_role_from_transcript(path, "toolu_NONEXISTENT") == "tester"
+
+    def test_single_subagent_with_id(self, tmp_path):
+        """単一subagent: parent_tool_use_idマッチで回帰なし"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_ONLY", "name": "Task",
+                 "input": {"subagent_type": "coder", "prompt": "Fix."}},
+            ]}},
+        ])
+        assert hook._parse_role_from_transcript(path, "toolu_ONLY") == "coder"
+
+    def test_single_subagent_without_id_regression(self, tmp_path):
+        """単一subagent: parent_tool_use_idなしの回帰テスト"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_ONLY", "name": "Task",
+                 "input": {"subagent_type": "coder", "prompt": "Fix."}},
+            ]}},
+        ])
+        assert hook._parse_role_from_transcript(path) == "coder"
+
+    def test_none_parent_tool_use_id(self, tmp_path):
+        """parent_tool_use_id=Noneは従来動作と同一"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_A", "name": "Task",
+                 "input": {"team_name": "t", "name": "alpha", "prompt": "A."}},
+                {"type": "tool_use", "id": "toolu_B", "name": "Task",
+                 "input": {"team_name": "t", "name": "beta", "prompt": "B."}},
+            ]}},
+        ])
+        assert hook._parse_role_from_transcript(path, None) == "beta"
+
+    def test_parallel_across_multiple_entries(self, tmp_path):
+        """複数assistantエントリにまたがる並列subagent"""
+        hook = self._make_hook()
+        path = self._write_transcript(tmp_path, [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_A", "name": "Task",
+                 "input": {"team_name": "t", "name": "alpha", "prompt": "A."}},
+            ]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_B", "name": "Task",
+                 "input": {"team_name": "t", "name": "beta", "prompt": "B."}},
+            ]}},
+        ])
+        assert hook._parse_role_from_transcript(path, "toolu_A") == "alpha"
+        assert hook._parse_role_from_transcript(path, "toolu_B") == "beta"
+        # フォールバックは最後
+        assert hook._parse_role_from_transcript(path) == "beta"
+
+
 class TestShouldProcessRoleParsing:
     """should_processでのROLE解析統合テスト（DBベース）"""
 
