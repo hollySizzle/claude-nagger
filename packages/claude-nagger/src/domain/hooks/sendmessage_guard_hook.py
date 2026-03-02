@@ -4,6 +4,7 @@ SendMessage ツール使用時にメッセージ内容を検査し、
 Redmine基盤通信規約（issue_id + 短文のみ）を強制する PreToolUse hook。
 """
 
+import logging
 import re
 import sys
 import time
@@ -13,6 +14,7 @@ from typing import Dict, Any, Optional
 sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from domain.hooks.base_hook import BaseHook, ExitCode
+from domain.services.caller_role_service import get_caller_roles
 from infrastructure.config.config_manager import ConfigManager
 
 # デフォルト設定
@@ -71,6 +73,15 @@ class SendMessageGuardHook(BaseHook):
         # block_message: 設定されていればカスタムテンプレートを使用
         if "block_message" in raw:
             config["block_message"] = raw["block_message"]
+
+        # P2P通信制御ルール
+        p2p_raw = raw.get("p2p_rules", {})
+        config["p2p_rules"] = {
+            "enabled": p2p_raw.get("enabled", False),
+            "default_policy": p2p_raw.get("default_policy", "deny"),
+            "broadcast_allowed_roles": p2p_raw.get("broadcast_allowed_roles", []),
+            "matrix": p2p_raw.get("matrix", {}),
+        }
         return config
 
     # --- 判定ロジック（テスト容易性のためメソッド切り出し） ---
@@ -125,6 +136,67 @@ class SendMessageGuardHook(BaseHook):
 
         return {"valid": True, "violation": None}
 
+    # --- P2P通信制御 ---
+
+    def _validate_p2p(self, input_data: Dict[str, Any], tool_input: Dict[str, Any]) -> Dict[str, Any]:
+        """P2P通信許可を検証
+
+        P2Pマトリクスに基づき、callerのroleからrecipientへの通信可否を判定。
+
+        Returns:
+            {"valid": True} or {"valid": False, "violation": "..."}
+        """
+        p2p_rules = self._guard_config.get("p2p_rules", {})
+
+        # P2P無効時はスキップ
+        if not p2p_rules.get("enabled", False):
+            return {"valid": True}
+
+        # exempt_types はスキップ
+        message_type = tool_input.get("type", "")
+        if message_type in self._guard_config["exempt_types"]:
+            return {"valid": True}
+
+        # caller roles 取得
+        tool_use_id = input_data.get('tool_use_id', '')
+        transcript_path = input_data.get('transcript_path', '')
+        logger = logging.getLogger(__name__)
+        roles = get_caller_roles(input_data, tool_use_id, transcript_path, logger)
+
+        # role不明 → allow（安全側: leader or 未識別）
+        if not roles:
+            return {"valid": True}
+
+        # leader は全recipient許可
+        if "leader" in roles:
+            return {"valid": True}
+
+        # broadcast 判定
+        if message_type == "broadcast":
+            broadcast_allowed = p2p_rules.get("broadcast_allowed_roles", [])
+            if not any(role in broadcast_allowed for role in roles):
+                return {
+                    "valid": False,
+                    "violation": f"P2P制御: role={roles} はbroadcast禁止。team-leadへ個別送信してください",
+                }
+            return {"valid": True}
+
+        # message 判定
+        if message_type == "message":
+            recipient = tool_input.get("recipient", "")
+            matrix = p2p_rules.get("matrix", {})
+            for role in roles:
+                allowed_recipients = matrix.get(role, [])
+                if recipient in allowed_recipients:
+                    return {"valid": True}
+            return {
+                "valid": False,
+                "violation": f"P2P制御: role={roles} から {recipient} への直接通信は禁止。team-leadを経由してください",
+            }
+
+        # その他のtype → allow
+        return {"valid": True}
+
     # --- BaseHook 抽象メソッドの実装 ---
 
     def should_process(self, input_data: Dict[str, Any]) -> bool:
@@ -155,6 +227,8 @@ class SendMessageGuardHook(BaseHook):
     def process(self, input_data: Dict[str, Any]) -> Dict[str, str]:
         """メッセージ内容を検査し、規約違反をブロック
 
+        P2P通信制御 → content検証の順で実行。
+
         Args:
             input_data: 入力データ
 
@@ -162,6 +236,14 @@ class SendMessageGuardHook(BaseHook):
             decision と reason を含む辞書
         """
         tool_input = input_data.get("tool_input", {})
+
+        # P2P通信制御（content検証より先に実行）
+        p2p_result = self._validate_p2p(input_data, tool_input)
+        if not p2p_result["valid"]:
+            self.log_info(f"BLOCK(P2P): {p2p_result['violation']}")
+            return {"decision": "block", "reason": p2p_result["violation"]}
+
+        # 既存content検証
         content = tool_input.get("content", "")
 
         result = self.validate_content(content)

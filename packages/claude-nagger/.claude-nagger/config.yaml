@@ -161,6 +161,20 @@ session_startup:
               [ ] 指摘は[事実]/[仮説]に分類すること
               [ ] 報告=チケットコメント（[tech-lead]プレフィックス付き）
 
+# SendMessageガード設定
+sendmessage_guard:
+  enabled: true
+  p2p_rules:
+    enabled: true
+    default_policy: "deny"
+    broadcast_allowed_roles: ["leader"]
+    matrix:
+      pmo: ["team-lead"]
+      tech-lead: ["team-lead", "tester"]
+      coder: ["team-lead", "tester"]
+      tester: ["team-lead", "coder", "tech-lead"]
+      researcher: ["team-lead"]
+
 # 規約提案機能（hook_inputを分析しルール改善を提案）
 # デフォルトOFF。有効化するにはenabled: trueに変更
 suggest_rules:
