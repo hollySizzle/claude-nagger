@@ -142,7 +142,7 @@ class ImplementationDesignHook(BaseHook):
         # subagentのrole取得（scope=role名判定用）
         caller_roles = set()
         if not caller_is_leader:
-            caller_roles = self._get_caller_roles(input_data)
+            caller_roles = self._get_caller_roles(input_data, tool_use_id, transcript_path)
 
         filtered = []
         for rule_info in rule_infos:
@@ -170,12 +170,35 @@ class ImplementationDesignHook(BaseHook):
 
         return filtered
 
-    def _get_caller_roles(self, input_data: dict) -> set:
+    def _get_caller_roles(self, input_data: dict, tool_use_id: str = '', transcript_path: str = '') -> set:
         """現在のcaller（subagent）のroleセットを取得
 
-        session_idからSubagentRepositoryを参照し、
-        処理済みsubagentのroleを返す。
+        tool_use_idベース: subagentsディレクトリからtool_use_idの発信元agentを特定し、
+        そのagentのroleを返す。フォールバック: session_idベースの既存ロジック。
         """
+        # tool_use_idベースのagent特定（優先）
+        if tool_use_id and transcript_path:
+            try:
+                from domain.services.leader_detection import find_caller_agent_id
+                agent_id = find_caller_agent_id(transcript_path, tool_use_id)
+                if agent_id:
+                    from infrastructure.db import NaggerStateDB, SubagentRepository
+                    db = NaggerStateDB(NaggerStateDB.resolve_db_path())
+                    subagent_repo = SubagentRepository(db)
+                    record = subagent_repo.get(agent_id)
+                    db.close()
+                    if record and record.role:
+                        self.impl_logger.info(
+                            f"CALLER ROLES (tool_use_id): agent_id={agent_id}, role={record.role}"
+                        )
+                        return {record.role}
+                # agent_id未特定 or record/role無し → 空set（安全側フォールバック）
+                return set()
+            except Exception as e:
+                self.impl_logger.warning(f"Failed to get caller roles via tool_use_id: {e}")
+                return set()
+
+        # 後方互換: tool_use_id/transcript_pathが無い場合はsession_idベース
         session_id = input_data.get('session_id', '')
         if not session_id:
             return set()
