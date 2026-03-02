@@ -109,13 +109,29 @@ CREATE TABLE IF NOT EXISTS transcript_lines (
 CREATE INDEX IF NOT EXISTS idx_transcript_lines_session ON transcript_lines(session_id);
 CREATE INDEX IF NOT EXISTS idx_transcript_lines_type ON transcript_lines(session_id, line_type);
 CREATE INDEX IF NOT EXISTS idx_transcript_lines_timestamp ON transcript_lines(session_id, timestamp);
+
+CREATE TABLE IF NOT EXISTS convention_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT,
+    timestamp TEXT DEFAULT (datetime('now')),
+    tool_name TEXT NOT NULL,
+    convention_type TEXT NOT NULL,
+    rule_name TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    decision TEXT NOT NULL,
+    reason TEXT,
+    scope TEXT,
+    caller_role TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_convention_log_session ON convention_log(session_id);
+CREATE INDEX IF NOT EXISTS idx_convention_log_severity ON convention_log(severity);
 """
 
 
 class NaggerStateDB:
     """状態管理SQLiteデータベース"""
 
-    SCHEMA_VERSION = 8
+    SCHEMA_VERSION = 9
 
     def __init__(self, db_path: Path):
         """初期化
@@ -356,6 +372,33 @@ class NaggerStateDB:
             self._conn.execute(
                 "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
                 (8, now),
+            )
+            self._conn.commit()
+
+        if from_ver < 9 <= to_ver:
+            # v8 -> v9: convention_logテーブル新設（issue_7054）
+            # conventions判定結果（deny/block/warn）を永続化し監査・デバッグ基盤を構築
+            self._conn.executescript("""
+                CREATE TABLE IF NOT EXISTS convention_log (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT,
+                    timestamp TEXT DEFAULT (datetime('now')),
+                    tool_name TEXT NOT NULL,
+                    convention_type TEXT NOT NULL,
+                    rule_name TEXT NOT NULL,
+                    severity TEXT NOT NULL,
+                    decision TEXT NOT NULL,
+                    reason TEXT,
+                    scope TEXT,
+                    caller_role TEXT
+                );
+                CREATE INDEX IF NOT EXISTS idx_convention_log_session ON convention_log(session_id);
+                CREATE INDEX IF NOT EXISTS idx_convention_log_severity ON convention_log(severity);
+            """)
+            now = datetime.now(timezone.utc).isoformat()
+            self._conn.execute(
+                "INSERT INTO schema_version (version, applied_at) VALUES (?, ?)",
+                (9, now),
             )
             self._conn.commit()
 

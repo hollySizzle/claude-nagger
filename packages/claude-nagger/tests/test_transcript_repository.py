@@ -171,7 +171,7 @@ class TestSchemaMigrationV6:
 
         cursor = db.conn.execute("SELECT MAX(version) FROM schema_version")
         row = cursor.fetchone()
-        assert row[0] == 8
+        assert row[0] == 9
 
         db.close()
 
