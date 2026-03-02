@@ -185,10 +185,14 @@ class SendMessageGuardHook(BaseHook):
         if message_type == "message":
             recipient = tool_input.get("recipient", "")
             matrix = p2p_rules.get("matrix", {})
+            default_policy = p2p_rules.get("default_policy", "deny")
             for role in roles:
                 allowed_recipients = matrix.get(role, [])
                 if recipient in allowed_recipients:
                     return {"valid": True}
+            # matrixに該当なし → default_policyで判定
+            if default_policy == "allow":
+                return {"valid": True}
             return {
                 "valid": False,
                 "violation": f"P2P制御: role={roles} から {recipient} への直接通信は禁止。team-leadを経由してください",
@@ -241,7 +245,11 @@ class SendMessageGuardHook(BaseHook):
         p2p_result = self._validate_p2p(input_data, tool_input)
         if not p2p_result["valid"]:
             self.log_info(f"BLOCK(P2P): {p2p_result['violation']}")
-            return {"decision": "block", "reason": p2p_result["violation"]}
+            return {
+                "decision": "block",
+                "reason": p2p_result["violation"],
+                "skip_warn_only": True,  # P2Pはセキュリティ制約: WARN_ONLY迂回不可
+            }
 
         # 既存content検証
         content = tool_input.get("content", "")
@@ -311,9 +319,9 @@ class SendMessageGuardHook(BaseHook):
             # 処理実行
             result = self.process(input_data)
 
-            # WARN_ONLY モード: block を allow に変換
+            # WARN_ONLY モード: block を allow に変換（skip_warn_only=True時は変換しない）
             decision = result["decision"]
-            if behavior == PermissionModeBehavior.WARN_ONLY and decision == "block":
+            if behavior == PermissionModeBehavior.WARN_ONLY and decision == "block" and not result.get("skip_warn_only"):
                 self.log_info("Converting block to allow due to WARN_ONLY mode")
                 decision = "approve"
                 original_reason = result.get("reason", "")
