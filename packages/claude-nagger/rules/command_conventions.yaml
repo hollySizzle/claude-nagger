@@ -78,3 +78,45 @@ rules:
     token_threshold: 40000
     message: |
       微調整レベルの変更のみ許可されています
+
+  # --- role別制約 (#7058) ---
+
+  # 制約#2: leader Bash非gitコマンドdeny
+  # fnmatch否定パターン: git以外の全コマンドをマッチ
+  # [!g]* = 先頭g以外, g[!i]* = gi以外, gi[!t]* = git以外, git[! ]* = git+スペース以外
+  - name: "leader非gitコマンド禁止"
+    patterns:
+      - "[!g]*"
+      - "g[!i]*"
+      - "gi[!t]*"
+      - "git[! ]*"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはgitコマンド以外のBash実行が禁止されています。
+      コマンド実行はsubagentに委譲してください
+
+  # 制約#4: tech-lead/researcher 破壊的コマンドdeny（scopeは単一値のみ→2ルール定義）
+  - name: "tech-lead破壊的コマンド禁止"
+    patterns:
+      - "rm -rf*"
+      - "git push --force*"
+      - "git push -f*"
+      - "git reset --hard*"
+      - "git clean -f*"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadは破壊的コマンドが禁止されています
+
+  - name: "researcher破壊的コマンド禁止"
+    patterns:
+      - "rm -rf*"
+      - "git push --force*"
+      - "git push -f*"
+      - "git reset --hard*"
+      - "git clean -f*"
+    severity: "deny"
+    scope: "researcher"
+    message: |
+      researcherは破壊的コマンドが禁止されています
