@@ -9,4 +9,18 @@
 #     severity: "warn"
 #     message: "Redmineの更新操作を行います。確認してください。"
 #     token_threshold: null
-rules: []
+rules:
+  # --- role別制約 (#7058) ---
+
+  # 制約#3: leader Redmine非許可リストMCP deny
+  # 許可リスト: get_issue_detail, add_issue_comment, update_issue_status,
+  #            list_epics, list_versions, list_user_stories, list_statuses,
+  #            list_project_members, get_project_structure
+  # tool_patternはre.match: 否定先読みで許可リスト以外をマッチ
+  - name: "leaderRedmine非許可MCP禁止"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment|update_issue_status|list_epics|list_versions|list_user_stories|list_statuses|list_project_members|get_project_structure)_?tool)"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはこのRedmineツールの使用が禁止されています。
+      許可: 参照系(get/list)・コメント追加・ステータス更新のみ
