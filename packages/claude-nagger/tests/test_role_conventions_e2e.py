@@ -576,6 +576,75 @@ class TestDenyByRoleExtended:
         _assert_deny(result)
         assert 'coderはこのRedmineツールの使用が禁止されています' in result['reason']
 
+    # --- ケース28: pmo + Bash("npm install") → deny（制約#14 pmo非gitコマンド禁止） ---
+    def test_pmo_non_git_command_deny(self, hook, tmp_path):
+        """pmo + Bash(npm install) → deny（command_conventions: pmo非gitコマンド禁止, scope=pmo）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_OTHER", "name": "Bash"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Bash',
+            {'command': 'npm install'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'pmo')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'pmoはgitコマンド以外のBash実行が禁止されています' in result['reason']
+
+    # --- ケース29: tech-lead + Bash("python3 -m pytest") → deny（制約#15 tech-lead非gitコマンド禁止） ---
+    def test_tech_lead_non_git_command_deny(self, hook, tmp_path):
+        """tech-lead + Bash(python3 -m pytest) → deny（command_conventions: tech-lead非gitコマンド禁止, scope=tech-lead）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_OTHER", "name": "Bash"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Bash',
+            {'command': 'python3 -m pytest'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'tech-leadはgitコマンド以外のBash実行が禁止されています' in result['reason']
+
+    # --- ケース30: tester + Redmine create_task → deny（制約#16 testerRedmine非許可MCP禁止） ---
+    def test_tester_redmine_non_allowed_mcp_deny(self, hook, tmp_path):
+        """tester + 非許可Redmine MCP → deny（mcp_conventions: testerRedmine非許可MCP禁止, scope=tester）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__redmine_epic_grid__create_task_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__create_task_tool',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tester')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'testerはこのRedmineツールの使用が禁止されています' in result['reason']
+
 
 class TestAllowedOperationsExtended:
     """#7145追加分: deny制約に該当しない操作の検証"""
@@ -751,6 +820,74 @@ class TestAllowedOperationsExtended:
             str(transcript),
         )
         lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース31: pmo + Bash("git status") → 非deny（gitコマンドは許可） ---
+    def test_pmo_git_command_not_denied(self, hook, tmp_path):
+        """pmo + Bash(git status) → gitコマンドはpmo非gitコマンド禁止ルールにマッチしない"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_OTHER", "name": "Bash"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Bash',
+            {'command': 'git status'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'pmo')
+        with lp, rp:
+            with patch.object(hook, 'is_command_processed', return_value=False):
+                result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース32: tech-lead + Bash("git log") → 非deny（gitコマンドは許可） ---
+    def test_tech_lead_git_command_not_denied(self, hook, tmp_path):
+        """tech-lead + Bash(git log) → gitコマンドはtech-lead非gitコマンド禁止ルールにマッチしない"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_OTHER", "name": "Bash"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Bash',
+            {'command': 'git log'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            with patch.object(hook, 'is_command_processed', return_value=False):
+                result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース33: tester + Redmine get_issue_detail → 非deny（許可リスト内） ---
+    def test_tester_redmine_detail_allowed(self, hook, tmp_path):
+        """tester + get_issue_detail → testerRedmine許可リスト内"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__redmine_epic_grid__get_issue_detail_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__get_issue_detail_tool',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tester')
         with lp, rp:
             result = hook.process(input_data)
 
