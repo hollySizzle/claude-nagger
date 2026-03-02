@@ -42,8 +42,53 @@ class ImplementationDesignHook(BaseHook):
         
         # 統一ログディレクトリを使用（structured_logging）
         self.impl_logger = get_logger("ImplementationDesignHook")
-        self.impl_logger.info("=== ImplementationDesignHook initialized ===", 
+        self.impl_logger.info("=== ImplementationDesignHook initialized ===",
                               thresholds=self.thresholds, marker_settings=self.marker_settings)
+
+        # convention_log記録用（遅延初期化）
+        self._convention_log_repo = None
+
+    def _get_convention_log_repo(self):
+        """ConventionLogRepositoryの遅延初期化"""
+        if self._convention_log_repo is None:
+            try:
+                from infrastructure.db import NaggerStateDB, ConventionLogRepository
+                db = NaggerStateDB(NaggerStateDB.resolve_db_path())
+                db.connect()
+                self._convention_log_repo = ConventionLogRepository(db)
+            except Exception:
+                self.impl_logger.debug("ConventionLogRepository初期化失敗")
+        return self._convention_log_repo
+
+    def _log_convention_result(
+        self,
+        session_id: str,
+        tool_name: str,
+        convention_type: str,
+        rule_name: str,
+        severity: str,
+        decision: str,
+        reason: str = None,
+        scope: str = None,
+        caller_role: str = None,
+    ) -> None:
+        """conventions判定結果をDB記録（失敗時もフック動作に影響しない）"""
+        try:
+            repo = self._get_convention_log_repo()
+            if repo:
+                repo.insert_log(
+                    session_id=session_id,
+                    tool_name=tool_name,
+                    convention_type=convention_type,
+                    rule_name=rule_name,
+                    severity=severity,
+                    decision=decision,
+                    reason=reason,
+                    scope=scope,
+                    caller_role=caller_role,
+                )
+        except Exception:
+            self.impl_logger.debug("convention_log記録失敗（フック動作に影響なし）")
 
     def normalize_file_path(self, file_path: str, cwd: str = '') -> str:
         """
@@ -516,22 +561,34 @@ class ImplementationDesignHook(BaseHook):
                 messages.append(message)
                 block_rule_names.append(rule_name)
                 has_deny = True
+                self._log_convention_result(
+                    session_id=session_id, tool_name=tool_name,
+                    convention_type="file", rule_name=rule_name,
+                    severity="deny", decision="blocked",
+                    reason=message, scope=rule_info.get('scope'),
+                )
                 continue
-            
+
             # 規約名別マーカーをチェック
             if session_id and self.is_rule_processed(session_id, rule_name):
                 self.log_debug(f"Rule '{rule_name}' already processed in this session, skipping")
                 continue
-            
+
             # 規約名別マーカーを作成（ブロック前に）
             if session_id:
                 current_tokens = self._get_current_context_size(input_data.get('transcript_path'))
                 self.mark_rule_processed(session_id, rule_name, current_tokens or 0)
                 self.log_debug(f"Created rule marker for '{rule_name}' before blocking with {current_tokens or 0} tokens")
-            
+
             self.impl_logger.info(f"FILE RULE BLOCKING: Rule '{rule_name}' (severity: {severity}) blocking file edit: {absolute_path}")
             messages.append(message)
             block_rule_names.append(rule_name)
+            self._log_convention_result(
+                session_id=session_id, tool_name=tool_name,
+                convention_type="file", rule_name=rule_name,
+                severity=severity, decision="blocked",
+                reason=message, scope=rule_info.get('scope'),
+            )
         
         if not messages:
             # 全ルールがスキップされた場合は許可
@@ -617,6 +674,12 @@ class ImplementationDesignHook(BaseHook):
                 self.impl_logger.info(f"COMMAND RULE DENY: Rule '{rule_name}' (severity: deny) denying command: {command}")
                 messages.append(message)
                 has_deny = True
+                self._log_convention_result(
+                    session_id=session_id, tool_name=input_data.get('tool_name', 'Bash'),
+                    convention_type="command", rule_name=rule_name,
+                    severity="deny", decision="blocked",
+                    reason=message, scope=rule_info.get('scope'),
+                )
                 continue
             
             # セッション内で同じコマンドが既に処理済みかチェック
@@ -661,6 +724,12 @@ class ImplementationDesignHook(BaseHook):
             self.log_info(f"🚨 Command rule matched - Severity: {severity}, Rule: {rule_name}")
             self.impl_logger.info(f"COMMAND RULE BLOCKING: Rule '{rule_name}' (severity: {severity}) blocking command: {command}")
             messages.append(message)
+            self._log_convention_result(
+                session_id=session_id, tool_name=input_data.get('tool_name', 'Bash'),
+                convention_type="command", rule_name=rule_name,
+                severity=severity, decision="blocked",
+                reason=message, scope=rule_info.get('scope'),
+            )
         
         if not messages:
             # 全ルールがスキップされた場合は許可
@@ -751,6 +820,12 @@ class ImplementationDesignHook(BaseHook):
                 self.impl_logger.info(f"MCP RULE DENY: Rule '{rule_name}' (severity: deny) denying MCP tool: {tool_name}")
                 messages.append(message)
                 has_deny = True
+                self._log_convention_result(
+                    session_id=session_id, tool_name=tool_name,
+                    convention_type="mcp", rule_name=rule_name,
+                    severity="deny", decision="blocked",
+                    reason=message, scope=rule_info.get('scope'),
+                )
                 continue
 
             # セッション内で同じルールが既に処理済みかチェック
@@ -789,6 +864,12 @@ class ImplementationDesignHook(BaseHook):
 
             self.impl_logger.info(f"MCP RULE BLOCKING: Rule '{rule_name}' (severity: {severity}) blocking MCP tool: {tool_name}")
             messages.append(message)
+            self._log_convention_result(
+                session_id=session_id, tool_name=tool_name,
+                convention_type="mcp", rule_name=rule_name,
+                severity=severity, decision="blocked",
+                reason=message, scope=rule_info.get('scope'),
+            )
 
         if not messages:
             return {
