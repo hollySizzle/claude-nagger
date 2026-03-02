@@ -120,3 +120,29 @@ rules:
     scope: "researcher"
     message: |
       researcherは破壊的コマンドが禁止されています
+
+  # --- role別制約 (#7145) ---
+
+  # 制約#14: pmo非gitコマンド禁止
+  - name: "pmo非gitコマンド禁止"
+    patterns:
+      - "[!g]*"
+      - "g[!i]*"
+      - "gi[!t]*"
+      - "git[! ]*"
+    severity: "deny"
+    scope: "pmo"
+    message: |
+      pmoはgitコマンド以外のBash実行が禁止されています
+
+  # 制約#15: tech-lead非gitコマンド禁止
+  - name: "tech-lead非gitコマンド禁止"
+    patterns:
+      - "[!g]*"
+      - "g[!i]*"
+      - "gi[!t]*"
+      - "git[! ]*"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadはgitコマンド以外のBash実行が禁止されています

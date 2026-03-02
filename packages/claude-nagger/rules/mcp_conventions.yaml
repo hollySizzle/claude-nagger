@@ -71,3 +71,12 @@ rules:
     message: |
       coderはこのRedmineツールの使用が禁止されています。
       許可: issue詳細参照・コメント追加のみ
+
+  # 制約#16: tester Redmine非許可MCP禁止 (#7145)
+  - name: "testerRedmine非許可MCP禁止"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment)_?tool)"
+    severity: "deny"
+    scope: "tester"
+    message: |
+      testerはこのRedmineツールの使用が禁止されています。
+      許可: チケット参照(get_issue_detail)・コメント追加のみ
