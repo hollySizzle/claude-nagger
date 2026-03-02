@@ -394,3 +394,364 @@ class TestAllowedOperations:
             result = hook.process(input_data)
 
         assert result['decision'] == 'approve'
+
+
+class TestDenyByRoleExtended:
+    """#7145追加分: role別deny制約のE2Eテスト"""
+
+    @pytest.fixture
+    def hook(self):
+        """実際のYAMLルール（rules/）を読み込むhook"""
+        h = ImplementationDesignHook()
+        h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
+        h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
+        h.mcp_matcher = McpConventionMatcher(_RULES_DIR)
+        return h
+
+    # --- ケース14: pmo + Edit → deny（pmo全ファイル編集禁止） ---
+    def test_pmo_edit_deny(self, hook, tmp_path):
+        """pmo + Edit → deny（file_conventions: pmo全ファイル編集禁止, scope=pmo）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_OTHER", "name": "Edit"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Edit',
+            {'file_path': '/workspace/packages/claude-nagger/src/main.py'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'pmo')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'pmoはファイル編集が禁止されています' in result['reason']
+
+    # --- ケース15: tech-lead + Edit → deny（tech-lead全ファイル編集禁止） ---
+    def test_tech_lead_edit_deny(self, hook, tmp_path):
+        """tech-lead + Edit → deny（file_conventions: tech-lead全ファイル編集禁止, scope=tech-lead）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_OTHER", "name": "Edit"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Edit',
+            {'file_path': '/workspace/packages/claude-nagger/tests/test_main.py'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'tech-leadはファイル編集が禁止されています' in result['reason']
+
+    # --- ケース16: leader + Serena replace_symbol_body → deny ---
+    def test_leader_serena_edit_mcp_deny(self, hook, tmp_path):
+        """leader + Serena編集系MCP → deny（mcp_conventions: leaderSerena編集系MCP禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "mcp__serena__replace_symbol_body"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__replace_symbol_body',
+            {},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'leaderはSerena編集系ツールの使用が禁止されています' in result['reason']
+
+    # --- ケース17: pmo + Serena insert_after_symbol → deny ---
+    def test_pmo_serena_edit_mcp_deny(self, hook, tmp_path):
+        """pmo + Serena編集系MCP → deny（mcp_conventions: pmoSerena編集系MCP禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__serena__insert_after_symbol"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__insert_after_symbol',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'pmo')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'pmoはSerena編集系ツールの使用が禁止されています' in result['reason']
+
+    # --- ケース18: tech-lead + Serena rename_symbol → deny ---
+    def test_tech_lead_serena_edit_mcp_deny(self, hook, tmp_path):
+        """tech-lead + Serena編集系MCP → deny（mcp_conventions: tech-leadSerena編集系MCP禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__serena__rename_symbol"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__rename_symbol',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'tech-leadはSerena編集系ツールの使用が禁止されています' in result['reason']
+
+    # --- ケース19: tech-lead + Redmine create_epic → deny ---
+    def test_tech_lead_redmine_non_allowed_mcp_deny(self, hook, tmp_path):
+        """tech-lead + 非許可Redmine MCP → deny（mcp_conventions: tech-leadRedmine非許可MCP禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__redmine_epic_grid__create_epic_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__create_epic_tool',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'tech-leadはこのRedmineツールの使用が禁止されています' in result['reason']
+
+    # --- ケース20: coder + Redmine create_task → deny ---
+    def test_coder_redmine_non_allowed_mcp_deny(self, hook, tmp_path):
+        """coder + 非許可Redmine MCP → deny（mcp_conventions: coderRedmine非許可MCP禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__redmine_epic_grid__create_task_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__create_task_tool',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'coder')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'coderはこのRedmineツールの使用が禁止されています' in result['reason']
+
+
+class TestAllowedOperationsExtended:
+    """#7145追加分: deny制約に該当しない操作の検証"""
+
+    @pytest.fixture
+    def hook(self):
+        """実際のYAMLルール（rules/）を読み込むhook"""
+        h = ImplementationDesignHook()
+        h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
+        h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
+        h.mcp_matcher = McpConventionMatcher(_RULES_DIR)
+        return h
+
+    # --- ケース21: leader + Serena参照系(find_symbol) → 非deny ---
+    def test_leader_serena_read_not_denied(self, hook, tmp_path):
+        """leader + Serena参照系MCP → denyされない（編集系のみ制約対象）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "mcp__serena__find_symbol"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__find_symbol',
+            {},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        assert result['decision'] == 'approve'
+
+    # --- ケース22: tech-lead + Redmine許可リスト内(get_issue_detail) → 非deny ---
+    def test_tech_lead_redmine_allowed_mcp_not_denied(self, hook, tmp_path):
+        """tech-lead + 許可リスト内Redmine MCP → denyされない"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__redmine_epic_grid__get_issue_detail_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__get_issue_detail_tool',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース23: tech-lead + Redmine許可リスト内(add_issue_comment) → 非deny ---
+    def test_tech_lead_redmine_comment_allowed(self, hook, tmp_path):
+        """tech-lead + add_issue_comment → 許可リスト内"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__redmine_epic_grid__add_issue_comment_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__add_issue_comment_tool',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース24: coder + Redmine許可リスト内(get_issue_detail) → 非deny ---
+    def test_coder_redmine_detail_allowed(self, hook, tmp_path):
+        """coder + get_issue_detail → 許可リスト内"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__redmine_epic_grid__get_issue_detail_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__get_issue_detail_tool',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'coder')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース25: coder + Redmine許可リスト内(add_issue_comment) → 非deny ---
+    def test_coder_redmine_comment_allowed(self, hook, tmp_path):
+        """coder + add_issue_comment → 許可リスト内"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__redmine_epic_grid__add_issue_comment_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__add_issue_comment_tool',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'coder')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース26: coder + Serena編集系 → 非deny（coderにはSerena制約なし） ---
+    def test_coder_serena_edit_not_denied(self, hook, tmp_path):
+        """coder + Serena編集系MCP → coderにはSerena制約なし"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__serena__replace_symbol_body"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__replace_symbol_body',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'coder')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース27: tech-lead + Serena参照系(get_symbols_overview) → 非deny ---
+    def test_tech_lead_serena_read_not_denied(self, hook, tmp_path):
+        """tech-lead + Serena参照系MCP → 編集系のみ制約対象"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "mcp__serena__get_symbols_overview"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__get_symbols_overview',
+            {},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'tech-lead')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)

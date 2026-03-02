@@ -24,3 +24,50 @@ rules:
     message: |
       leaderはこのRedmineツールの使用が禁止されています。
       許可: 参照系(get/list)・コメント追加・ステータス更新のみ
+
+  # --- role別制約 (#7145) ---
+
+  # 制約#9: leader Serena MCP編集系deny
+  - name: "leaderSerena編集系MCP禁止"
+    tool_pattern: "mcp__serena__(replace_symbol_body|insert_after_symbol|insert_before_symbol|rename_symbol)"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはSerena編集系ツールの使用が禁止されています。
+      コード操作はsubagentに委譲してください
+
+  # 制約#10: pmo Serena MCP編集系deny
+  - name: "pmoSerena編集系MCP禁止"
+    tool_pattern: "mcp__serena__(replace_symbol_body|insert_after_symbol|insert_before_symbol|rename_symbol)"
+    severity: "deny"
+    scope: "pmo"
+    message: |
+      pmoはSerena編集系ツールの使用が禁止されています。
+      コード操作はsubagentに委譲してください
+
+  # 制約#11: tech-lead Serena MCP編集系deny
+  - name: "tech-leadSerena編集系MCP禁止"
+    tool_pattern: "mcp__serena__(replace_symbol_body|insert_after_symbol|insert_before_symbol|rename_symbol)"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadはSerena編集系ツールの使用が禁止されています。
+      コード操作はsubagentに委譲してください
+
+  # 制約#12: tech-lead Redmine参照+コメントのみ（許可リスト方式）
+  - name: "tech-leadRedmine非許可MCP禁止"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment|list_epics|list_versions|list_user_stories|list_statuses|list_project_members|get_project_structure)_?tool)"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadはこのRedmineツールの使用が禁止されています。
+      許可: 参照系(get/list)・コメント追加のみ
+
+  # 制約#13: coder Redmineコメント+detailのみ（許可リスト方式）
+  - name: "coderRedmine非許可MCP禁止"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment)_?tool)"
+    severity: "deny"
+    scope: "coder"
+    message: |
+      coderはこのRedmineツールの使用が禁止されています。
+      許可: issue詳細参照・コメント追加のみ
