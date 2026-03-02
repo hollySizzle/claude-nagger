@@ -89,3 +89,26 @@ rules:
       - 内容の正確性を確認
       - リンク切れがないか確認
       - 特にCHANGELOG.md更新時はpyproject.tomlのバージョンと一貫性を保つこと
+
+  # --- role別制約 (#7058) ---
+
+  # 制約#1: leader Edit/Write/NotebookEdit全ファイルdeny
+  - name: "leader全ファイル編集禁止"
+    patterns:
+      - "**/*"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはファイル編集が禁止されています。
+      コード操作はsubagentに委譲してください（実装→coder、テスト→tester）
+
+  # 制約#5: tester プロダクションコード編集deny
+  - name: "testerプロダクションコード編集禁止"
+    patterns:
+      - "src/**/*"
+      - "**/src/**/*"
+    severity: "deny"
+    scope: "tester"
+    message: |
+      testerはプロダクションコード(src/**)の編集が禁止されています。
+      テストコード(tests/**)のみ編集可能です
