@@ -1,6 +1,7 @@
 """データベースインフラストラクチャ"""
 
 from domain.models.records import HookLogRecord, SessionRecord, SubagentRecord
+from infrastructure.db.convention_log_repository import ConventionLogRepository
 from infrastructure.db.hook_log_repository import HookLogRepository
 from infrastructure.db.nagger_state_db import NaggerStateDB
 from infrastructure.db.session_repository import SessionRepository
@@ -12,6 +13,7 @@ __all__ = [
     "SubagentRecord",
     "SessionRecord",
     "HookLogRecord",
+    "ConventionLogRepository",
     "HookLogRepository",
     "SessionRepository",
     "SubagentHistoryRepository",
