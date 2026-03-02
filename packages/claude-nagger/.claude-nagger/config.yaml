@@ -126,6 +126,13 @@ session_startup:
               [ ] ファイル編集: mcp__serena__replace_content
               [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
               [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
+      researcher:
+        messages:
+          first_time:
+            title: "researcher subagent規約"
+            main_text: |
+              [ ] 調査結果を報告すること
+              [ ] スコープ外のファイルを編集しないこと
       coder:
         messages:
           first_time:

@@ -188,10 +188,13 @@ class ImplementationDesignHook(BaseHook):
                     record = subagent_repo.get(agent_id)
                     db.close()
                     if record and record.role:
+                        from infrastructure.db.subagent_repository import _normalize_role, _get_known_roles_from_config
+                        known_roles = _get_known_roles_from_config()
+                        normalized = _normalize_role(record.role, known_roles)
                         self.impl_logger.info(
-                            f"CALLER ROLES (tool_use_id): agent_id={agent_id}, role={record.role}"
+                            f"CALLER ROLES (tool_use_id): agent_id={agent_id}, role={normalized}"
                         )
-                        return {record.role}
+                        return {normalized}
                 # agent_id未特定 or record/role無し → 空set（安全側フォールバック）
                 return set()
             except Exception as e:
@@ -210,11 +213,13 @@ class ImplementationDesignHook(BaseHook):
             records = subagent_repo.get_active(session_id)
             db.close()
 
-            # 処理済みsubagentのroleを収集
+            # 処理済みsubagentのroleを収集（issue_7130: role正規化）
+            from infrastructure.db.subagent_repository import _normalize_role, _get_known_roles_from_config
+            known_roles = _get_known_roles_from_config()
             roles = set()
             for record in records:
                 if record.role and record.startup_processed:
-                    roles.add(record.role)
+                    roles.add(_normalize_role(record.role, known_roles))
 
             if roles:
                 self.impl_logger.info(f"CALLER ROLES: session={session_id}, roles={roles}")

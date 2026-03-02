@@ -1638,13 +1638,13 @@ class TestTeamCreateStep0Match:
         count = repo.register_task_spawns(session_id, str(parent_transcript))
         assert count == 1
 
-        # task_spawnのroleがname値（TeamCreate方式）であることを確認
+        # task_spawnのroleがconfig既知roleに正規化されること（issue_7130）
         cursor = db.conn.execute(
             "SELECT role, tool_use_id FROM task_spawns WHERE session_id = ?",
             (session_id,)
         )
         row = cursor.fetchone()
-        assert row[0] == "coder-t2"
+        assert row[0] == "coder"
         assert row[1] == tool_use_id
 
         # agent_progressを含むsubagent transcriptを作成
@@ -1665,8 +1665,8 @@ class TestTeamCreateStep0Match:
             transcript_path=str(agent_transcript)
         )
 
-        # マッチ成功: roleがTeamCreate方式のname値
-        assert result == "coder-t2"
+        # マッチ成功: roleがconfig既知roleに正規化されること（issue_7130）
+        assert result == "coder"
 
         # matched_agent_idが正しく設定されている
         cursor = db.conn.execute(
@@ -1675,9 +1675,9 @@ class TestTeamCreateStep0Match:
         )
         assert cursor.fetchone()[0] == agent_id
 
-        # subagentsのrole/role_sourceも更新されている
+        # subagentsのrole/role_sourceも更新されている（issue_7130: 正規化済み）
         record = repo.get(agent_id)
-        assert record.role == "coder-t2"
+        assert record.role == "coder"
         assert record.role_source == "task_match"
 
     def test_team_create_step0_fail_then_retry_match_success(self, db, tmp_path):

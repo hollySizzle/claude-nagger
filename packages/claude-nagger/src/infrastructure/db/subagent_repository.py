@@ -20,6 +20,61 @@ _logger = StructuredLogger(name="SubagentRepository", log_dir=DEFAULT_LOG_DIR)
 # 旧バージョン互換のため 'Task' も維持（issue_6974）
 SUBAGENT_TOOL_NAMES = {"Task", "Agent"}
 
+
+def _normalize_role(name: str, known_roles: set) -> str:
+    """raw role名をconfig既知roleに正規化する（issue_7130）。
+
+    解決順序:
+    1. 完全一致
+    2. suffix除去（最長prefix一致）: coder-7097→coder, tech-lead-123→tech-lead
+    3. prefix除去（最長suffix一致）: claude-coder→coder
+    4. フォールバック → 末尾-数字除去
+    """
+    if not isinstance(name, str) or not name:
+        return name
+
+    if name in known_roles:
+        return name  # 完全一致
+
+    # suffix除去: known_rolesキーで最長プレフィックスマッチ
+    best = None
+    for known in known_roles:
+        if name.startswith(known + '-') and (best is None or len(known) > len(best)):
+            best = known
+    if best:
+        return best
+
+    # prefix除去: known_rolesキーで最長サフィックスマッチ
+    best = None
+    for known in known_roles:
+        if name.endswith('-' + known) and (best is None or len(known) > len(best)):
+            best = known
+    if best:
+        return best
+
+    # フォールバック: 末尾-数字除去
+    return re.sub(r'-\d+$', '', name)
+
+
+def _get_known_roles_from_config() -> set:
+    """config.yamlのsubagent_typesキー一覧を取得"""
+    try:
+        import os
+        import yaml
+        project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+        base_path = Path(project_dir) if project_dir else Path.cwd()
+        config_path = base_path / ".claude-nagger" / "config.yaml"
+        if config_path.exists():
+            with open(config_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f) or {}
+            session_startup = data.get('session_startup', {})
+            overrides = session_startup.get('overrides', {})
+            return set(overrides.get('subagent_types', {}).keys())
+    except Exception:
+        pass
+    return set()
+
+
 class SubagentRepository:
     """subagentの登録・識別・Claim操作。"""
 
@@ -122,6 +177,9 @@ class SubagentRepository:
         if not path.exists():
             return 0
 
+        # config既知roleを取得（issue_7130: role正規化用）
+        known_roles = _get_known_roles_from_config()
+
         # issue_(\d+) パターン（issue_6358: issue_id伝搬用）
         issue_id_pattern = re.compile(r"issue_(\d+)")
         now = datetime.now(timezone.utc).isoformat()
@@ -169,6 +227,9 @@ class SubagentRepository:
                         role = subagent_type  # Task/Agent方式フォールバック
                     if role is None:
                         continue
+
+                    # role正規化（issue_7130）
+                    role = _normalize_role(role, known_roles)
 
                     # issue_(\d+) を抽出（issue_6358: 最初のマッチを使用）
                     issue_id_match = issue_id_pattern.search(prompt)

@@ -42,6 +42,41 @@ def _strip_numeric_suffix(name: str) -> str:
     return re.sub(r'-\d+$', '', name)
 
 
+def _normalize_role(name: str, known_roles: set) -> str:
+    """raw role名をconfig既知roleに正規化する。
+
+    解決順序:
+    1. 完全一致
+    2. suffix除去（最長prefix一致）: coder-7097→coder, tech-lead-123→tech-lead
+    3. prefix除去（最長suffix一致）: claude-coder→coder
+    4. フォールバック → _strip_numeric_suffix()
+    """
+    if not isinstance(name, str) or not name:
+        return name
+
+    if name in known_roles:
+        return name  # 完全一致
+
+    # suffix除去: known_rolesキーで最長プレフィックスマッチ
+    best = None
+    for known in known_roles:
+        if name.startswith(known + '-') and (best is None or len(known) > len(best)):
+            best = known
+    if best:
+        return best
+
+    # prefix除去: known_rolesキーで最長サフィックスマッチ
+    best = None
+    for known in known_roles:
+        if name.endswith('-' + known) and (best is None or len(known) > len(best)):
+            best = known
+    if best:
+        return best
+
+    # フォールバック
+    return _strip_numeric_suffix(name)
+
+
 
 class SessionStartupHook(BaseHook):
     """セッション開始時のAI協働規約確認フック"""
@@ -227,6 +262,10 @@ class SessionStartupHook(BaseHook):
             # parent_tool_use_idマッチ優先、なければ従来フォールバック
             result = role_by_id or role_from_task
             if result:
+                # config既知roleで正規化
+                overrides = self.config.get("overrides", {})
+                known_roles = set(overrides.get("subagent_types", {}).keys())
+                result = _normalize_role(result, known_roles)
                 if role_by_id:
                     self.log_info(f"Parsed role from transcript (by tool_use_id): {result}")
                 else:

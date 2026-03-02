@@ -1497,7 +1497,7 @@ class TestParseRoleFromTranscriptHyphen:
         return str(transcript)
 
     def test_role_with_numeric_suffix(self, tmp_path):
-        """input.nameに数字サフィックス付き（coder-2）がそのまま返ること"""
+        """input.nameに数字サフィックス付き（coder-2）がconfig既知roleに正規化されること（issue_7130）"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
             {"type": "assistant", "message": {"content": [
@@ -1506,7 +1506,7 @@ class TestParseRoleFromTranscriptHyphen:
                            "subagent_type": "general-purpose", "prompt": "Fix bug."}},
             ]}},
         ])
-        assert hook._parse_role_from_transcript(path) == "coder-2"
+        assert hook._parse_role_from_transcript(path) == "coder"
 
     def test_role_without_suffix_still_works(self, tmp_path):
         """input.nameにサフィックスなし（coder）が引き続き動作すること（回帰テスト）"""
@@ -1533,7 +1533,7 @@ class TestParseRoleFromTranscriptHyphen:
         assert hook._parse_role_from_transcript(path) == "tech-lead"
 
     def test_role_tester_with_suffix(self, tmp_path):
-        """input.nameに数字サフィックス付き（tester-3）がそのまま返ること"""
+        """input.nameに数字サフィックス付き（tester-3）がconfig既知roleに正規化されること（issue_7130）"""
         hook = self._make_hook()
         path = self._write_transcript(tmp_path, [
             {"type": "assistant", "message": {"content": [
@@ -1542,4 +1542,4 @@ class TestParseRoleFromTranscriptHyphen:
                            "subagent_type": "general-purpose", "prompt": "Run tests."}},
             ]}},
         ])
-        assert hook._parse_role_from_transcript(path) == "tester-3"
+        assert hook._parse_role_from_transcript(path) == "tester"
