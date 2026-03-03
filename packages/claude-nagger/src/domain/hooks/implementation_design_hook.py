@@ -136,21 +136,9 @@ class ImplementationDesignHook(BaseHook):
         tool_use_id = input_data.get('tool_use_id', '')
         transcript_path = input_data.get('transcript_path', '')
 
-        # デバッグログ: 入力値（issue_7191一時的）
-        self.impl_logger.warning(
-            f"_filter_rules_by_scope: tool_use_id={tool_use_id}, "
-            f"transcript_path={transcript_path}"
-        )
-
         caller_is_leader = False
         if tool_use_id and transcript_path:
             caller_is_leader = is_leader_tool_use(transcript_path, tool_use_id)
-
-        # デバッグログ: leader判定結果（issue_7191一時的）
-        self.impl_logger.warning(
-            f"_filter_rules_by_scope: caller_is_leader={caller_is_leader}, "
-            f"rules_before_filter={len(rule_infos)}"
-        )
 
         # subagentのrole取得（scope=role名判定用）
         caller_roles = set()
@@ -180,11 +168,6 @@ class ImplementationDesignHook(BaseHook):
                         f"SCOPE SKIP: Rule '{rule_info['rule_name']}' scope={scope}, "
                         f"caller roles={caller_roles}"
                     )
-
-        # デバッグログ: フィルタ後のルール数（issue_7191一時的）
-        self.impl_logger.warning(
-            f"_filter_rules_by_scope: rules_after_filter={len(filtered)}"
-        )
 
         return filtered
 
