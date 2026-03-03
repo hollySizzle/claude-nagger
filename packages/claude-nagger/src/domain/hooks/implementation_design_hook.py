@@ -135,9 +135,22 @@ class ImplementationDesignHook(BaseHook):
         # leader判定用のデータ取得
         tool_use_id = input_data.get('tool_use_id', '')
         transcript_path = input_data.get('transcript_path', '')
+
+        # デバッグログ: 入力値（issue_7191一時的）
+        self.impl_logger.warning(
+            f"_filter_rules_by_scope: tool_use_id={tool_use_id}, "
+            f"transcript_path={transcript_path}"
+        )
+
         caller_is_leader = False
         if tool_use_id and transcript_path:
             caller_is_leader = is_leader_tool_use(transcript_path, tool_use_id)
+
+        # デバッグログ: leader判定結果（issue_7191一時的）
+        self.impl_logger.warning(
+            f"_filter_rules_by_scope: caller_is_leader={caller_is_leader}, "
+            f"rules_before_filter={len(rule_infos)}"
+        )
 
         # subagentのrole取得（scope=role名判定用）
         caller_roles = set()
@@ -168,6 +181,11 @@ class ImplementationDesignHook(BaseHook):
                         f"caller roles={caller_roles}"
                     )
 
+        # デバッグログ: フィルタ後のルール数（issue_7191一時的）
+        self.impl_logger.warning(
+            f"_filter_rules_by_scope: rules_after_filter={len(filtered)}"
+        )
+
         return filtered
 
     def _get_caller_roles(self, input_data: dict, tool_use_id: str = '', transcript_path: str = '') -> set:
@@ -183,6 +201,16 @@ class ImplementationDesignHook(BaseHook):
             transcript_path=transcript_path,
             logger=self.impl_logger,
         )
+
+
+    def should_skip_session(self, session_id: str, input_data: dict) -> bool:
+        """denyルール対応: session-levelスキップを無効化
+
+        deny severity ルールは常に評価が必要なため、
+        session markerによるスキップを行わない。
+        per-rule markerで個別に制御する。
+        """
+        return False
 
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """

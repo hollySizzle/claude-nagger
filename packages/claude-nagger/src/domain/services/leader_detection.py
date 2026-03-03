@@ -14,16 +14,22 @@ def is_leader_tool_use(transcript_path: str, tool_use_id: str) -> bool:
     leaderのtool呼び出し、存在しなければsubagentのtool呼び出しと判定。
     フォールバック: 見つからない場合はFalse（subagent扱い=安全側）
     """
+    # デバッグログ: 入力値（issue_7191一時的）
+    _logger.warning(f"is_leader_tool_use: transcript_path={transcript_path}, tool_use_id={tool_use_id}")
+
     path = Path(transcript_path)
     if not path.exists():
         _logger.warning(f"is_leader_tool_use: transcript not found: {transcript_path}")
         return False  # フォールバック: subagent扱い
 
+    # デバッグログ: transcriptファイル情報（issue_7191一時的）
+    lines = []
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line:
                 continue
+            lines.append(line)
             try:
                 entry = json.loads(line)
             except json.JSONDecodeError:
@@ -36,7 +42,14 @@ def is_leader_tool_use(transcript_path: str, tool_use_id: str) -> bool:
                     continue
                 # 全ツール種別対象（Task以外もBash, Read等含む）
                 if content_item.get("id") == tool_use_id:
+                    _logger.warning(f"is_leader_tool_use: FOUND tool_use_id={tool_use_id} in transcript (total lines={len(lines)})")
                     return True
+
+    # デバッグログ: 見つからなかった場合の情報（issue_7191一時的）
+    _logger.warning(f"is_leader_tool_use: NOT FOUND tool_use_id={tool_use_id}, total_lines={len(lines)}")
+    last_3 = lines[-3:] if len(lines) >= 3 else lines
+    for i, l in enumerate(last_3):
+        _logger.warning(f"is_leader_tool_use: last_lines[{i}]={l[:200]}")
 
     return False
 
