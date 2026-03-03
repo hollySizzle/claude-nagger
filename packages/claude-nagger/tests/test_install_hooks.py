@@ -35,33 +35,18 @@ class TestCreateClaudeNaggerDir:
         finally:
             os.chdir(original_cwd)
 
-    def test_creates_file_conventions_yaml(self, temp_dir):
-        """`file_conventions.yaml`が生成される"""
+    def test_does_not_create_convention_yamls(self, temp_dir):
+        """conventions.yamlはrules/フォールバックを使うため生成しない"""
         original_cwd = os.getcwd()
         try:
             os.chdir(temp_dir)
             cmd = InstallHooksCommand()
             cmd._create_claude_nagger_dir()
 
-            file_conventions = temp_dir / ".claude-nagger" / "file_conventions.yaml"
-            assert file_conventions.exists()
-            content = file_conventions.read_text(encoding="utf-8")
-            assert "rules:" in content
-        finally:
-            os.chdir(original_cwd)
-
-    def test_creates_command_conventions_yaml(self, temp_dir):
-        """`command_conventions.yaml`が生成される"""
-        original_cwd = os.getcwd()
-        try:
-            os.chdir(temp_dir)
-            cmd = InstallHooksCommand()
-            cmd._create_claude_nagger_dir()
-
-            command_conventions = temp_dir / ".claude-nagger" / "command_conventions.yaml"
-            assert command_conventions.exists()
-            content = command_conventions.read_text(encoding="utf-8")
-            assert "rules:" in content
+            # conventions.yamlは生成されないこと
+            assert not (temp_dir / ".claude-nagger" / "file_conventions.yaml").exists()
+            assert not (temp_dir / ".claude-nagger" / "command_conventions.yaml").exists()
+            assert not (temp_dir / ".claude-nagger" / "mcp_conventions.yaml").exists()
         finally:
             os.chdir(original_cwd)
 
@@ -566,9 +551,11 @@ class TestExecute:
 
             # .claude-nagger/ の確認
             assert (temp_dir / ".claude-nagger").exists()
-            assert (temp_dir / ".claude-nagger" / "file_conventions.yaml").exists()
-            assert (temp_dir / ".claude-nagger" / "command_conventions.yaml").exists()
             assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
+            # conventions.yamlはrules/フォールバックを使うため生成しない
+            assert not (temp_dir / ".claude-nagger" / "file_conventions.yaml").exists()
+            assert not (temp_dir / ".claude-nagger" / "command_conventions.yaml").exists()
+            assert not (temp_dir / ".claude-nagger" / "mcp_conventions.yaml").exists()
 
             # vault/ の確認
             assert (temp_dir / ".claude-nagger" / "vault").exists()
@@ -827,8 +814,10 @@ class TestEnsureConfigExists:
         assert result is True
         assert (temp_dir / ".claude-nagger").exists()
         assert (temp_dir / ".claude-nagger" / "config.yaml").exists()
-        assert (temp_dir / ".claude-nagger" / "file_conventions.yaml").exists()
-        assert (temp_dir / ".claude-nagger" / "command_conventions.yaml").exists()
+        # conventions.yamlはrules/フォールバックを使うため生成しない
+        assert not (temp_dir / ".claude-nagger" / "file_conventions.yaml").exists()
+        assert not (temp_dir / ".claude-nagger" / "command_conventions.yaml").exists()
+        assert not (temp_dir / ".claude-nagger" / "mcp_conventions.yaml").exists()
         # vault/ディレクトリも生成される
         assert (temp_dir / ".claude-nagger" / "vault").exists()
         assert (temp_dir / ".claude-nagger" / "vault" / "secrets.yaml").exists()
@@ -871,19 +860,18 @@ class TestEnsureConfigExists:
 
     def test_creates_missing_files_only(self, temp_dir):
         """不足分のみ生成: 部分的に存在する場合"""
-        # ディレクトリと一部ファイルのみ作成
+        # ディレクトリのみ作成（config.yamlなし）
         nagger_dir = temp_dir / ".claude-nagger"
         nagger_dir.mkdir()
-        (nagger_dir / "file_conventions.yaml").write_text("# existing", encoding="utf-8")
 
         result = ensure_config_exists(temp_dir)
 
         assert result is True
-        # 既存ファイルは保持
-        assert (nagger_dir / "file_conventions.yaml").read_text(encoding="utf-8") == "# existing"
         # 不足分が生成される
         assert (nagger_dir / "config.yaml").exists()
-        assert (nagger_dir / "command_conventions.yaml").exists()
+        # conventions.yamlは生成されない
+        assert not (nagger_dir / "file_conventions.yaml").exists()
+        assert not (nagger_dir / "command_conventions.yaml").exists()
 
     def test_outputs_warning_to_stderr(self, temp_dir, capsys):
         """自動生成時にstderrへ警告出力"""

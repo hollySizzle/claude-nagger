@@ -454,11 +454,8 @@ suggested_rules/
             nagger_dir.mkdir(exist_ok=True)
             print(f"ディレクトリ確認: {nagger_dir}")
 
-        # 雛形ファイル生成
+        # 雛形ファイル生成（conventions.yamlはrules/をフォールバックで使用するため生成しない）
         files = {
-            "file_conventions.yaml": self.FILE_CONVENTIONS_TEMPLATE,
-            "command_conventions.yaml": self.COMMAND_CONVENTIONS_TEMPLATE,
-            "mcp_conventions.yaml": self.MCP_CONVENTIONS_TEMPLATE,
             "config.yaml": self.CONFIG_TEMPLATE,
         }
 
@@ -658,11 +655,8 @@ def ensure_config_exists(project_root: Path = None) -> bool:
         nagger_dir.mkdir(exist_ok=True)
         generated = True
     
-    # 各ファイルを不足分のみ生成
+    # 各ファイルを不足分のみ生成（conventions.yamlはrules/をフォールバックで使用するため生成しない）
     files = {
-        "file_conventions.yaml": InstallHooksCommand.FILE_CONVENTIONS_TEMPLATE,
-        "command_conventions.yaml": InstallHooksCommand.COMMAND_CONVENTIONS_TEMPLATE,
-        "mcp_conventions.yaml": InstallHooksCommand.MCP_CONVENTIONS_TEMPLATE,
         "config.yaml": InstallHooksCommand.CONFIG_TEMPLATE,
     }
     

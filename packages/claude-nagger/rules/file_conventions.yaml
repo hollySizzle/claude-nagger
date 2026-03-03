@@ -90,6 +90,16 @@ rules:
       - リンク切れがないか確認
       - 特にCHANGELOG.md更新時はpyproject.tomlのバージョンと一貫性を保つこと
 
+  # ticket-tasuki独立リポジトリ
+  - name: "ticket-tasuki独立リポジトリ警告"
+    patterns:
+      - ".claude/plugins/ticket-tasuki/**/*"
+    severity: "warn"
+    message: |
+      .claude/plugins/ticket-tasuki/ は独立gitリポジトリです（origin: github.com/hollySizzle/ticket-tasuki）。
+      親リポジトリ（claude-nagger）でコミットしてもこのディレクトリの変更は反映されません。
+      変更後は cd .claude/plugins/ticket-tasuki/ && git add && git commit でticket-tasukiリポジトリ側でもコミットしてください。
+
   # --- role別制約 (#7058) ---
 
   # 制約#1: leader Edit/Write/NotebookEdit全ファイルdeny
