@@ -454,7 +454,7 @@ class TestDenyByRoleExtended:
 
     # --- ケース16: leader + Serena replace_symbol_body → deny ---
     def test_leader_serena_edit_mcp_deny(self, hook, tmp_path):
-        """leader + Serena編集系MCP → deny（mcp_conventions: leaderSerena編集系MCP禁止）"""
+        """leader + Serena編集系MCP → deny（mcp_conventions: leaderSerena全般MCP禁止, #7187で拡張）"""
         transcript = tmp_path / "transcript.jsonl"
         entry = {
             "type": "assistant",
@@ -474,7 +474,7 @@ class TestDenyByRoleExtended:
             result = hook.process(input_data)
 
         _assert_deny(result)
-        assert 'leaderはSerena編集系ツールの使用が禁止されています' in result['reason']
+        assert 'leaderはSerena MCPツールの使用が禁止されています' in result['reason']
 
     # --- ケース17: pmo + Serena insert_after_symbol → deny ---
     def test_pmo_serena_edit_mcp_deny(self, hook, tmp_path):
@@ -660,7 +660,7 @@ class TestAllowedOperationsExtended:
 
     # --- ケース21: leader + Serena参照系(find_symbol) → 非deny ---
     def test_leader_serena_read_not_denied(self, hook, tmp_path):
-        """leader + Serena参照系MCP → denyされない（編集系のみ制約対象）"""
+        """leader + Serena参照系MCP → deny（#7187: leaderはSerena全般禁止に拡張）"""
         transcript = tmp_path / "transcript.jsonl"
         entry = {
             "type": "assistant",
@@ -679,7 +679,8 @@ class TestAllowedOperationsExtended:
         with _mock_leader(hook):
             result = hook.process(input_data)
 
-        assert result['decision'] == 'approve'
+        _assert_deny(result)
+        assert 'leaderはSerena MCPツールの使用が禁止されています' in result['reason']
 
     # --- ケース22: tech-lead + Redmine許可リスト内(get_issue_detail) → 非deny ---
     def test_tech_lead_redmine_allowed_mcp_not_denied(self, hook, tmp_path):
@@ -889,6 +890,523 @@ class TestAllowedOperationsExtended:
         )
         lp, rp = _mock_role(hook, 'tester')
         with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+
+class TestLeaderBuiltinToolDeny:
+    """leader built-inツール制約テスト（#7187: leader/agent責務分離）"""
+
+    @pytest.fixture
+    def hook(self):
+        """実際のYAMLルール（rules/）を読み込むhook"""
+        h = ImplementationDesignHook()
+        h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
+        h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
+        h.mcp_matcher = McpConventionMatcher(_RULES_DIR)
+        return h
+
+    # --- ケース34: leader + WebFetch → deny ---
+    def test_leader_webfetch_deny(self, hook, tmp_path):
+        """leader + WebFetch → deny（leaderWebFetchWebSearch禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "WebFetch"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'WebFetch',
+            {'url': 'https://example.com', 'prompt': 'test'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'leaderはWebFetch/WebSearchの使用が禁止されています' in result['reason']
+
+    # --- ケース35: leader + WebSearch → deny ---
+    def test_leader_websearch_deny(self, hook, tmp_path):
+        """leader + WebSearch → deny（leaderWebFetchWebSearch禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "WebSearch"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'WebSearch',
+            {'query': 'test query'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'leaderはWebFetch/WebSearchの使用が禁止されています' in result['reason']
+
+    # --- ケース36: leader + Grep → deny ---
+    def test_leader_grep_deny(self, hook, tmp_path):
+        """leader + Grep → deny（leaderGrep禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "Grep"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Grep',
+            {'pattern': 'test'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'leaderはGrepの使用が禁止されています' in result['reason']
+
+    # --- ケース37: leader + Glob → deny ---
+    def test_leader_glob_not_denied(self, hook, tmp_path):
+        """leader + Glob → 非deny（PMO判断: Globはleader許可ツール）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "Glob"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Glob',
+            {'pattern': '**/*.py'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース38: leader + Serena参照系MCP → deny ---
+    def test_leader_serena_get_symbols_overview_deny(self, hook, tmp_path):
+        """leader + Serena get_symbols_overview → deny（leaderSerena全般MCP禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "mcp__serena__get_symbols_overview"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__get_symbols_overview',
+            {'relative_path': 'src/main.py'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'leaderはSerena MCPツールの使用が禁止されています' in result['reason']
+
+    # --- ケース39: leader + Serena search_for_pattern → deny ---
+    def test_leader_serena_search_deny(self, hook, tmp_path):
+        """leader + Serena search_for_pattern → deny（leaderSerena全般MCP禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "mcp__serena__search_for_pattern"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__search_for_pattern',
+            {'substring_pattern': 'test'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'leaderはSerena MCPツールの使用が禁止されています' in result['reason']
+
+    # --- ケース40: leader + Serena read_memory → 非deny（許可リスト内） ---
+    def test_leader_serena_read_memory_not_denied(self, hook, tmp_path):
+        """leader + Serena read_memory → 非deny（leaderSerena許可リスト内）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "mcp__serena__read_memory"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__read_memory',
+            {'memory_name': 'test'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース41: leader + Serena list_memories → 非deny（許可リスト内） ---
+    def test_leader_serena_list_memories_not_denied(self, hook, tmp_path):
+        """leader + Serena list_memories → 非deny（leaderSerena許可リスト内）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "mcp__serena__list_memories"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__list_memories',
+            {},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+
+class TestStandaloneAgentDeny:
+    """スタンドアロンagent禁止テスト（#7187）"""
+
+    @pytest.fixture
+    def hook(self):
+        """実際のYAMLルール（rules/）を読み込むhook"""
+        h = ImplementationDesignHook()
+        h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
+        h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
+        h.mcp_matcher = McpConventionMatcher(_RULES_DIR)
+        return h
+
+    # --- ケース42: leader + Agent(team_name無し) → deny ---
+    def test_leader_standalone_agent_deny(self, hook, tmp_path):
+        """leader + Agent(team_name未指定) → deny（スタンドアロンAgent禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "Agent"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Agent',
+            {'prompt': 'do something', 'subagent_type': 'coder'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'スタンドアロンagent' in result['reason']
+
+    # --- ケース43: leader + Task(team_name無し) → deny ---
+    def test_leader_standalone_task_deny(self, hook, tmp_path):
+        """leader + Task(team_name未指定) → deny（スタンドアロンAgent禁止）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "Task"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Task',
+            {'prompt': 'do something'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_deny(result)
+        assert 'スタンドアロンagent' in result['reason']
+
+    # --- ケース44: leader + Agent(team_name有り) → 非deny ---
+    def test_leader_team_agent_not_denied(self, hook, tmp_path):
+        """leader + Agent(team_name指定あり) → 非deny"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "Agent"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Agent',
+            {'prompt': 'do something', 'team_name': 'my-team', 'name': 'coder'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース45: leader + Task(team_name有り) → 非deny ---
+    def test_leader_team_task_not_denied(self, hook, tmp_path):
+        """leader + Task(team_name指定あり) → 非deny"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "Task"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Task',
+            {'prompt': 'do something', 'team_name': 'my-team', 'name': 'coder'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース46: subagent(coder) + Agent(team_name無し) → スタンドアロン禁止はleaderのみ ---
+    def test_coder_standalone_agent_not_denied(self, hook, tmp_path):
+        """coder + Agent(team_name未指定) → 非deny（scope=leaderのルール、coderには適用されない）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "Agent"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Agent',
+            {'prompt': 'do something', 'subagent_type': 'coder'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'coder')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+
+class TestBuiltinToolAllowForSubagents:
+    """built-inツールがsubagentに対してdenyされないことの確認（回帰テスト）"""
+
+    @pytest.fixture
+    def hook(self):
+        """実際のYAMLルール（rules/）を読み込むhook"""
+        h = ImplementationDesignHook()
+        h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
+        h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
+        h.mcp_matcher = McpConventionMatcher(_RULES_DIR)
+        return h
+
+    # --- ケース47: coder + WebSearch → 非deny ---
+    def test_coder_websearch_not_denied(self, hook, tmp_path):
+        """coder + WebSearch → 非deny（leaderのみ制約対象）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "WebSearch"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'WebSearch',
+            {'query': 'test'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'coder')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース48: researcher + Grep → 非deny ---
+    def test_researcher_grep_not_denied(self, hook, tmp_path):
+        """researcher + Grep → 非deny（leaderのみ制約対象）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_OTHER",
+                 "name": "Grep"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Grep',
+            {'pattern': 'test'},
+            str(transcript),
+        )
+        lp, rp = _mock_role(hook, 'researcher')
+        with lp, rp:
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース49: leader + SendMessage → 非deny（制約対象外） ---
+    def test_leader_sendmessage_not_denied(self, hook, tmp_path):
+        """leader + SendMessage → 非deny（leaderの許可ツール）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "SendMessage"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'SendMessage',
+            {'type': 'message', 'recipient': 'coder', 'content': 'test'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース50: leader + Read → 非deny（leader許可ツール） ---
+    def test_leader_task_tools_not_denied(self, hook, tmp_path):
+        """leader + TaskCreate → 非deny（leader許可ツール）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "TaskCreate"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'TaskCreate',
+            {'subject': 'test task', 'description': 'test'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース51: leader + Redmine参照MCP → 非deny（既存の許可リスト） ---
+    def test_leader_redmine_allowed_mcp_still_allowed(self, hook, tmp_path):
+        """leader + Redmine get_issue_detail → 非deny（既存回帰テスト）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "mcp__redmine_epic_grid__get_issue_detail_tool"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__redmine_epic_grid__get_issue_detail_tool',
+            {},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        _assert_not_deny(result)
+
+    # --- ケース52: leader + Read → 非deny（leader許可ツール） ---
+    # --- ケース52: leader + Read → deny（file_conventionsの「leader全ファイル編集禁止」に該当） ---
+    def test_leader_read_deny(self, hook, tmp_path):
+        """leader + Read → deny（Readはfile_path付きのため、leader全ファイル編集禁止ルールに該当）
+        
+        NOTE: 仕様ではleader+Read→allowだが、現状file_conventionsの「leader全ファイル編集禁止」
+        がRead含む全ファイル操作ツールに適用される。Readは読取専用だが編集禁止ルールに巻き込まれている。
+        →要仕様確認: Read専用ツールをfile_conventions対象外とすべきか
+        """
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "Read"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'Read',
+            {'file_path': '/tmp/test.py'},
+            str(transcript),
+        )
+        with _mock_leader(hook):
+            result = hook.process(input_data)
+
+        # 現状: file_conventions「leader全ファイル編集禁止」でdenyされる
+        _assert_deny(result)
+        assert 'leaderはファイル編集が禁止されています' in result['reason']
+
+    # --- ケース53: leader + Serena initial_instructions → 非deny（許可リスト内） ---
+    def test_leader_serena_initial_instructions_not_denied(self, hook, tmp_path):
+        """leader + Serena initial_instructions → 非deny（leaderSerena許可リスト内）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_E2E_001",
+                 "name": "mcp__serena__initial_instructions"}
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        input_data = _make_input(
+            'mcp__serena__initial_instructions',
+            {},
+            str(transcript),
+        )
+        with _mock_leader(hook):
             result = hook.process(input_data)
 
         _assert_not_deny(result)
