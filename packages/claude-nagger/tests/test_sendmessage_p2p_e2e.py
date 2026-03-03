@@ -8,8 +8,8 @@ P2Pマトリクス:
 |-------------|---------------------------|-----------|
 | leader      | 全員                       | 許可      |
 | pmo         | team-lead                  | 禁止      |
-| tech-lead   | team-lead, tester          | 禁止      |
-| coder       | team-lead, tester          | 禁止      |
+| tech-lead   | team-lead, tester, coder   | 禁止      |
+| coder       | team-lead, tester, tech-lead| 禁止      |
 | tester      | team-lead, coder, tech-lead| 禁止      |
 | researcher  | team-lead                  | 禁止      |
 """
@@ -27,8 +27,8 @@ P2P_CONFIG = {
     "broadcast_allowed_roles": ["leader"],
     "matrix": {
         "pmo": ["team-lead"],
-        "tech-lead": ["team-lead", "tester"],
-        "coder": ["team-lead", "tester"],
+        "tech-lead": ["team-lead", "tester", "coder"],
+        "coder": ["team-lead", "tester", "tech-lead"],
         "tester": ["team-lead", "coder", "tech-lead"],
         "researcher": ["team-lead"],
     },
@@ -122,14 +122,7 @@ class TestP2PDeny:
             result = hook.process(input_data)
         _assert_p2p_block(result)
 
-    # --- tech-lead: team-lead, tester以外deny ---
-    def test_tech_lead_to_coder_deny(self, hook):
-        """tech-lead → coder: deny"""
-        input_data = _make_input("message", "coder")
-        with _mock_roles({"tech-lead"}):
-            result = hook.process(input_data)
-        _assert_p2p_block(result)
-
+    # --- tech-lead: team-lead, tester, coder以外deny ---
     def test_tech_lead_to_pmo_deny(self, hook):
         """tech-lead → pmo: deny"""
         input_data = _make_input("message", "pmo")
@@ -144,17 +137,10 @@ class TestP2PDeny:
             result = hook.process(input_data)
         _assert_p2p_block(result)
 
-    # --- coder: team-lead, tester以外deny ---
+    # --- coder: team-lead, tester, tech-lead以外deny ---
     def test_coder_to_pmo_deny(self, hook):
         """coder → pmo: deny"""
         input_data = _make_input("message", "pmo")
-        with _mock_roles({"coder"}):
-            result = hook.process(input_data)
-        _assert_p2p_block(result)
-
-    def test_coder_to_tech_lead_deny(self, hook):
-        """coder → tech-lead: deny"""
-        input_data = _make_input("message", "tech-lead")
         with _mock_roles({"coder"}):
             result = hook.process(input_data)
         _assert_p2p_block(result)
@@ -269,6 +255,20 @@ class TestP2PAllow:
     def test_coder_to_tester_allow(self, hook):
         """coder → tester: allow"""
         input_data = _make_input("message", "tester")
+        with _mock_roles({"coder"}):
+            result = hook.process(input_data)
+        _assert_approve(result)
+
+    def test_tech_lead_to_coder_allow(self, hook):
+        """tech-lead → coder: allow（#7169追加）"""
+        input_data = _make_input("message", "coder")
+        with _mock_roles({"tech-lead"}):
+            result = hook.process(input_data)
+        _assert_approve(result)
+
+    def test_coder_to_tech_lead_allow(self, hook):
+        """coder → tech-lead: allow（#7169追加）"""
+        input_data = _make_input("message", "tech-lead")
         with _mock_roles({"coder"}):
             result = hook.process(input_data)
         _assert_approve(result)

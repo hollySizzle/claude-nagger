@@ -170,8 +170,8 @@ sendmessage_guard:
     broadcast_allowed_roles: ["leader"]
     matrix:
       pmo: ["team-lead"]
-      tech-lead: ["team-lead", "tester"]
-      coder: ["team-lead", "tester"]
+      tech-lead: ["team-lead", "tester", "coder"]
+      coder: ["team-lead", "tester", "tech-lead"]
       tester: ["team-lead", "coder", "tech-lead"]
       researcher: ["team-lead"]
 

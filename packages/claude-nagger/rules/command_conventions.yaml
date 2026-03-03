@@ -146,3 +146,16 @@ rules:
     scope: "tech-lead"
     message: |
       tech-leadはgitコマンド以外のBash実行が禁止されています
+
+  # --- role別制約 (#7169) ---
+
+  # 制約#17: coder git commit/push禁止
+  - name: "coderGitCommit禁止"
+    patterns:
+      - "git commit*"
+      - "git push*"
+    severity: "deny"
+    scope: "coder"
+    message: |
+      coderはgit commit/pushが禁止されています。
+      レビュー承認後、tech-leadがコミットします
