@@ -5,7 +5,7 @@ import yaml
 import fnmatch
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .base_convention_matcher import BaseConventionMatcher
 from shared.structured_logging import get_logger
@@ -19,7 +19,8 @@ class ConventionRule:
     severity: str  # 'block', 'warn', 'deny'
     message: str
     token_threshold: Optional[int] = None
-    scope: Optional[str] = None  # 'leader' or None（全agent対象）
+    scope: Optional[str] = None
+    exclude_patterns: List[str] = field(default_factory=list)  # 'leader' or None（全agent対象）
 
 
 class CommandConventionMatcher(BaseConventionMatcher):
@@ -70,7 +71,8 @@ class CommandConventionMatcher(BaseConventionMatcher):
                     severity=rule_data.get('severity', 'warn'),
                     message=rule_data['message'],
                     token_threshold=rule_data.get('token_threshold'),
-                    scope=rule_data.get('scope')
+                    scope=rule_data.get('scope'),
+                    exclude_patterns=rule_data.get('exclude_patterns', [])
                 )
                 rules.append(rule)
                 self.logger.debug(f"Loaded command rule: {rule.name} with patterns: {rule.patterns}")
@@ -93,7 +95,7 @@ class CommandConventionMatcher(BaseConventionMatcher):
             print(error_msg)
             return []
 
-    def matches_pattern(self, command: str, patterns: List[str]) -> bool:
+    def matches_pattern(self, command: str, patterns: List[str], exclude_patterns: List[str] = None) -> bool:
         """
         コマンドがパターンにマッチするか確認
         fnmatchを使用してワイルドカードパターンをサポート
@@ -101,6 +103,7 @@ class CommandConventionMatcher(BaseConventionMatcher):
         Args:
             command: チェック対象のコマンド
             patterns: パターンリスト
+            exclude_patterns: 除外パターンリスト（マッチすればFalse返却）
             
         Returns:
             マッチする場合True
@@ -116,11 +119,23 @@ class CommandConventionMatcher(BaseConventionMatcher):
                 # fnmatchでワイルドカードパターンマッチング
                 if fnmatch.fnmatch(normalized_command, pattern):
                     self.logger.info(f"  ✅ Pattern matched: {pattern}")
+                    # 除外パターンチェック
+                    if exclude_patterns:
+                        for exc_pattern in exclude_patterns:
+                            if fnmatch.fnmatch(normalized_command, exc_pattern):
+                                self.logger.info(f"  🚫 Excluded by pattern: {exc_pattern}")
+                                return False
                     return True
                 
                 # 部分マッチも考慮（コマンドの先頭部分）
                 if fnmatch.fnmatch(normalized_command.split()[0], pattern):
                     self.logger.info(f"  ✅ Command prefix matched: {pattern}")
+                    # 除外パターンチェック
+                    if exclude_patterns:
+                        for exc_pattern in exclude_patterns:
+                            if fnmatch.fnmatch(normalized_command, exc_pattern):
+                                self.logger.info(f"  🚫 Excluded by pattern: {exc_pattern}")
+                                return False
                     return True
                         
                 self.logger.info(f"  ❌ Pattern not matched: {pattern}")
@@ -149,7 +164,7 @@ class CommandConventionMatcher(BaseConventionMatcher):
         matched_rules: List[ConventionRule] = []
         for rule in self.rules:
             self.logger.info(f"🔎 Testing rule: {rule.name}")
-            if self.matches_pattern(command, rule.patterns):
+            if self.matches_pattern(command, rule.patterns, rule.exclude_patterns):
                 self.logger.info(f"✅ COMMAND MATCHED RULE: {rule.name} (severity: {rule.severity})")
                 matched_rules.append(rule)
         

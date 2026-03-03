@@ -51,6 +51,10 @@ class ImplementationDesignHook(BaseHook):
         # convention_log記録用（遅延初期化）
         self._convention_log_repo = None
 
+        # パッシブ異常検出: is_leader_tool_use連続False回数 (#7235)
+        self._consecutive_non_leader_count = 0
+        self._passive_detect_threshold = 10
+
     def _get_convention_log_repo(self):
         """ConventionLogRepositoryの遅延初期化"""
         if self._convention_log_repo is None:
@@ -148,6 +152,17 @@ class ImplementationDesignHook(BaseHook):
             f"tool_use_id={tool_use_id}, transcript_path={transcript_path!r}, "
             f"caller_is_leader={caller_is_leader}, rules_count={len(rule_infos)}"
         )
+
+        # パッシブ異常検出: is_leader_tool_use連続False (#7235)
+        if caller_is_leader:
+            self._consecutive_non_leader_count = 0
+        else:
+            self._consecutive_non_leader_count += 1
+            if self._consecutive_non_leader_count >= self._passive_detect_threshold:
+                _logger.warning(
+                    f"[passive_detect] is_leader_tool_use returned False "
+                    f"{self._consecutive_non_leader_count} consecutive times"
+                )
 
         # subagentのrole取得（scope=role名判定用）
         caller_roles = set()

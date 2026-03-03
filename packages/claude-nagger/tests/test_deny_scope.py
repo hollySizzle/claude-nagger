@@ -885,3 +885,104 @@ class TestDenyPriority:
         block_pos = reason.index('BLOCK_MSG')
         warn_pos = reason.index('WARN_MSG')
         assert deny_pos < block_pos < warn_pos
+
+
+class TestPassiveDetection:
+    """パッシブ異常検出テスト (#7235)"""
+
+    @pytest.fixture
+    def hook(self):
+        return ImplementationDesignHook()
+
+    def test_consecutive_false_triggers_warning(self, hook, tmp_path, caplog):
+        """連続False回数が閾値到達時にwarning出力"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_OTHER", "name": "Edit"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        rules = [
+            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
+        ]
+        input_data = {
+            'tool_use_id': 'toolu_SUBAGENT',
+            'transcript_path': str(transcript),
+        }
+
+        # 閾値を小さくしてテスト
+        hook._passive_detect_threshold = 3
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            # 3回連続Falseで閾値到達
+            for i in range(3):
+                hook._filter_rules_by_scope(rules, input_data)
+
+        assert any("[passive_detect]" in record.message for record in caplog.records)
+
+    def test_true_resets_counter(self, hook, tmp_path, caplog):
+        """caller_is_leader=Trueでカウンタリセット"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        rules = [
+            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
+        ]
+
+        # subagentとして2回呼出
+        sub_input = {
+            'tool_use_id': 'toolu_SUBAGENT',
+            'transcript_path': str(transcript),
+        }
+        hook._passive_detect_threshold = 5
+        hook._filter_rules_by_scope(rules, sub_input)
+        hook._filter_rules_by_scope(rules, sub_input)
+        assert hook._consecutive_non_leader_count == 2
+
+        # leaderとして1回呼出 → リセット
+        leader_input = {
+            'tool_use_id': 'toolu_L1',
+            'transcript_path': str(transcript),
+        }
+        hook._filter_rules_by_scope(rules, leader_input)
+        assert hook._consecutive_non_leader_count == 0
+
+    def test_no_warning_when_leader_mixed(self, hook, tmp_path, caplog):
+        """leader=True混在時にwarning未出力"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        rules = [
+            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
+        ]
+        sub_input = {
+            'tool_use_id': 'toolu_SUBAGENT',
+            'transcript_path': str(transcript),
+        }
+        leader_input = {
+            'tool_use_id': 'toolu_L1',
+            'transcript_path': str(transcript),
+        }
+
+        hook._passive_detect_threshold = 3
+
+        import logging
+        with caplog.at_level(logging.WARNING):
+            # sub, sub, leader, sub, sub のパターン → 最大連続2で閾値3未満
+            hook._filter_rules_by_scope(rules, sub_input)
+            hook._filter_rules_by_scope(rules, sub_input)
+            hook._filter_rules_by_scope(rules, leader_input)
+            hook._filter_rules_by_scope(rules, sub_input)
+            hook._filter_rules_by_scope(rules, sub_input)
+
+        assert not any("[passive_detect]" in record.message for record in caplog.records)

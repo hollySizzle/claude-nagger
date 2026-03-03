@@ -90,6 +90,9 @@ rules:
       - "g[!i]*"
       - "gi[!t]*"
       - "git[! ]*"
+    exclude_patterns:
+      - "rm -rf */.claude/teams/*"
+      - "rm -rf */.claude/tasks/*"
     severity: "deny"
     scope: "leader"
     message: |

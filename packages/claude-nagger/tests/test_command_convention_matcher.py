@@ -509,3 +509,101 @@ class TestInvalidPatternHandling:
         # 有効なパターンが含まれていればマッチする
         result = matcher.matches_pattern('git push', [None, 'git push'])
         assert result is True
+
+
+class TestExcludePatterns:
+    """exclude_patternsのテスト (#7225)"""
+
+    @pytest.fixture
+    def matcher(self):
+        """テスト用マッチャーを作成"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {'rules': []}
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        m = CommandConventionMatcher(rules_file=temp_path)
+        temp_path.unlink()
+        return m
+
+    def test_exclude_pattern_prevents_match(self, matcher):
+        """除外パターンにマッチするコマンドはFalse"""
+        result = matcher.matches_pattern(
+            'rm -rf ~/.claude/teams/test',
+            ['[!g]*'],
+            exclude_patterns=['rm -rf */.claude/teams/*']
+        )
+        assert result is False
+
+    def test_exclude_pattern_no_effect_on_non_matching(self, matcher):
+        """除外パターンに非該当のコマンドはマッチ維持"""
+        result = matcher.matches_pattern(
+            'rm -rf /tmp/data',
+            ['[!g]*'],
+            exclude_patterns=['rm -rf */.claude/teams/*']
+        )
+        assert result is True
+
+    def test_exclude_pattern_empty_list(self, matcher):
+        """exclude_patterns空リストで通常動作"""
+        result = matcher.matches_pattern(
+            'rm -rf /tmp/data',
+            ['[!g]*'],
+            exclude_patterns=[]
+        )
+        assert result is True
+
+    def test_exclude_pattern_none(self, matcher):
+        """exclude_patterns=Noneで通常動作"""
+        result = matcher.matches_pattern(
+            'rm -rf /tmp/data',
+            ['[!g]*'],
+            exclude_patterns=None
+        )
+        assert result is True
+
+    def test_exclude_pattern_tasks_cleanup(self, matcher):
+        """tasksクリーンアップコマンドも除外される"""
+        result = matcher.matches_pattern(
+            'rm -rf ~/.claude/tasks/old-task',
+            ['[!g]*'],
+            exclude_patterns=['rm -rf */.claude/tasks/*']
+        )
+        assert result is False
+
+    def test_check_command_with_exclude_patterns(self):
+        """check_commandがexclude_patternsを考慮する"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {
+                'rules': [{
+                    'name': 'deny-non-git',
+                    'patterns': ['[!g]*'],
+                    'severity': 'deny',
+                    'message': 'non-git prohibited',
+                    'exclude_patterns': ['rm -rf */.claude/teams/*']
+                }]
+            }
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        matcher = CommandConventionMatcher(rules_file=temp_path)
+        temp_path.unlink()
+
+        # 除外パターンにマッチ → ルール非該当
+        result = matcher.check_command('rm -rf ~/.claude/teams/test')
+        assert len(result) == 0
+
+        # 除外パターンに非該当 → ルール該当
+        result = matcher.check_command('rm -rf /tmp/data')
+        assert len(result) == 1
+        assert result[0].name == 'deny-non-git'
+
+    def test_convention_rule_exclude_patterns_default(self):
+        """ConventionRuleのexclude_patternsデフォルト値は空リスト"""
+        rule = ConventionRule(
+            name='Test',
+            patterns=['test*'],
+            severity='warn',
+            message='Test message'
+        )
+        assert rule.exclude_patterns == []
