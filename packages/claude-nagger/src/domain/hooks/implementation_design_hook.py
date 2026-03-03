@@ -1,5 +1,6 @@
 """実装設計書編集フック"""
 
+import logging
 import sys
 import os
 from pathlib import Path
@@ -13,6 +14,8 @@ from domain.services.mcp_convention_matcher import McpConventionMatcher
 from domain.services.leader_detection import is_leader_tool_use
 from infrastructure.config.config_manager import ConfigManager
 from shared.structured_logging import get_logger
+
+_logger = logging.getLogger(__name__)
 
 # severity優先度: 値が小さいほど高優先（deny > block > warn > info）
 SEVERITY_PRIORITY = {'deny': 0, 'block': 1, 'warn': 2, 'info': 3}
@@ -139,6 +142,12 @@ class ImplementationDesignHook(BaseHook):
         caller_is_leader = False
         if tool_use_id and transcript_path:
             caller_is_leader = is_leader_tool_use(transcript_path, tool_use_id)
+
+        _logger.warning(
+            f"[issue_7221_T2] _filter_rules_by_scope: "
+            f"tool_use_id={tool_use_id}, transcript_path={transcript_path!r}, "
+            f"caller_is_leader={caller_is_leader}, rules_count={len(rule_infos)}"
+        )
 
         # subagentのrole取得（scope=role名判定用）
         caller_roles = set()

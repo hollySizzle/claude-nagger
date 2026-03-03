@@ -19,6 +19,8 @@ def is_leader_tool_use(transcript_path: str, tool_use_id: str) -> bool:
         _logger.warning(f"is_leader_tool_use: transcript not found: {transcript_path}")
         return False  # フォールバック: subagent扱い
 
+    _logger.warning(f"[issue_7221_T1] is_leader_tool_use called: transcript_path={transcript_path}, tool_use_id={tool_use_id}")
+
     with open(path, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -36,8 +38,10 @@ def is_leader_tool_use(transcript_path: str, tool_use_id: str) -> bool:
                     continue
                 # 全ツール種別対象（Task以外もBash, Read等含む）
                 if content_item.get("id") == tool_use_id:
+                    _logger.warning(f"[issue_7221_T1] FOUND tool_use_id={tool_use_id} in transcript")
                     return True
 
+    _logger.warning(f"[issue_7221_T1] NOT FOUND tool_use_id={tool_use_id} in transcript")
     return False
 
 
