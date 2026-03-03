@@ -218,17 +218,20 @@ class ImplementationDesignHook(BaseHook):
             else:
                 self.impl_logger.warning(f"COMMAND TOOL REJECTED: Empty command")
         
-        # MCPツール呼び出しの場合（mcp__プレフィックス）
-        if tool_name.startswith('mcp__'):
-            self.impl_logger.info(f"MCP TOOL DETECTED: tool_name='{tool_name}'")
-            rule_infos = self.mcp_matcher.get_confirmation_message(tool_name, tool_input)
-            if rule_infos:
-                # scopeフィルタリング
-                rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
-                if not rule_infos:
-                    self.impl_logger.info("MCP: All rules filtered by scope, skipping")
+        # ツール規約チェック（MCP・built-in両対応）
+        # mcp__プレフィックスだけでなく、全ツール名をMCP conventions matcherで評価
+        rule_infos = self.mcp_matcher.get_confirmation_message(tool_name, tool_input)
+        if rule_infos:
+            self.impl_logger.info(f"TOOL CONVENTION MATCHED: tool_name='{tool_name}'")
+            # scopeフィルタリング
+            rule_infos = self._filter_rules_by_scope(rule_infos, input_data)
+            if not rule_infos:
+                self.impl_logger.info("TOOL CONVENTION: All rules filtered by scope, skipping")
+                # mcp__ツールはここで確定（file convention不要）
+                if tool_name.startswith('mcp__'):
                     return False
-
+                # built-inツールはfile conventionにフォールスルー
+            else:
                 session_id = input_data.get('session_id', '')
                 if session_id:
                     has_unprocessed_rule = False
@@ -281,9 +284,15 @@ class ImplementationDesignHook(BaseHook):
                         return False
 
                 return True
-            else:
-                self.impl_logger.info(f"MCP NO RULES MATCHED: {tool_name}")
-                return False
+        elif tool_name.startswith('mcp__'):
+            # mcp__ツールでルール不一致 → file conventionに進む必要なし
+            self.impl_logger.info(f"MCP NO RULES MATCHED: {tool_name}")
+            return False
+
+        # Readツールは読み取り専用 → file_conventions対象外
+        if tool_name == 'Read':
+            self.impl_logger.info("READ TOOL SKIP: Read is read-only, skipping file_conventions")
+            return False
 
         # ファイル編集/作成ツールの場合 (mcp__serena__create_text_file も含む)
         file_tools = ['Edit', 'Write', 'MultiEdit', 'mcp__serena__create_text_file', 'mcp__serena__replace_regex', 'mcp__filesystem__write_file', 'mcp__filesystem__edit_file']
@@ -500,8 +509,10 @@ class ImplementationDesignHook(BaseHook):
         if tool_name == 'Bash' or tool_name == 'mcp__serena__execute_shell_command':
             return self._process_command(tool_input, session_id, input_data)
 
-        # MCPツール呼び出しの場合
-        if tool_name.startswith('mcp__'):
+        # ツール規約チェック（MCP・built-in両対応）
+        # mcp__プレフィックスだけでなく、built-inツールもMCP conventions matcherで評価
+        tool_convention_rules = self.mcp_matcher.check_tool(tool_name, tool_input)
+        if tool_convention_rules or tool_name.startswith('mcp__'):
             return self._process_mcp_tool(tool_name, session_id, input_data)
 
         # ファイル編集の場合（既存の処理）

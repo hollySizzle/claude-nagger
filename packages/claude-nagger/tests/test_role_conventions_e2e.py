@@ -1358,14 +1358,9 @@ class TestBuiltinToolAllowForSubagents:
         _assert_not_deny(result)
 
     # --- ケース52: leader + Read → 非deny（leader許可ツール） ---
-    # --- ケース52: leader + Read → deny（file_conventionsの「leader全ファイル編集禁止」に該当） ---
-    def test_leader_read_deny(self, hook, tmp_path):
-        """leader + Read → deny（Readはfile_path付きのため、leader全ファイル編集禁止ルールに該当）
-        
-        NOTE: 仕様ではleader+Read→allowだが、現状file_conventionsの「leader全ファイル編集禁止」
-        がRead含む全ファイル操作ツールに適用される。Readは読取専用だが編集禁止ルールに巻き込まれている。
-        →要仕様確認: Read専用ツールをfile_conventions対象外とすべきか
-        """
+    # --- ケース52: leader + Read → allow（Readは読み取り専用、file_conventions対象外） ---
+    def test_leader_read_not_denied(self, hook, tmp_path):
+        """leader + Read → allow（Readは読み取り専用のため、file_conventions対象外）"""
         transcript = tmp_path / "transcript.jsonl"
         entry = {
             "type": "assistant",
@@ -1382,11 +1377,10 @@ class TestBuiltinToolAllowForSubagents:
             str(transcript),
         )
         with _mock_leader(hook):
-            result = hook.process(input_data)
+            result = hook.should_process(input_data)
 
-        # 現状: file_conventions「leader全ファイル編集禁止」でdenyされる
-        _assert_deny(result)
-        assert 'leaderはファイル編集が禁止されています' in result['reason']
+        # Readは読み取り専用 → should_process=Falseでfile_conventionsスキップ
+        assert result is False
 
     # --- ケース53: leader + Serena initial_instructions → 非deny（許可リスト内） ---
     def test_leader_serena_initial_instructions_not_denied(self, hook, tmp_path):
