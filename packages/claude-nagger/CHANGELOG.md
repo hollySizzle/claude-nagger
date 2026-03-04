@@ -6,6 +6,47 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-03-04
+
+role別権限制御・監査基盤・通信制御を導入し、leader/subagent間の責務分離を技術的に強制可能にした。
+
+### role別権限制御の導入
+leader・subagent間の責務境界が曖昧で、leaderが直接コードを編集する等の規約違反を技術的に防止できなかった。conventions体系にdeny/scope機構を新設し、role単位でツール使用を制御可能にした。
+→ プラグイン利用者はrole別の権限を.claude-nagger/のconventions YAMLで定義可能になった。
+- conventions deny/scope体系: role別deny/block/warn優先度制御・scopeフィルタリング (issue_7027, issue_7030)
+- leader検出サービス: is_leader_tool_use()・find_caller_agent_id() (issue_6953)
+- caller_role_service: tool_use_idベースのcaller role解決 (issue_7097)
+- role正規化: _normalize_role() — plugin:role→role形式 (issue_7130, issue_7131)
+- exclude_patterns: パッシブ異常検出 (issue_7221)
+- E2Eテスト大幅拡充: role別conventions・deny scope・権限マトリクス等 (+6,500行)
+
+### conventions判定の監査基盤
+deny/block判定が正しく動作しているか検証手段がなかった。convention_logテーブルを新設し、全判定結果をDB永続化した。
+→ 監査・デバッグ時にconventions判定履歴をSQLで照会可能になった。
+- convention_logテーブル新設、schema v8→v9マイグレーション (issue_7054〜issue_7057)
+
+### P2P通信制御
+subagent間の通信が無制限で、情報フローの統制が取れなかった。SendMessage hookにrole間通信マトリクスを導入し、許可された経路のみ通信可能にした。
+→ agent間の通信経路をマトリクスで制御可能になった。
+- SendMessage P2P通信制御: role間通信マトリクス (issue_7156, issue_7157)
+- SendMessage正規表現バリデーション・ステータスenum化 (issue_7239)
+
+### role判別基盤の刷新
+[ROLE:xxx]正規表現による判別が脆弱で誤判定が発生していた。transcript内のtool_use_id・input.name・subagent_typeに基づく正確な判別に全面移行した。
+→ role判別の信頼性が大幅に向上し、誤ったrole割り当てが解消された。
+- [ROLE:xxx]正規表現廃止 → input.name/subagent_typeベースに全面書き換え (issue_6987〜issue_6992)
+- match_task_to_agent()簡素化: agent_progress(Step 0)のみに統合 (issue_7016)
+- SUBAGENT_TOOL_NAMES定数化: Task/TeamCreate対応
+
+### 汎用化・簡素化
+Redmine固有表現がハードコードされ他プロジェクトで使いにくかった。また不要な複雑性を除去した。
+→ claude-naggerをRedmine以外のプロジェクトでも利用しやすくなった。
+- DEFAULT_PATTERN config化: Redmine固有表現除去・汎用化 (issue_7248)
+- PreToolUse matcherを包括的 `.*` に統合 (issue_7191)
+- install_hooks conventions生成停止 — ticket-tasukiルールに移動 (issue_7191)
+- スタンドアロンagent禁止ルール削除 (issue_7218)
+- input_absent_keys機能削除 (issue_7218)
+
 ## [2.5.0] - 2026-02-18
 
 ### Added
