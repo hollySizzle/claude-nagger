@@ -20,8 +20,7 @@ class McpConventionRule:
     message: str
     token_threshold: Optional[int] = None
     input_match: Optional[Dict[str, str]] = None
-    scope: Optional[str] = None
-    input_absent_keys: Optional[List[str]] = None  # 指定キーがtool_inputに不在の場合のみマッチ  # 'leader' or None（全agent対象）
+    scope: Optional[str] = None  # 'leader' or role名 or None（全agent対象）
 
 
 class McpConventionMatcher(BaseConventionMatcher):
@@ -84,7 +83,6 @@ class McpConventionMatcher(BaseConventionMatcher):
                     token_threshold=rule_data.get('token_threshold'),
                     input_match=rule_data.get('input_match'),
                     scope=rule_data.get('scope'),
-                    input_absent_keys=rule_data.get('input_absent_keys'),
                 )
                 rules.append(rule)
                 self.logger.debug(f"Loaded MCP rule: {rule.name} with pattern: {rule.tool_pattern}, input_match: {rule.input_match}")
@@ -172,7 +170,7 @@ class McpConventionMatcher(BaseConventionMatcher):
 
         Args:
             tool_name: チェック対象のツール名（MCP・built-in両対応）
-            tool_input: ツールの入力パラメータ（input_match/input_absent_keys評価用）
+            tool_input: ツールの入力パラメータ（input_match評価用）
 
         Returns:
             該当する規約ルールのリスト（なければ空リスト）
@@ -193,21 +191,6 @@ class McpConventionMatcher(BaseConventionMatcher):
                     # input_match条件があるがtool_inputがない場合はスキップ
                     self.logger.info(f"  tool_pattern matched but no tool_input provided for input_match: {rule.name}")
                     continue
-
-                # input_absent_keys: 指定キーがtool_inputに不在の場合のみマッチ
-                if rule.input_absent_keys:
-                    if tool_input is None:
-                        # tool_inputがない = 全キー不在 → マッチ
-                        pass
-                    else:
-                        absent_check_failed = False
-                        for key in rule.input_absent_keys:
-                            if key in tool_input and tool_input[key]:
-                                self.logger.info(f"  input_absent_keys: キー '{key}' がtool_inputに存在 → 不一致")
-                                absent_check_failed = True
-                                break
-                        if absent_check_failed:
-                            continue
 
                 self.logger.info(f"MCP TOOL MATCHED RULE: {rule.name} (severity: {rule.severity})")
                 matched_rules.append(rule)

@@ -103,13 +103,3 @@ rules:
       leaderはGrepの使用が禁止されています。
       コード調査はcoder/researcherに委譲してください
 
-  # 制約#21: スタンドアロンagent禁止（team_name未指定のAgent/Task起動）
-  - name: "スタンドアロンAgent禁止"
-    tool_pattern: "^(Agent|Task)$"
-    severity: "deny"
-    scope: "leader"
-    input_absent_keys:
-      - "team_name"
-    message: |
-      スタンドアロンagent（team外）の起動は禁止されています。
-      Agent起動にはteam_nameを指定してください
