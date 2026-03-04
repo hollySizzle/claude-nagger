@@ -449,7 +449,7 @@ class TestSessionStartupHookShouldProcessSubagent:
 
         assert result is False
         mock_leader.assert_called_once_with(
-            "/home/user/.claude/projects/test/leader-session.jsonl", "toolu_LEADER_001"
+            "/home/user/.claude/projects/test/leader-session.jsonl"
         )
 
     def test_subagent_transcript_triggers_blocking(self):
@@ -1041,10 +1041,11 @@ class TestShouldProcessRoleParsing:
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    result = hook.should_process({
-                        "session_id": "test-session",
-                        "transcript_path": str(transcript),
-                    })
+                    with patch('domain.services.leader_detection.is_leader_tool_use', return_value=False):
+                        result = hook.should_process({
+                            "session_id": "test-session",
+                            "transcript_path": str(transcript),
+                        })
 
         assert result is True
         mock_subagent_repo.update_role.assert_not_called()
@@ -1275,10 +1276,11 @@ class TestShouldProcessRetryMatch:
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    result = hook.should_process({
-                        "session_id": "test-session",
-                        "transcript_path": str(transcript),
-                    })
+                    with patch('domain.services.leader_detection.is_leader_tool_use', return_value=False):
+                        result = hook.should_process({
+                            "session_id": "test-session",
+                            "transcript_path": str(transcript),
+                        })
 
         assert result is True
         mock_subagent_repo.retry_match_from_agent_progress.assert_called_once_with(
@@ -1343,10 +1345,11 @@ class TestShouldProcessRetryMatch:
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    result = hook.should_process({
-                        "session_id": "test-session",
-                        "transcript_path": str(transcript),
-                    })
+                    with patch('domain.services.leader_detection.is_leader_tool_use', return_value=False):
+                        result = hook.should_process({
+                            "session_id": "test-session",
+                            "transcript_path": str(transcript),
+                        })
 
         assert result is True
         mock_subagent_repo.retry_match_from_agent_progress.assert_not_called()

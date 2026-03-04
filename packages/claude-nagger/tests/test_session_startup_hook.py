@@ -1086,12 +1086,10 @@ class TestShouldProcessSubagentToolUseId:
                             })
 
         assert result is False
-        mock_leader.assert_called_once_with(
-            '/tmp/transcript.jsonl', 'toolu_LEADER_123'
-        )
+        mock_leader.assert_called_once_with('/tmp/transcript.jsonl')
 
     def test_subagent_detected_via_tool_use_id(self):
-        """subagentのtool_use_idがtranscriptに見つからない場合はTrue"""
+        """coygeek方式でsubagent判定（Task tool_useあり）→ True"""
         config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_subagent_mocks()
 
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
@@ -1108,12 +1106,10 @@ class TestShouldProcessSubagentToolUseId:
 
         assert result is True
         assert hook._is_subagent is True
-        mock_leader.assert_called_once_with(
-            '/tmp/transcript.jsonl', 'toolu_SUBAGENT_456'
-        )
+        mock_leader.assert_called_once_with('/tmp/transcript.jsonl')
 
-    def test_fallback_no_tool_use_id(self):
-        """tool_use_idがない場合はフォールバック（subagent扱い=True）"""
+    def test_fallback_no_transcript_path(self):
+        """transcript_pathがない場合はフォールバック（subagent扱い=True）"""
         config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_subagent_mocks()
 
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
@@ -1127,8 +1123,6 @@ class TestShouldProcessSubagentToolUseId:
 
         assert result is True
         assert hook._is_subagent is True
-        # is_leader_tool_useは呼ばれない（tool_use_idがないため）
-        mock_subagent_repo.is_leader_tool_use.assert_not_called()
 
     def test_agent_id_field_detected(self):
         """agent_idフィールド存在時もtool_use_id判定が実行される"""
@@ -1147,8 +1141,6 @@ class TestShouldProcessSubagentToolUseId:
                                 'transcript_path': '/tmp/transcript.jsonl'
                             })
 
-        # agent_idがあってもtool_use_id判定でleader判定→False
+        # agent_idがあってもcoygeek方式leader判定→False
         assert result is False
-        mock_leader.assert_called_once_with(
-            '/tmp/transcript.jsonl', 'toolu_LEADER_789'
-        )
+        mock_leader.assert_called_once_with('/tmp/transcript.jsonl')

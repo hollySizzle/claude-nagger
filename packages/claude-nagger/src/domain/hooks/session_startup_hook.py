@@ -349,28 +349,25 @@ class SessionStartupHook(BaseHook):
                 )
                 # 現時点ではフォールスルー（agent_idの値の使い方が確定していないため）
 
-            # B: tool_use_id transcript parse判定
-            tool_use_id = input_data.get('tool_use_id', '')
+            # B: coygeek方式leader判定（issue_7312: tool_use_id不要）
             current_transcript = input_data.get('transcript_path', '')
-            if tool_use_id and current_transcript:
+            if current_transcript:
                 from domain.services.leader_detection import is_leader_tool_use
-                if is_leader_tool_use(current_transcript, tool_use_id):
+                if is_leader_tool_use(current_transcript):
                     self.log_info(
-                        f"⏭️ Skipping subagent blocking: caller is leader "
-                        f"(tool_use_id={tool_use_id})"
+                        "⏭️ Skipping subagent blocking: caller is leader "
+                        "(coygeek方式: Task tool_use不在)"
                     )
                     # leaderのPreToolUseではsubagentをブロックしない
                     # subagent自身のPreToolUseで再度claim_next_unprocessedが呼ばれる
                     db.close()
                     return False
             else:
-                # C: フォールバック — tool_use_idまたはtranscript_pathがない場合
+                # C: フォールバック — transcript_pathがない場合
                 # 安全側: subagent扱いで続行（ブロッキング対象として処理続行）
                 self.log_warning(
-                    f"⚠️ tool_use_id or transcript_path missing in PreToolUse payload. "
-                    f"Falling back to subagent assumption. "
-                    f"(tool_use_id={'present' if tool_use_id else 'missing'}, "
-                    f"transcript_path={'present' if current_transcript else 'missing'})"
+                    "⚠️ transcript_path missing in PreToolUse payload. "
+                    "Falling back to subagent assumption."
                 )
 
             agent_type = record.agent_type

@@ -7,42 +7,64 @@ from pathlib import Path
 _logger = logging.getLogger(__name__)
 
 
-def is_leader_tool_use(transcript_path: str, tool_use_id: str) -> bool:
-    """main transcriptに指定tool_use_idが存在するか判定（issue_6952）
+def is_leader_tool_use(transcript_path: str) -> bool:
+    """coygeek方式: Task tool_use有無でleader判定（issue_7312）
 
-    PreToolUseのtool_use_idがleader（親）のtranscript内に存在すれば
-    leaderのtool呼び出し、存在しなければsubagentのtool呼び出しと判定。
-    フォールバック: 見つからない場合はFalse（subagent扱い=安全側）
+    transcriptを走査し、Task tool_useの存在を確認。
+    Task tool_useが1つでも存在すればsubagentが起動済み → False（非leader）。
+    Task tool_useが不在 → leader単独 → True。
+
+    Args:
+        transcript_path: main transcript（.jsonl）のパス
+
+    Returns:
+        True: leader（Task tool_useなし）
+        False: 非leader（Task tool_useあり）
+
+    フォールバック方針:
+        - transcript未存在/読み込みエラー → False（安全側=subagent扱い）
+          理由: ファイル不在は異常状態のためleader誤判定リスク回避
+        - 空transcript → True（leader）
+          理由: セッション開始直後でツール未使用=leader単独作業の正常状態
+
+    制約:
+        - tool_use_idを使わないため、呼び出し元の特定は不可
+        - leader自身もTask tool_useを発行するため、leaderのPreToolUseでもFalse返却
+        - 複数subagent環境でどのsubagentかは識別不可
     """
     path = Path(transcript_path)
     if not path.exists():
-        _logger.warning(f"is_leader_tool_use: transcript not found: {transcript_path}")
-        return False  # フォールバック: subagent扱い
+        _logger.warning(f"is_leader_tool_use: transcript未発見: {transcript_path}")
+        return False  # フォールバック: subagent扱い（異常状態のためleader誤判定を回避）
 
-    _logger.warning(f"[issue_7221_T1] is_leader_tool_use called: transcript_path={transcript_path}, tool_use_id={tool_use_id}")
-
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                entry = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            if entry.get("type") != "assistant":
-                continue
-            message = entry.get("message", {})
-            for content_item in message.get("content", []):
-                if content_item.get("type") != "tool_use":
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
                     continue
-                # 全ツール種別対象（Task以外もBash, Read等含む）
-                if content_item.get("id") == tool_use_id:
-                    _logger.warning(f"[issue_7221_T1] FOUND tool_use_id={tool_use_id} in transcript")
-                    return True
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("type") != "assistant":
+                    continue
+                message = entry.get("message", {})
+                for content_item in message.get("content", []):
+                    if content_item.get("type") != "tool_use":
+                        continue
+                    if content_item.get("name") == "Task":
+                        _logger.info(
+                            f"is_leader_tool_use: Task tool_use発見 "
+                            f"id={content_item.get('id')} → 非leader"
+                        )
+                        return False
+    except (OSError, IOError) as e:
+        _logger.warning(f"is_leader_tool_use: ファイル読み込みエラー: {e}")
+        return False
 
-    _logger.warning(f"[issue_7221_T1] NOT FOUND tool_use_id={tool_use_id} in transcript")
-    return False
+    _logger.info("is_leader_tool_use: Task tool_use不在 → leader")
+    return True
 
 
 from typing import Optional

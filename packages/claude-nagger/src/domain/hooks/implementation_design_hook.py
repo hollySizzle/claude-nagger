@@ -144,8 +144,8 @@ class ImplementationDesignHook(BaseHook):
         transcript_path = input_data.get('transcript_path', '')
 
         caller_is_leader = False
-        if tool_use_id and transcript_path:
-            caller_is_leader = is_leader_tool_use(transcript_path, tool_use_id)
+        if transcript_path:
+            caller_is_leader = is_leader_tool_use(transcript_path)
 
         _logger.warning(
             f"[issue_7221_T2] _filter_rules_by_scope: "

@@ -1453,7 +1453,7 @@ class TestSchemaV3Migration:
 
 
 class TestIsLeaderToolUse:
-    """is_leader_tool_useのテスト（issue_6952/issue_6953）"""
+    """is_leader_tool_useのテスト（coygeek方式 issue_7312）"""
 
     def _make_assistant_entry(self, tool_uses):
         """assistant型エントリを生成するヘルパー"""
@@ -1465,20 +1465,20 @@ class TestIsLeaderToolUse:
     def test_transcript_not_exists(self, db):
         """transcriptファイルが存在しない場合はFalse"""
         repo = SubagentRepository(db)
-        result = repo.is_leader_tool_use("/non/existent.jsonl", "toolu_ANY")
+        result = repo.is_leader_tool_use("/non/existent.jsonl")
         assert result is False
 
     def test_empty_transcript(self, db, tmp_path):
-        """空ファイルの場合はFalse"""
+        """空ファイルの場合はTrue（セッション開始直後=leader単独）"""
         repo = SubagentRepository(db)
         transcript = tmp_path / "empty.jsonl"
         transcript.write_text("")
 
-        result = repo.is_leader_tool_use(str(transcript), "toolu_ANY")
-        assert result is False
+        result = repo.is_leader_tool_use(str(transcript))
+        assert result is True
 
-    def test_tool_use_id_found_bash(self, db, tmp_path):
-        """Bash tool_use_idが一致する場合はTrue"""
+    def test_no_task_tool_use_bash(self, db, tmp_path):
+        """Bash tool_useのみ（Task不在）→ True（leader）"""
         repo = SubagentRepository(db)
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
@@ -1487,11 +1487,11 @@ class TestIsLeaderToolUse:
                  "input": {"command": "echo hello"}}
             ]) + '\n')
 
-        result = repo.is_leader_tool_use(str(transcript), "toolu_LEADER_BASH")
+        result = repo.is_leader_tool_use(str(transcript))
         assert result is True
 
-    def test_tool_use_id_found_task(self, db, tmp_path):
-        """Task tool_use_idが一致する場合はTrue"""
+    def test_task_tool_use_present(self, db, tmp_path):
+        """Task tool_useあり → False（subagent起動済み）"""
         repo = SubagentRepository(db)
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
@@ -1500,11 +1500,11 @@ class TestIsLeaderToolUse:
                  "input": {"subagent_type": "coder", "prompt": "[ROLE:coder] implement X"}}
             ]) + '\n')
 
-        result = repo.is_leader_tool_use(str(transcript), "toolu_LEADER_TASK")
-        assert result is True
+        result = repo.is_leader_tool_use(str(transcript))
+        assert result is False
 
-    def test_tool_use_id_found_read(self, db, tmp_path):
-        """Read tool_use_idが一致する場合はTrue"""
+    def test_no_task_tool_use_read(self, db, tmp_path):
+        """Read tool_useのみ（Task不在）→ True（leader）"""
         repo = SubagentRepository(db)
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
@@ -1513,21 +1513,8 @@ class TestIsLeaderToolUse:
                  "input": {"file_path": "/tmp/test.txt"}}
             ]) + '\n')
 
-        result = repo.is_leader_tool_use(str(transcript), "toolu_LEADER_READ")
+        result = repo.is_leader_tool_use(str(transcript))
         assert result is True
-
-    def test_tool_use_id_not_found(self, db, tmp_path):
-        """存在しないIDの場合はFalse"""
-        repo = SubagentRepository(db)
-        transcript = tmp_path / "transcript.jsonl"
-        with open(transcript, 'w') as f:
-            f.write(self._make_assistant_entry([
-                {"type": "tool_use", "id": "toolu_OTHER", "name": "Bash",
-                 "input": {"command": "ls"}}
-            ]) + '\n')
-
-        result = repo.is_leader_tool_use(str(transcript), "toolu_NOT_EXISTS")
-        assert result is False
 
     def test_invalid_json_skipped(self, db, tmp_path):
         """不正JSON行をスキップして正常動作"""
@@ -1540,32 +1527,29 @@ class TestIsLeaderToolUse:
                  "input": {"command": "echo ok"}}
             ]) + '\n')
 
-        # 不正JSONをスキップして次のエントリでマッチ
-        result = repo.is_leader_tool_use(str(transcript), "toolu_AFTER_INVALID")
+        # 不正JSONをスキップ、Task不在 → True
+        result = repo.is_leader_tool_use(str(transcript))
         assert result is True
-
-        # 存在しないIDはFalse
-        result = repo.is_leader_tool_use(str(transcript), "toolu_MISSING")
-        assert result is False
 
     def test_non_assistant_entries_skipped(self, db, tmp_path):
         """type!='assistant'のエントリは無視"""
         repo = SubagentRepository(db)
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
-            # progressエントリ（assistant以外）にtool_useっぽいデータがあっても無視
+            # progressエントリ（assistant以外）にTask tool_useがあっても無視
             f.write(json.dumps({
                 "type": "progress",
                 "message": {"content": [
-                    {"type": "tool_use", "id": "toolu_IN_PROGRESS", "name": "Bash"}
+                    {"type": "tool_use", "id": "toolu_IN_PROGRESS", "name": "Task"}
                 ]}
             }) + '\n')
 
-        result = repo.is_leader_tool_use(str(transcript), "toolu_IN_PROGRESS")
-        assert result is False
+        # assistant以外のTask tool_useは無視 → True
+        result = repo.is_leader_tool_use(str(transcript))
+        assert result is True
 
-    def test_multiple_tool_uses(self, db, tmp_path):
-        """複数tool_use中から正確にマッチ"""
+    def test_multiple_tool_uses_with_task(self, db, tmp_path):
+        """複数tool_use（Taskあり）→ False"""
         repo = SubagentRepository(db)
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
@@ -1578,22 +1562,22 @@ class TestIsLeaderToolUse:
                  "input": {"subagent_type": "coder", "prompt": "[ROLE:coder] do X"}}
             ]) + '\n')
 
-        assert repo.is_leader_tool_use(str(transcript), "toolu_SECOND") is True
-        assert repo.is_leader_tool_use(str(transcript), "toolu_THIRD") is True
-        assert repo.is_leader_tool_use(str(transcript), "toolu_NOT_HERE") is False
+        # Task tool_useあり → False
+        assert repo.is_leader_tool_use(str(transcript)) is False
 
-    def test_empty_tool_use_id(self, db, tmp_path):
-        """空文字列のtool_use_idはFalse"""
+    def test_multiple_tool_uses_no_task(self, db, tmp_path):
+        """複数tool_use（Task不在）→ True"""
         repo = SubagentRepository(db)
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
             f.write(self._make_assistant_entry([
-                {"type": "tool_use", "id": "toolu_REAL", "name": "Bash",
-                 "input": {"command": "echo hello"}}
+                {"type": "tool_use", "id": "toolu_FIRST", "name": "Bash",
+                 "input": {"command": "echo 1"}},
+                {"type": "tool_use", "id": "toolu_SECOND", "name": "Read",
+                 "input": {"file_path": "/tmp/a.txt"}}
             ]) + '\n')
 
-        result = repo.is_leader_tool_use(str(transcript), "")
-        assert result is False
+        assert repo.is_leader_tool_use(str(transcript)) is True
 
 
 class TestTeamCreateStep0Match:
