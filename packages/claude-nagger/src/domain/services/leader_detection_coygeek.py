@@ -32,6 +32,12 @@ def is_leader_coygeek(transcript_path: str) -> bool:
         True: leader（Task tool_useなし）
         False: 非leader（Task tool_useあり）
 
+    フォールバック方針:
+        - transcript未存在/読み込みエラー → False（安全側=subagent扱い）
+          理由: ファイル不在は異常状態のため、leaderと誤判定するリスクを回避
+        - 空transcript → True（leader）
+          理由: セッション開始直後でツール未使用=leader単独作業の正常状態
+
     制約:
         - tool_use_idを使わないため、呼び出し元の特定は不可
         - leader自身もTask tool_useを発行するため、leaderのPreToolUseでもFalse返却
@@ -40,7 +46,7 @@ def is_leader_coygeek(transcript_path: str) -> bool:
     path = Path(transcript_path)
     if not path.exists():
         _logger.warning(f"is_leader_coygeek: transcript未発見: {transcript_path}")
-        return False  # フォールバック: subagent扱い
+        return False  # フォールバック: subagent扱い（異常状態のためleader誤判定を回避）
 
     # 全行読み込み後に逆順走査（逆順で最初に見つかったTask tool_useが最新）
     try:
