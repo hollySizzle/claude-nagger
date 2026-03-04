@@ -15,6 +15,9 @@ leader・subagent間の責務境界が曖昧で、leaderが直接コードを編
 → プラグイン利用者はrole別の権限を.claude-nagger/のconventions YAMLで定義可能になった。
 - conventions deny/scope体系: role別deny/block/warn優先度制御・scopeフィルタリング (issue_7027, issue_7030)
 - leader検出サービス: is_leader_tool_use()・find_caller_agent_id() (issue_6953)
+  - 設計起源: @Butanium の GitHub #16424 提案（tool_use_id transcript parse手法）
+  - 既知問題: PreToolUse発火時のtranscript書込タイミング問題が判明 (issue_7303で調査中)
+  - 代替手法: @coygeek の GitHub #6885 提案（Task tool_use逆順走査）— タイミング問題を回避可能
 - caller_role_service: tool_use_idベースのcaller role解決 (issue_7097)
 - role正規化: _normalize_role() — plugin:role→role形式 (issue_7130, issue_7131)
 - exclude_patterns: パッシブ異常検出 (issue_7221)
