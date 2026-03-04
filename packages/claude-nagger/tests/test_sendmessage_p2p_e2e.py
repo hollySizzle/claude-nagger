@@ -452,7 +452,17 @@ class TestContentValidationRegression:
 
     @pytest.fixture
     def hook(self):
-        return _make_hook()
+        """enum指定パターンでcontent検証を有効化"""
+        guard_config = {
+            "p2p_rules": P2P_CONFIG,
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$",
+        }
+        with patch(
+            "src.domain.hooks.sendmessage_guard_hook.ConfigManager"
+        ) as mock_cm:
+            mock_cm.return_value.config = {"sendmessage_guard": guard_config}
+            h = SendMessageGuardHook(debug=False)
+        return h
 
     def test_missing_issue_id_still_blocked(self, hook):
         """issue_id無しcontent → block（P2P通過後のcontent検証）"""
@@ -489,6 +499,20 @@ class TestSkipWarnOnly:
     def hook(self):
         return _make_hook()
 
+    @pytest.fixture
+    def hook_with_pattern(self):
+        """enum指定パターンでcontent検証を有効化"""
+        guard_config = {
+            "p2p_rules": P2P_CONFIG,
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$",
+        }
+        with patch(
+            "src.domain.hooks.sendmessage_guard_hook.ConfigManager"
+        ) as mock_cm:
+            mock_cm.return_value.config = {"sendmessage_guard": guard_config}
+            h = SendMessageGuardHook(debug=False)
+        return h
+
     def test_p2p_block_has_skip_warn_only(self, hook):
         """P2P deny → skip_warn_only=True"""
         input_data = _make_input("message", "researcher")
@@ -497,10 +521,10 @@ class TestSkipWarnOnly:
         assert result["decision"] == "block"
         assert result.get("skip_warn_only") is True
 
-    def test_content_block_no_skip_warn_only(self, hook):
+    def test_content_block_no_skip_warn_only(self, hook_with_pattern):
         """content検証block → skip_warn_only未設定"""
         input_data = _make_input("message", "team-lead", content="no issue id")
         with _mock_roles({"coder"}):
-            result = hook.process(input_data)
+            result = hook_with_pattern.process(input_data)
         assert result["decision"] == "block"
         assert result.get("skip_warn_only") is not True

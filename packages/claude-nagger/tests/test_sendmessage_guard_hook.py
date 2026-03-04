@@ -86,49 +86,21 @@ class TestValidateContent:
     """validate_content の検証テスト（正規表現バリデーション）"""
 
     def test_valid_format(self, hook):
-        """正常: issue_{id} [ステータス] 形式"""
+        """正常: デフォルト(^.+$)で任意の非空文字列が通過"""
         result = hook.validate_content("issue_6041 [完了]")
         assert result["valid"] is True
         assert result["violation"] is None
 
-    def test_valid_format_with_detail(self, hook):
-        """正常: ステータス内に詳細記述あり"""
-        result = hook.validate_content("issue_6041 [要判断] スコープ外")
-        assert result["valid"] is False  # ] の後にスペースがあるので不一致
-        # 注: ^issue_\d+ \[.+\]$ なので ] で終わる必要がある
+    def test_any_nonempty_passes_default(self, hook):
+        """正常: デフォルトパターンでは非空文字列はすべて通過"""
+        result = hook.validate_content("任意のテキスト")
+        assert result["valid"] is True
 
-    def test_invalid_format_detail_inside_brackets(self, hook):
-        """異常: ブラケット内にenum外の詳細を含む形式"""
-        result = hook.validate_content("issue_6041 [要判断 スコープ外]")
-        assert result["valid"] is False
-
-    def test_missing_issue_id(self, hook):
-        """異常: issue_id なし"""
-        result = hook.validate_content("タスク完了しました")
+    def test_empty_content(self, hook):
+        """空文字列はデフォルトパターンでも拒否"""
+        result = hook.validate_content("")
         assert result["valid"] is False
         assert "フォーマット不一致" in result["violation"]
-
-    def test_missing_brackets(self, hook):
-        """異常: issue_idのみでブラケットなし"""
-        result = hook.validate_content("issue_6041")
-        assert result["valid"] is False
-        assert "フォーマット不一致" in result["violation"]
-
-    def test_missing_bracket_content(self, hook):
-        """異常: 空ブラケット"""
-        result = hook.validate_content("issue_6041 []")
-        assert result["valid"] is False
-        assert "フォーマット不一致" in result["violation"]
-
-    def test_issue_id_without_space_before_bracket(self, hook):
-        """異常: issue_idとブラケットの間にスペースなし"""
-        result = hook.validate_content("issue_6041[完了]")
-        assert result["valid"] is False
-
-    def test_long_content_with_non_enum_status(self, hook):
-        """異常: enum外のステータスは拒否"""
-        result = hook.validate_content("issue_6041 [詳細な状況報告をブラケット内に記載]")
-        assert result["valid"] is False
 
     def test_custom_pattern(self, hook_with_config):
         """カスタムパターンが適用される"""
@@ -139,24 +111,19 @@ class TestValidateContent:
         result = h.validate_content("issue_6041 [完了]")
         assert result["valid"] is False
 
-    def test_no_prefix_text(self, hook):
-        """異常: issue_の前にテキストがある"""
-        result = hook.validate_content("報告 issue_6041 [完了]")
+    def test_violation_includes_pattern(self, hook_with_config):
+        """violation文に設定パターンが含まれる"""
+        pattern = r"^issue_\d+ \[.+\]$"
+        h = hook_with_config({"pattern": pattern})
+        result = h.validate_content("不正な形式")
         assert result["valid"] is False
+        assert pattern in result["violation"]
 
-    def test_no_suffix_text(self, hook):
-        """異常: ] の後にテキストがある"""
-        result = hook.validate_content("issue_6041 [完了] 追加情報")
-        assert result["valid"] is False
-
-    def test_empty_content(self, hook):
-        """空文字列"""
-        result = hook.validate_content("")
-        assert result["valid"] is False
-        assert "フォーマット不一致" in result["violation"]
-
-    def test_various_valid_statuses(self, hook):
-        """正常: 全enum値が許可される"""
+    def test_various_valid_statuses(self, hook_with_config):
+        """正常: enum指定パターンで全enum値が許可される"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+        })
         valid_contents = [
             "issue_1 [完了]",
             "issue_99999 [指示]",
@@ -166,11 +133,14 @@ class TestValidateContent:
             "issue_7777 [ブロッカー]",
         ]
         for content in valid_contents:
-            result = hook.validate_content(content)
+            result = h.validate_content(content)
             assert result["valid"] is True, f"Expected valid: {content}"
 
-    def test_various_invalid_statuses(self, hook):
-        """異常: enum外のステータスは拒否"""
+    def test_various_invalid_statuses(self, hook_with_config):
+        """異常: enum指定パターンでenum外のステータスは拒否"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+        })
         invalid_contents = [
             "issue_1 [着手中]",
             "issue_2 [ブロック中]",
@@ -178,8 +148,26 @@ class TestValidateContent:
             "issue_4 [完了しました]",
         ]
         for content in invalid_contents:
-            result = hook.validate_content(content)
+            result = h.validate_content(content)
             assert result["valid"] is False, f"Expected invalid: {content}"
+
+    def test_missing_issue_id_with_pattern(self, hook_with_config):
+        """異常: カスタムパターンでissue_idなし"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+        })
+        result = h.validate_content("タスク完了しました")
+        assert result["valid"] is False
+        assert "フォーマット不一致" in result["violation"]
+
+    def test_missing_brackets_with_pattern(self, hook_with_config):
+        """異常: カスタムパターンでブラケットなし"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+        })
+        result = h.validate_content("issue_6041")
+        assert result["valid"] is False
+        assert "フォーマット不一致" in result["violation"]
 
 
 # === should_process テスト ===
@@ -247,43 +235,52 @@ class TestProcess:
     """process の処理テスト"""
 
     def test_approve_valid_message(self, hook):
-        """正常メッセージ → approve"""
+        """正常メッセージ → approve（デフォルトは非空で通過）"""
         input_data = {
             "tool_input": {"content": "issue_6041 [完了]"},
         }
         result = hook.process(input_data)
         assert result["decision"] == "approve"
 
-    def test_block_missing_issue_id(self, hook):
-        """issue_id なし → block"""
+    def test_block_missing_issue_id(self, hook_with_config):
+        """issue_id なし → block（カスタムパターン使用時）"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+        })
         input_data = {
             "tool_input": {"content": "タスク完了しました"},
         }
-        result = hook.process(input_data)
+        result = h.process(input_data)
         assert result["decision"] == "block"
         assert "フォーマット不一致" in result["reason"]
-        assert "SendMessage規約" in result["reason"]
+        assert "SendMessage規約違反" in result["reason"]
 
-    def test_block_invalid_format(self, hook):
-        """フォーマット不正（ブラケットなし） → block"""
+    def test_block_invalid_format(self, hook_with_config):
+        """フォーマット不正（ブラケットなし） → block（カスタムパターン使用時）"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+        })
         input_data = {
             "tool_input": {"content": "issue_6041 完了しました"},
         }
-        result = hook.process(input_data)
+        result = h.process(input_data)
         assert result["decision"] == "block"
         assert "フォーマット不一致" in result["reason"]
 
-    def test_block_reason_contains_instructions(self, hook):
-        """block reason にフォーマット例が含まれる"""
+    def test_block_reason_contains_pattern(self, hook_with_config):
+        """block reason に設定パターンと対処法が含まれる"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+        })
         input_data = {
             "tool_input": {"content": "完了しました"},
         }
-        result = hook.process(input_data)
-        assert "add_issue_comment_tool" in result["reason"]
-        assert "issue_6041 [完了]" in result["reason"]
+        result = h.process(input_data)
+        assert "SendMessage規約違反" in result["reason"]
+        assert "対処" in result["reason"]
 
     def test_empty_content(self, hook):
-        """content が空 → block（issue_id なし）"""
+        """content が空 → block（デフォルトパターンでも空は拒否）"""
         input_data = {
             "tool_input": {"content": ""},
         }
@@ -310,16 +307,15 @@ class TestBlockReasonTemplate:
             violation="テスト違反", pattern=DEFAULT_PATTERN
         )
         assert "テスト違反" in reason
-        assert "SendMessage規約" in reason
-        assert "Redmine基盤通信" in reason
+        assert "SendMessage規約違反" in reason
 
     def test_template_contains_instructions(self):
         """テンプレートに対処法が含まれる"""
         reason = DEFAULT_BLOCK_REASON_TEMPLATE.format(
             violation="test", pattern=DEFAULT_PATTERN
         )
-        assert "add_issue_comment_tool" in reason
-        assert 'issue_{id}' in reason or "issue_6041" in reason
+        assert "対処" in reason
+        assert "再送" in reason
 
 
 # === block_message カスタマイズテスト ===
@@ -332,23 +328,22 @@ class TestBlockMessageCustomization:
         custom_msg = "カスタム違反通知: {violation}"
         h = hook_with_config({"block_message": custom_msg})
         input_data = {
-            "tool_input": {"content": "issue_idなし"},
+            "tool_input": {"content": ""},
         }
         result = h.process(input_data)
         assert result["decision"] == "block"
         assert "カスタム違反通知:" in result["reason"]
         # デフォルトテンプレートの内容が含まれないことを確認
-        assert "SendMessage規約" not in result["reason"]
+        assert "SendMessage規約違反" not in result["reason"]
 
     def test_default_block_message_fallback(self, hook):
         """block_message 未設定時にデフォルトテンプレートが使用される"""
         input_data = {
-            "tool_input": {"content": "issue_idなし"},
+            "tool_input": {"content": ""},
         }
         result = hook.process(input_data)
         assert result["decision"] == "block"
-        assert "SendMessage規約" in result["reason"]
-        assert "Redmine基盤通信" in result["reason"]
+        assert "SendMessage規約違反" in result["reason"]
 
     def test_block_message_placeholders(self, hook_with_config):
         """{violation}, {pattern} が正しく展開される"""

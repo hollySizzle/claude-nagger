@@ -18,7 +18,7 @@ from domain.services.caller_role_service import get_caller_roles
 from infrastructure.config.config_manager import ConfigManager
 
 # デフォルト設定
-DEFAULT_PATTERN = r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+DEFAULT_PATTERN = r"^.+$"
 DEFAULT_EXEMPT_TYPES = [
     "shutdown_request",
     "shutdown_response",
@@ -27,15 +27,10 @@ DEFAULT_EXEMPT_TYPES = [
 
 # block reason テンプレート
 DEFAULT_BLOCK_REASON_TEMPLATE = """\
-SendMessage規約: Redmine基盤通信
+SendMessage規約違反
 ━━━━━━━━━━━━━━━━━
 違反: {violation}
-必須フォーマット: issue_{{id}} [ステータス]
-許可ステータス: 完了, 指示, 相談, 確認, 要判断, ブロッカー
-対処:
-1. 詳細を Redmine チケットコメントに記載 (add_issue_comment_tool)
-2. SendMessage は "issue_{{id}} [ステータス]" 形式で再送
-許可フォーマット例: "issue_6041 [完了]", "issue_6041 [要判断]"\
+対処: 設定されたフォーマットに従ってSendMessageを再送してください\
 """
 
 
@@ -112,7 +107,6 @@ class SendMessageGuardHook(BaseHook):
         """メッセージ内容を検証
 
         正規表現パターンで完全一致チェック。
-        デフォルト: issue_<id> [ステータス] 形式のみ許可。
 
         Args:
             content: メッセージ内容
@@ -126,7 +120,7 @@ class SendMessageGuardHook(BaseHook):
         if not re.match(pattern, content):
             return {
                 "valid": False,
-                "violation": "フォーマット不一致。必須形式: issue_{id} [完了|指示|相談|確認|要判断|ブロッカー]",
+                "violation": f"フォーマット不一致。設定パターン: {pattern}",
             }
 
         return {"valid": True, "violation": None}
