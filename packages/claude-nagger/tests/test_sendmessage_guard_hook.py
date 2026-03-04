@@ -13,7 +13,6 @@ from unittest.mock import patch, MagicMock
 from src.domain.hooks.sendmessage_guard_hook import (
     SendMessageGuardHook,
     DEFAULT_PATTERN,
-    DEFAULT_MAX_CONTENT_LENGTH,
     DEFAULT_EXEMPT_TYPES,
     DEFAULT_BLOCK_REASON_TEMPLATE,
 )
@@ -84,74 +83,89 @@ class TestIsExemptType:
 # === validate_content テスト ===
 
 class TestValidateContent:
-    """validate_content の検証テスト"""
+    """validate_content の検証テスト（正規表現バリデーション）"""
 
-    def test_valid_content(self, hook):
-        """正常: issue_id あり + 短文"""
+    def test_valid_format(self, hook):
+        """正常: issue_{id} [ステータス] 形式"""
         result = hook.validate_content("issue_6041 [完了]")
         assert result["valid"] is True
         assert result["violation"] is None
+
+    def test_valid_format_with_detail(self, hook):
+        """正常: ステータス内に詳細記述あり"""
+        result = hook.validate_content("issue_6041 [要判断] スコープ外")
+        assert result["valid"] is False  # ] の後にスペースがあるので不一致
+        # 注: ^issue_\d+ \[.+\]$ なので ] で終わる必要がある
+
+    def test_valid_format_detail_inside_brackets(self, hook):
+        """正常: ブラケット内に詳細を含む形式"""
+        result = hook.validate_content("issue_6041 [要判断 スコープ外]")
+        assert result["valid"] is True
 
     def test_missing_issue_id(self, hook):
         """異常: issue_id なし"""
         result = hook.validate_content("タスク完了しました")
         assert result["valid"] is False
-        assert "issue_idが含まれていない" in result["violation"]
+        assert "フォーマット不一致" in result["violation"]
 
-    def test_content_too_long(self, hook):
-        """異常: 文字数超過"""
-        long_content = "issue_6041 " + "a" * 200
-        result = hook.validate_content(long_content)
+    def test_missing_brackets(self, hook):
+        """異常: issue_idのみでブラケットなし"""
+        result = hook.validate_content("issue_6041")
         assert result["valid"] is False
-        assert "文字数超過" in result["violation"]
-        assert "Redmine" in result["violation"]
+        assert "フォーマット不一致" in result["violation"]
 
-    def test_exact_max_length(self, hook):
-        """境界: ちょうど max_content_length"""
-        # DEFAULT_MAX_CONTENT_LENGTH=30, issue_6041は10文字、残り20文字で合計30文字
-        content = "issue_6041" + "x" * (DEFAULT_MAX_CONTENT_LENGTH - 10)
-        assert len(content) == DEFAULT_MAX_CONTENT_LENGTH
-        result = hook.validate_content(content)
+    def test_missing_bracket_content(self, hook):
+        """異常: 空ブラケット"""
+        result = hook.validate_content("issue_6041 []")
+        assert result["valid"] is False
+        assert "フォーマット不一致" in result["violation"]
+
+    def test_issue_id_without_space_before_bracket(self, hook):
+        """異常: issue_idとブラケットの間にスペースなし"""
+        result = hook.validate_content("issue_6041[完了]")
+        assert result["valid"] is False
+
+    def test_long_content_with_valid_format(self, hook):
+        """正常: 長い内容でもフォーマットが正しければ許可"""
+        result = hook.validate_content("issue_6041 [詳細な状況報告をブラケット内に記載]")
         assert result["valid"] is True
-
-    def test_one_over_max_length(self, hook):
-        """境界: max_content_length + 1"""
-        content = "issue_6041" + "x" * 91
-        assert len(content) == 101
-        result = hook.validate_content(content)
-        assert result["valid"] is False
 
     def test_custom_pattern(self, hook_with_config):
         """カスタムパターンが適用される"""
-        h = hook_with_config({"pattern": r"TICKET-\d+"})
+        h = hook_with_config({"pattern": r"^TICKET-\d+ \[.+\]$"})
         result = h.validate_content("TICKET-123 [完了]")
         assert result["valid"] is True
 
         result = h.validate_content("issue_6041 [完了]")
         assert result["valid"] is False
 
-    def test_custom_max_length(self, hook_with_config):
-        """カスタム最大文字数が適用される"""
-        h = hook_with_config({"max_content_length": 20})
-        result = h.validate_content("issue_6041 [完了]")  # 14文字
-        assert result["valid"] is True
-
-        result = h.validate_content("issue_6041 これは長すぎるメッセージです")
+    def test_no_prefix_text(self, hook):
+        """異常: issue_の前にテキストがある"""
+        result = hook.validate_content("報告 issue_6041 [完了]")
         assert result["valid"] is False
 
-    def test_pattern_match_priority_over_length(self, hook):
-        """パターン不一致が文字数超過より優先される"""
-        # パターンなし + 長すぎる → パターン不一致が先に判定される
-        long_content = "a" * 200
-        result = hook.validate_content(long_content)
+    def test_no_suffix_text(self, hook):
+        """異常: ] の後にテキストがある"""
+        result = hook.validate_content("issue_6041 [完了] 追加情報")
         assert result["valid"] is False
-        assert "issue_idが含まれていない" in result["violation"]
 
     def test_empty_content(self, hook):
         """空文字列"""
         result = hook.validate_content("")
         assert result["valid"] is False
-        assert "issue_idが含まれていない" in result["violation"]
+        assert "フォーマット不一致" in result["violation"]
+
+    def test_various_valid_statuses(self, hook):
+        """正常: 様々なステータス表現"""
+        valid_contents = [
+            "issue_1 [完了]",
+            "issue_99999 [着手中]",
+            "issue_7225 [要判断 追加パターン検討]",
+            "issue_100 [ブロック中 依存チケット未解決]",
+        ]
+        for content in valid_contents:
+            result = hook.validate_content(content)
+            assert result["valid"] is True, f"Expected valid: {content}"
 
 
 # === should_process テスト ===
@@ -233,17 +247,17 @@ class TestProcess:
         }
         result = hook.process(input_data)
         assert result["decision"] == "block"
-        assert "issue_idが含まれていない" in result["reason"]
+        assert "フォーマット不一致" in result["reason"]
         assert "SendMessage規約" in result["reason"]
 
-    def test_block_too_long(self, hook):
-        """文字数超過 → block"""
+    def test_block_invalid_format(self, hook):
+        """フォーマット不正（ブラケットなし） → block"""
         input_data = {
-            "tool_input": {"content": "issue_6041 " + "a" * 200},
+            "tool_input": {"content": "issue_6041 完了しました"},
         }
         result = hook.process(input_data)
         assert result["decision"] == "block"
-        assert "文字数超過" in result["reason"]
+        assert "フォーマット不一致" in result["reason"]
 
     def test_block_reason_contains_instructions(self, hook):
         """block reason にフォーマット例が含まれる"""
@@ -278,14 +292,18 @@ class TestBlockReasonTemplate:
 
     def test_template_format(self):
         """テンプレートが正しくフォーマットされる"""
-        reason = DEFAULT_BLOCK_REASON_TEMPLATE.format(violation="テスト違反")
+        reason = DEFAULT_BLOCK_REASON_TEMPLATE.format(
+            violation="テスト違反", pattern=DEFAULT_PATTERN
+        )
         assert "テスト違反" in reason
         assert "SendMessage規約" in reason
         assert "Redmine基盤通信" in reason
 
     def test_template_contains_instructions(self):
         """テンプレートに対処法が含まれる"""
-        reason = DEFAULT_BLOCK_REASON_TEMPLATE.format(violation="test")
+        reason = DEFAULT_BLOCK_REASON_TEMPLATE.format(
+            violation="test", pattern=DEFAULT_PATTERN
+        )
         assert "add_issue_comment_tool" in reason
         assert 'issue_{id}' in reason or "issue_6041" in reason
 
@@ -319,18 +337,16 @@ class TestBlockMessageCustomization:
         assert "Redmine基盤通信" in result["reason"]
 
     def test_block_message_placeholders(self, hook_with_config):
-        """{violation}, {pattern}, {max_length} が正しく展開される"""
-        custom_msg = "違反={violation} パターン={pattern} 上限={max_length}"
+        """{violation}, {pattern} が正しく展開される"""
+        custom_msg = "違反={violation} パターン={pattern}"
         h = hook_with_config({
             "block_message": custom_msg,
-            "pattern": "issue_\\d+",
-            "max_content_length": 200,
+            "pattern": r"^issue_\d+ \[.+\]$",
         })
         input_data = {
             "tool_input": {"content": "no issue id here"},
         }
         result = h.process(input_data)
         assert result["decision"] == "block"
-        assert "違反=issue_idが含まれていない" in result["reason"]
-        assert "パターン=issue_\\d+" in result["reason"]
-        assert "上限=200" in result["reason"]
+        assert "違反=フォーマット不一致" in result["reason"]
+        assert r"パターン=^issue_\d+ \[.+\]$" in result["reason"]

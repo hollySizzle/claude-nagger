@@ -158,8 +158,7 @@ session_startup:
 # 毎回検査。違反時のみblock、合格時は無通知通過
 sendmessage_guard:
   enabled: true
-  pattern: "issue_\\\\d+"
-  max_content_length: 100
+  pattern: "^issue_\\\\d+ \\\\[.+\\\\]$"
   exempt_types:
     - shutdown_request
     - shutdown_response

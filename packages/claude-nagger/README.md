@@ -128,8 +128,7 @@ session_startup:
 # SendMessageガード
 sendmessage_guard:
   enabled: true
-  pattern: "issue_\\d+"
-  max_content_length: 100
+  pattern: "^issue_\\d+ \\[.+\\]$"
 
 # 規約提案
 suggest_rules:

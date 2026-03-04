@@ -18,8 +18,7 @@ from domain.services.caller_role_service import get_caller_roles
 from infrastructure.config.config_manager import ConfigManager
 
 # デフォルト設定
-DEFAULT_PATTERN = r"issue_\d+"
-DEFAULT_MAX_CONTENT_LENGTH = 30
+DEFAULT_PATTERN = r"^issue_\d+ \[.+\]$"
 DEFAULT_EXEMPT_TYPES = [
     "shutdown_request",
     "shutdown_response",
@@ -31,6 +30,7 @@ DEFAULT_BLOCK_REASON_TEMPLATE = """\
 SendMessage規約: Redmine基盤通信
 ━━━━━━━━━━━━━━━━━
 違反: {violation}
+必須フォーマット: issue_{{id}} [ステータス]
 対処:
 1. 詳細を Redmine チケットコメントに記載 (add_issue_comment_tool)
 2. SendMessage は "issue_{{id}} [ステータス]" 形式で再送
@@ -67,7 +67,6 @@ class SendMessageGuardHook(BaseHook):
         config = {
             "enabled": raw.get("enabled", True),
             "pattern": raw.get("pattern", DEFAULT_PATTERN),
-            "max_content_length": raw.get("max_content_length", DEFAULT_MAX_CONTENT_LENGTH),
             "exempt_types": raw.get("exempt_types", DEFAULT_EXEMPT_TYPES),
         }
         # block_message: 設定されていればカスタムテンプレートを使用
@@ -111,6 +110,9 @@ class SendMessageGuardHook(BaseHook):
     def validate_content(self, content: str) -> Dict[str, Any]:
         """メッセージ内容を検証
 
+        正規表現パターンで完全一致チェック。
+        デフォルト: issue_<id> [ステータス] 形式のみ許可。
+
         Args:
             content: メッセージ内容
 
@@ -118,20 +120,12 @@ class SendMessageGuardHook(BaseHook):
             {"valid": bool, "violation": str or None}
         """
         pattern = self._guard_config["pattern"]
-        max_length = self._guard_config["max_content_length"]
 
-        # パターン不一致チェック
-        if not re.search(pattern, content):
+        # フォーマット不一致チェック（正規表現で完全一致）
+        if not re.match(pattern, content):
             return {
                 "valid": False,
-                "violation": "issue_idが含まれていない",
-            }
-
-        # 文字数超過チェック
-        if len(content) > max_length:
-            return {
-                "valid": False,
-                "violation": f"文字数超過（{len(content)}/{max_length}文字）。詳細はRedmineに記載してください",
+                "violation": "フォーマット不一致。必須形式: issue_{id} [ステータス]",
             }
 
         return {"valid": True, "violation": None}
@@ -264,7 +258,6 @@ class SendMessageGuardHook(BaseHook):
             reason = template.format(
                 violation=result["violation"],
                 pattern=self._guard_config["pattern"],
-                max_length=self._guard_config["max_content_length"],
             )
             self.log_info(f"BLOCK: {result['violation']}")
             return {"decision": "block", "reason": reason}

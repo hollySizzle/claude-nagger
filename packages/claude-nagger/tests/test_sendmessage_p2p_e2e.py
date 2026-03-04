@@ -460,16 +460,15 @@ class TestContentValidationRegression:
         with _mock_roles({"coder"}):
             result = hook.process(input_data)
         assert result["decision"] == "block"
-        assert "issue_idが含まれていない" in result["reason"]
+        assert "フォーマット不一致" in result["reason"]
 
-    def test_content_too_long_still_blocked(self, hook):
-        """文字数超過content → block"""
-        long_content = "issue_7157 " + "a" * 200
-        input_data = _make_input("message", "team-lead", content=long_content)
+    def test_invalid_format_still_blocked(self, hook):
+        """フォーマット不正（ブラケットなし） → block"""
+        input_data = _make_input("message", "team-lead", content="issue_7157 完了しました")
         with _mock_roles({"coder"}):
             result = hook.process(input_data)
         assert result["decision"] == "block"
-        assert "文字数超過" in result["reason"]
+        assert "フォーマット不一致" in result["reason"]
 
     def test_valid_content_approve(self, hook):
         """正常content → approve"""
