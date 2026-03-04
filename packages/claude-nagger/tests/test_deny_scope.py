@@ -1135,3 +1135,413 @@ class TestTranscriptSchemaValidation:
             assert "message" in entry, "messageキー欠落"
             assert "uuid" in entry, "uuidキー欠落"
             assert "timestamp" in entry, "timestampキー欠落"
+
+
+# ============================================================================
+# カテゴリD: tool_use_id引数削除後の呼び出し元テスト (issue_7313)
+# ============================================================================
+
+class TestCallSiteAfterToolUseIdRemoval:
+    """is_leader_tool_use()がtranscript_pathのみで呼ばれることの検証
+
+    issue_7312でtool_use_id引数を削除した後、各呼び出し元が
+    正しくis_leader_tool_use(transcript_path)を呼んでいることを確認する。
+    """
+
+    @pytest.fixture
+    def hook(self):
+        return ImplementationDesignHook()
+
+    def test_filter_rules_by_scope_calls_without_tool_use_id(self, hook, tmp_path):
+        """_filter_rules_by_scopeがis_leader_tool_use(transcript_path)を単一引数で呼出"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        rules = [
+            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
+        ]
+        input_data = {
+            'tool_use_id': 'toolu_L1',
+            'transcript_path': str(transcript),
+        }
+
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
+                    return_value=True) as mock_leader:
+            hook._filter_rules_by_scope(rules, input_data)
+
+        # 単一引数(transcript_path)で呼ばれていること
+        mock_leader.assert_called_once_with(str(transcript))
+
+    def test_filter_rules_leader_transcript_only(self, hook, tmp_path):
+        """実transcriptでleader判定: Task tool_useなし→leader→deny通過"""
+        transcript = tmp_path / "transcript.jsonl"
+        # Editのみ、Taskなし → leader
+        entry = {
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        rules = [
+            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
+        ]
+        input_data = {
+            'tool_use_id': 'toolu_L1',
+            'transcript_path': str(transcript),
+        }
+
+        result = hook._filter_rules_by_scope(rules, input_data)
+        assert len(result) == 1, "leader判定でscope=leaderルールが通過すべき"
+
+    def test_filter_rules_subagent_transcript_only(self, hook, tmp_path):
+        """実transcriptでsubagent判定: Task tool_useあり→非leader→denyフィルタアウト"""
+        transcript = tmp_path / "transcript.jsonl"
+        # Taskあり → subagent起動済み → 非leader
+        entries = [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_TASK_001", "name": "Task"}
+            ]}},
+        ]
+        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+        rules = [
+            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
+        ]
+        input_data = {
+            'tool_use_id': 'toolu_CODER_001',
+            'transcript_path': str(transcript),
+        }
+
+        result = hook._filter_rules_by_scope(rules, input_data)
+        assert len(result) == 0, "非leader判定でscope=leaderルールはフィルタアウトすべき"
+
+
+# ============================================================================
+# カテゴリE: 回帰テスト scope適用/スキップ (issue_7313)
+# ============================================================================
+
+class TestScopeApplySkipRegression:
+    """coygeek方式切替後のscope適用/スキップ回帰テスト
+
+    is_leader_tool_use()がcoygeek方式に変更されても、
+    scope=leader deny/scope=None/scope=role の動作が正しいことを検証する。
+    mockを使わず、実際のtranscriptデータで判定する。
+    """
+
+    @pytest.fixture
+    def hook(self):
+        return ImplementationDesignHook()
+
+    def _make_leader_transcript(self, tmp_path):
+        """leader用transcript作成（Task tool_useなし）"""
+        transcript = tmp_path / "leader_transcript.jsonl"
+        entries = [
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "text", "text": "ファイルを修正して"}
+            ]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_LEADER_001", "name": "Read",
+                 "input": {"file_path": "/src/main.py"}},
+            ]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_LEADER_002", "name": "Edit",
+                 "input": {"file_path": "/src/main.py"}},
+            ]}},
+        ]
+        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+        return str(transcript)
+
+    def _make_subagent_transcript(self, tmp_path):
+        """subagent用transcript作成（Task tool_useあり）"""
+        transcript = tmp_path / "subagent_transcript.jsonl"
+        entries = [
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "text", "text": "テスト実行して"}
+            ]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_LEADER_READ", "name": "Read",
+                 "input": {"file_path": "/src/main.py"}},
+            ]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_TASK_001", "name": "Task",
+                 "input": {"prompt": "coderとしてファイル修正"}},
+            ]}},
+        ]
+        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+        return str(transcript)
+
+    def test_scope_leader_deny_fires_for_leader(self, hook, tmp_path):
+        """scope=leader deny: leader transcript → ルール適用"""
+        transcript_path = self._make_leader_transcript(tmp_path)
+        rules = [
+            {'rule_name': 'leader-edit-deny', 'severity': 'deny',
+             'message': 'leaderはファイル編集が禁止されています', 'scope': 'leader'},
+        ]
+        result = hook._filter_rules_by_scope(rules, {
+            'transcript_path': transcript_path,
+            'tool_use_id': 'toolu_LEADER_002',
+        })
+        assert len(result) == 1
+        assert result[0]['rule_name'] == 'leader-edit-deny'
+
+    def test_scope_leader_deny_skips_for_subagent(self, hook, tmp_path):
+        """scope=leader deny: subagent transcript → ルールスキップ"""
+        transcript_path = self._make_subagent_transcript(tmp_path)
+        rules = [
+            {'rule_name': 'leader-edit-deny', 'severity': 'deny',
+             'message': 'leaderはファイル編集が禁止されています', 'scope': 'leader'},
+        ]
+        result = hook._filter_rules_by_scope(rules, {
+            'transcript_path': transcript_path,
+            'tool_use_id': 'toolu_CODER_001',
+        })
+        assert len(result) == 0
+
+    def test_scope_none_applies_regardless_of_leader(self, hook, tmp_path):
+        """scope=None: leader/subagent両方でルール適用"""
+        leader_tp = self._make_leader_transcript(tmp_path)
+        subagent_tp = self._make_subagent_transcript(tmp_path)
+
+        rules = [
+            {'rule_name': 'warn-all', 'severity': 'warn',
+             'message': '全agent対象の警告', 'scope': None},
+        ]
+
+        # leaderでも適用
+        result_leader = hook._filter_rules_by_scope(rules, {
+            'transcript_path': leader_tp,
+            'tool_use_id': 'toolu_L1',
+        })
+        assert len(result_leader) == 1
+
+        # subagentでも適用
+        result_sub = hook._filter_rules_by_scope(rules, {
+            'transcript_path': subagent_tp,
+            'tool_use_id': 'toolu_S1',
+        })
+        assert len(result_sub) == 1
+
+    def test_mixed_scope_leader_and_none_leader_session(self, hook, tmp_path):
+        """leader session: scope=leaderは通過、scope=Noneも通過"""
+        transcript_path = self._make_leader_transcript(tmp_path)
+        rules = [
+            {'rule_name': 'deny-leader', 'severity': 'deny',
+             'message': 'leader deny', 'scope': 'leader'},
+            {'rule_name': 'warn-all', 'severity': 'warn',
+             'message': 'all warning', 'scope': None},
+        ]
+        result = hook._filter_rules_by_scope(rules, {
+            'transcript_path': transcript_path,
+            'tool_use_id': 'toolu_L1',
+        })
+        assert len(result) == 2
+
+    def test_mixed_scope_leader_and_none_subagent_session(self, hook, tmp_path):
+        """subagent session: scope=leaderはスキップ、scope=Noneは通過"""
+        transcript_path = self._make_subagent_transcript(tmp_path)
+        rules = [
+            {'rule_name': 'deny-leader', 'severity': 'deny',
+             'message': 'leader deny', 'scope': 'leader'},
+            {'rule_name': 'warn-all', 'severity': 'warn',
+             'message': 'all warning', 'scope': None},
+        ]
+        result = hook._filter_rules_by_scope(rules, {
+            'transcript_path': transcript_path,
+            'tool_use_id': 'toolu_S1',
+        })
+        assert len(result) == 1
+        assert result[0]['rule_name'] == 'warn-all'
+
+    def test_empty_transcript_treated_as_leader(self, hook, tmp_path):
+        """空transcript → leader判定 → scope=leaderルール適用"""
+        transcript = tmp_path / "empty_transcript.jsonl"
+        transcript.write_text("")  # 空ファイル
+
+        rules = [
+            {'rule_name': 'deny-edit', 'severity': 'deny',
+             'message': 'denied', 'scope': 'leader'},
+        ]
+        result = hook._filter_rules_by_scope(rules, {
+            'transcript_path': str(transcript),
+            'tool_use_id': 'toolu_001',
+        })
+        assert len(result) == 1, "空transcript=leader=scope=leaderルール適用"
+
+
+# ============================================================================
+# カテゴリF: ブロッカー再発防止テスト (issue_7313)
+# ============================================================================
+
+class TestBlockerPreventionCoderEdit:
+    """coder(subagent)がEdit時にscope=leader denyが発火しないことの検証
+
+    issue_7291で発生したブロッカー再発防止:
+    coderがEdit/Write/NotebookEditを使用する際に、
+    scope=leader deny rules が誤発火しないことを保証する。
+    """
+
+    @pytest.fixture
+    def hook(self):
+        return ImplementationDesignHook()
+
+    def _make_coder_scenario_transcript(self, tmp_path):
+        """coder（subagent）シナリオのtranscript
+
+        leaderがTask tool_useでcoderを起動 → transcriptにTask存在 → 非leader
+        """
+        transcript = tmp_path / "coder_scenario.jsonl"
+        entries = [
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "text", "text": "コードを修正して"}
+            ]}},
+            # leaderの操作
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_LEADER_001", "name": "Read",
+                 "input": {"file_path": "/src/main.py"}},
+            ]}},
+            # leaderがcoderをsubagentとして起動
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_TASK_CODER", "name": "Task",
+                 "input": {"prompt": "coderとしてsrc/main.pyを修正してください"}},
+            ]}},
+        ]
+        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+        return str(transcript)
+
+    def test_coder_edit_not_blocked_by_leader_deny(self, hook, tmp_path):
+        """coderのEdit → scope=leader deny非発火 → approve"""
+        transcript_path = self._make_coder_scenario_transcript(tmp_path)
+
+        with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+            mock_match.return_value = [{
+                'rule_name': 'leader-edit-deny',
+                'severity': 'deny',
+                'message': 'leaderはファイル編集が禁止されています',
+                'token_threshold': None,
+                'scope': 'leader',
+            }]
+            result = hook.process({
+                'tool_name': 'Edit',
+                'tool_input': {'file_path': '/src/main.py'},
+                'session_id': 'test-session',
+                'tool_use_id': 'toolu_CODER_EDIT_001',
+                'transcript_path': transcript_path,
+            })
+
+        # Task tool_use存在 → 非leader → scope=leaderルールスキップ → approve
+        assert result['decision'] == 'approve'
+
+    def test_coder_write_not_blocked_by_leader_deny(self, hook, tmp_path):
+        """coderのWrite → scope=leader deny非発火 → approve"""
+        transcript_path = self._make_coder_scenario_transcript(tmp_path)
+
+        with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+            mock_match.return_value = [{
+                'rule_name': 'leader-write-deny',
+                'severity': 'deny',
+                'message': 'leaderはファイル編集が禁止されています',
+                'token_threshold': None,
+                'scope': 'leader',
+            }]
+            result = hook.process({
+                'tool_name': 'Write',
+                'tool_input': {'file_path': '/src/new_file.py'},
+                'session_id': 'test-session',
+                'tool_use_id': 'toolu_CODER_WRITE_001',
+                'transcript_path': transcript_path,
+            })
+
+        assert result['decision'] == 'approve'
+
+    def test_coder_notebook_edit_not_blocked(self, hook, tmp_path):
+        """coderのNotebookEdit → scope=leader deny非発火 → approve"""
+        transcript_path = self._make_coder_scenario_transcript(tmp_path)
+
+        with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+            mock_match.return_value = [{
+                'rule_name': 'leader-notebook-deny',
+                'severity': 'deny',
+                'message': 'leaderはファイル編集が禁止されています',
+                'token_threshold': None,
+                'scope': 'leader',
+            }]
+            result = hook.process({
+                'tool_name': 'NotebookEdit',
+                'tool_input': {'notebook_path': '/notebooks/analysis.ipynb'},
+                'session_id': 'test-session',
+                'tool_use_id': 'toolu_CODER_NB_001',
+                'transcript_path': transcript_path,
+            })
+
+        assert result['decision'] == 'approve'
+
+    def test_leader_edit_still_blocked(self, hook, tmp_path):
+        """対照テスト: leaderのEdit → scope=leader deny発火 → block"""
+        transcript = tmp_path / "leader_transcript.jsonl"
+        # Taskなし → leader
+        entry = {
+            "type": "assistant",
+            "message": {"content": [
+                {"type": "tool_use", "id": "toolu_LEADER_001", "name": "Read",
+                 "input": {"file_path": "/src/main.py"}},
+            ]}
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+            mock_match.return_value = [{
+                'rule_name': 'leader-edit-deny',
+                'severity': 'deny',
+                'message': 'leaderはファイル編集が禁止されています',
+                'token_threshold': None,
+                'scope': 'leader',
+            }]
+            result = hook.process({
+                'tool_name': 'Edit',
+                'tool_input': {'file_path': '/src/main.py'},
+                'session_id': 'test-session',
+                'tool_use_id': 'toolu_LEADER_EDIT_001',
+                'transcript_path': str(transcript),
+            })
+
+        # Taskなし → leader → scope=leaderルール適用 → block
+        assert result['decision'] == 'block'
+        assert result.get('skip_warn_only') is True
+
+    def test_parallel_subagents_no_false_leader(self, hook, tmp_path):
+        """並列subagent起動済みtranscript → どのsubagentのEditもapprove"""
+        transcript = tmp_path / "parallel_transcript.jsonl"
+        entries = [
+            {"type": "user", "message": {"role": "user", "content": [
+                {"type": "text", "text": "並列で作業して"}
+            ]}},
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "toolu_TASK_CODER", "name": "Task",
+                 "input": {"prompt": "coder: 実装"}},
+                {"type": "tool_use", "id": "toolu_TASK_TESTER", "name": "Task",
+                 "input": {"prompt": "tester: テスト"}},
+            ]}},
+        ]
+        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
+
+        with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
+            mock_match.return_value = [{
+                'rule_name': 'leader-edit-deny',
+                'severity': 'deny',
+                'message': 'leaderはファイル編集が禁止されています',
+                'token_threshold': None,
+                'scope': 'leader',
+            }]
+            result = hook.process({
+                'tool_name': 'Edit',
+                'tool_input': {'file_path': '/src/main.py'},
+                'session_id': 'test-session',
+                'tool_use_id': 'toolu_CODER_EDIT_001',
+                'transcript_path': str(transcript),
+            })
+
+        assert result['decision'] == 'approve'
