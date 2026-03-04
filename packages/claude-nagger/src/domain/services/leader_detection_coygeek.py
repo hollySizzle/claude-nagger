@@ -1,0 +1,75 @@
+"""coygeek方式leader検出PoC（issue_7327）
+
+GitHub #6885提案のTask tool_use逆順走査によるleader/subagent判定。
+現行is_leader_tool_use()はPreToolUseタイミング問題で常にFalse返却するが、
+coygeek方式はTask tool_useがsubagent起動前にtranscriptに書込済みのため
+タイミング問題を回避可能。
+
+ロジック:
+- transcriptを逆順走査し、最新のTask tool_use（name='Task'）を探す
+- Task tool_useが存在 → subagentが起動済み → 非leader（False）
+- Task tool_useが不在 → leader単独 → leader（True）
+"""
+
+import json
+import logging
+from pathlib import Path
+
+_logger = logging.getLogger(__name__)
+
+
+def is_leader_coygeek(transcript_path: str) -> bool:
+    """coygeek方式: Task tool_use有無でleader判定（PoC）
+
+    transcriptを逆順走査し、Task tool_useの存在を確認。
+    Task tool_useが1つでも存在すればsubagentが起動済み → False（非leader）。
+    Task tool_useが不在 → leader単独 → True。
+
+    Args:
+        transcript_path: main transcript（.jsonl）のパス
+
+    Returns:
+        True: leader（Task tool_useなし）
+        False: 非leader（Task tool_useあり）
+
+    制約:
+        - tool_use_idを使わないため、呼び出し元の特定は不可
+        - leader自身もTask tool_useを発行するため、leaderのPreToolUseでもFalse返却
+        - 複数subagent環境でどのsubagentかは識別不可
+    """
+    path = Path(transcript_path)
+    if not path.exists():
+        _logger.warning(f"is_leader_coygeek: transcript未発見: {transcript_path}")
+        return False  # フォールバック: subagent扱い
+
+    # 全行読み込み後に逆順走査（逆順で最初に見つかったTask tool_useが最新）
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    except (OSError, IOError) as e:
+        _logger.warning(f"is_leader_coygeek: ファイル読み込みエラー: {e}")
+        return False
+
+    for line in reversed(lines):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            entry = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if entry.get("type") != "assistant":
+            continue
+        message = entry.get("message", {})
+        for content_item in message.get("content", []):
+            if content_item.get("type") != "tool_use":
+                continue
+            if content_item.get("name") == "Task":
+                _logger.info(
+                    f"is_leader_coygeek: Task tool_use発見 "
+                    f"id={content_item.get('id')} → 非leader"
+                )
+                return False
+
+    _logger.info("is_leader_coygeek: Task tool_use不在 → leader")
+    return True
