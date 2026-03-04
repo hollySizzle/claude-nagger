@@ -48,7 +48,7 @@ def _make_hook(p2p_config=None):
     return h
 
 
-def _make_input(msg_type, recipient="", content="issue_7157 [test]"):
+def _make_input(msg_type, recipient="", content="issue_7157 [完了]"):
     """テスト用input_data生成"""
     tool_input = {"type": msg_type, "content": content}
     if recipient:

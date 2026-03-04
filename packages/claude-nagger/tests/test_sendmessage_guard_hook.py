@@ -97,10 +97,10 @@ class TestValidateContent:
         assert result["valid"] is False  # ] の後にスペースがあるので不一致
         # 注: ^issue_\d+ \[.+\]$ なので ] で終わる必要がある
 
-    def test_valid_format_detail_inside_brackets(self, hook):
-        """正常: ブラケット内に詳細を含む形式"""
+    def test_invalid_format_detail_inside_brackets(self, hook):
+        """異常: ブラケット内にenum外の詳細を含む形式"""
         result = hook.validate_content("issue_6041 [要判断 スコープ外]")
-        assert result["valid"] is True
+        assert result["valid"] is False
 
     def test_missing_issue_id(self, hook):
         """異常: issue_id なし"""
@@ -125,10 +125,10 @@ class TestValidateContent:
         result = hook.validate_content("issue_6041[完了]")
         assert result["valid"] is False
 
-    def test_long_content_with_valid_format(self, hook):
-        """正常: 長い内容でもフォーマットが正しければ許可"""
+    def test_long_content_with_non_enum_status(self, hook):
+        """異常: enum外のステータスは拒否"""
         result = hook.validate_content("issue_6041 [詳細な状況報告をブラケット内に記載]")
-        assert result["valid"] is True
+        assert result["valid"] is False
 
     def test_custom_pattern(self, hook_with_config):
         """カスタムパターンが適用される"""
@@ -156,16 +156,30 @@ class TestValidateContent:
         assert "フォーマット不一致" in result["violation"]
 
     def test_various_valid_statuses(self, hook):
-        """正常: 様々なステータス表現"""
+        """正常: 全enum値が許可される"""
         valid_contents = [
             "issue_1 [完了]",
-            "issue_99999 [着手中]",
-            "issue_7225 [要判断 追加パターン検討]",
-            "issue_100 [ブロック中 依存チケット未解決]",
+            "issue_99999 [指示]",
+            "issue_7225 [相談]",
+            "issue_100 [確認]",
+            "issue_42 [要判断]",
+            "issue_7777 [ブロッカー]",
         ]
         for content in valid_contents:
             result = hook.validate_content(content)
             assert result["valid"] is True, f"Expected valid: {content}"
+
+    def test_various_invalid_statuses(self, hook):
+        """異常: enum外のステータスは拒否"""
+        invalid_contents = [
+            "issue_1 [着手中]",
+            "issue_2 [ブロック中]",
+            "issue_3 [報告]",
+            "issue_4 [完了しました]",
+        ]
+        for content in invalid_contents:
+            result = hook.validate_content(content)
+            assert result["valid"] is False, f"Expected invalid: {content}"
 
 
 # === should_process テスト ===

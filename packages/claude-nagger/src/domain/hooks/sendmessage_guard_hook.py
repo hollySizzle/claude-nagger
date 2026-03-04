@@ -18,7 +18,7 @@ from domain.services.caller_role_service import get_caller_roles
 from infrastructure.config.config_manager import ConfigManager
 
 # デフォルト設定
-DEFAULT_PATTERN = r"^issue_\d+ \[.+\]$"
+DEFAULT_PATTERN = r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
 DEFAULT_EXEMPT_TYPES = [
     "shutdown_request",
     "shutdown_response",
@@ -31,10 +31,11 @@ SendMessage規約: Redmine基盤通信
 ━━━━━━━━━━━━━━━━━
 違反: {violation}
 必須フォーマット: issue_{{id}} [ステータス]
+許可ステータス: 完了, 指示, 相談, 確認, 要判断, ブロッカー
 対処:
 1. 詳細を Redmine チケットコメントに記載 (add_issue_comment_tool)
 2. SendMessage は "issue_{{id}} [ステータス]" 形式で再送
-許可フォーマット例: "issue_6041 [完了]", "issue_6041 [要判断] スコープ外"\
+許可フォーマット例: "issue_6041 [完了]", "issue_6041 [要判断]"\
 """
 
 
@@ -125,7 +126,7 @@ class SendMessageGuardHook(BaseHook):
         if not re.match(pattern, content):
             return {
                 "valid": False,
-                "violation": "フォーマット不一致。必須形式: issue_{id} [ステータス]",
+                "violation": "フォーマット不一致。必須形式: issue_{id} [完了|指示|相談|確認|要判断|ブロッカー]",
             }
 
         return {"valid": True, "violation": None}
