@@ -986,3 +986,108 @@ class TestPassiveDetection:
             hook._filter_rules_by_scope(rules, sub_input)
 
         assert not any("[passive_detect]" in record.message for record in caplog.records)
+
+
+# --- T4: 実transcriptフィクスチャテスト (#7232) ---
+
+class TestIsLeaderToolUseRealTranscript:
+    """enriched形式（実transcript構造）でのis_leader_tool_use()テスト"""
+
+    FIXTURE_PATH = Path(__file__).parent / "fixtures" / "claude_code" / "transcript" / "real_transcript_sample.jsonl"
+
+    def test_real_transcript_leader_found(self):
+        """enriched形式transcriptからtool_use_id検出→True"""
+        assert is_leader_tool_use(str(self.FIXTURE_PATH), "toolu_01REAL_LEADER_AAA") is True
+
+    def test_real_transcript_not_found(self):
+        """存在しないtool_use_idで→False"""
+        assert is_leader_tool_use(str(self.FIXTURE_PATH), "toolu_01NONEXISTENT_999") is False
+
+    def test_real_transcript_structure_matches_synthetic(self, tmp_path):
+        """enriched形式と既存合成形式（TestIsLeaderToolUseStandalone）で同一結果"""
+        # 合成形式（最小構造）
+        synthetic = tmp_path / "synthetic.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "toolu_01REAL_LEADER_BBB", "name": "Edit"}
+                ]
+            }
+        }
+        synthetic.write_text(json.dumps(entry) + "\n")
+
+        target_id = "toolu_01REAL_LEADER_BBB"
+        missing_id = "toolu_01NONEXISTENT_999"
+
+        # enriched形式と合成形式で同一結果
+        assert is_leader_tool_use(str(self.FIXTURE_PATH), target_id) == is_leader_tool_use(str(synthetic), target_id)
+        assert is_leader_tool_use(str(self.FIXTURE_PATH), missing_id) == is_leader_tool_use(str(synthetic), missing_id)
+
+    def test_real_transcript_multiple_entries(self):
+        """複数assistantエントリ走査（異なるエントリのtool_use_id検出）"""
+        # 1番目のassistantエントリのID
+        assert is_leader_tool_use(str(self.FIXTURE_PATH), "toolu_01REAL_LEADER_AAA") is True
+        # 2番目のassistantエントリのID
+        assert is_leader_tool_use(str(self.FIXTURE_PATH), "toolu_01REAL_LEADER_BBB") is True
+        assert is_leader_tool_use(str(self.FIXTURE_PATH), "toolu_01REAL_LEADER_CCC") is True
+
+
+# --- T5: transcript形式スキーマ検証テスト (#7233) ---
+
+class TestTranscriptSchemaValidation:
+    """transcript JSONL形式のスキーマ検証テスト"""
+
+    FIXTURE_PATH = Path(__file__).parent / "fixtures" / "claude_code" / "transcript" / "real_transcript_sample.jsonl"
+
+    @pytest.fixture
+    def entries(self):
+        """フィクスチャファイルの全エントリを読み込み"""
+        result = []
+        with open(self.FIXTURE_PATH, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    result.append(json.loads(line))
+        return result
+
+    def test_assistant_entry_has_message(self, entries):
+        """type:assistantエントリにmessageキー存在"""
+        assistant_entries = [e for e in entries if e.get("type") == "assistant"]
+        assert len(assistant_entries) >= 1, "assistantエントリが存在しない"
+        for entry in assistant_entries:
+            assert "message" in entry, f"messageキー欠落: uuid={entry.get('uuid')}"
+
+    def test_message_has_content_list(self, entries):
+        """messageにcontentリスト存在"""
+        assistant_entries = [e for e in entries if e.get("type") == "assistant"]
+        for entry in assistant_entries:
+            message = entry["message"]
+            assert "content" in message, "contentキー欠落"
+            assert isinstance(message["content"], list), "contentがリストでない"
+            assert len(message["content"]) >= 1, "contentが空"
+
+    def test_tool_use_has_required_fields(self, entries):
+        """type:tool_useエントリにid,nameフィールド存在"""
+        tool_uses = []
+        for entry in entries:
+            if entry.get("type") != "assistant":
+                continue
+            for item in entry.get("message", {}).get("content", []):
+                if isinstance(item, dict) and item.get("type") == "tool_use":
+                    tool_uses.append(item)
+
+        assert len(tool_uses) >= 1, "tool_useエントリが存在しない"
+        for tu in tool_uses:
+            assert "id" in tu, f"idフィールド欠落: {tu}"
+            assert "name" in tu, f"nameフィールド欠落: {tu}"
+
+    def test_non_assistant_entries_structure(self, entries):
+        """type:user等のエントリ形式確認"""
+        non_assistant = [e for e in entries if e.get("type") != "assistant"]
+        assert len(non_assistant) >= 1, "non-assistantエントリが存在しない"
+        for entry in non_assistant:
+            assert "type" in entry, "typeキー欠落"
+            assert "message" in entry, "messageキー欠落"
+            assert "uuid" in entry, "uuidキー欠落"
+            assert "timestamp" in entry, "timestampキー欠落"
