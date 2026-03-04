@@ -1404,3 +1404,10 @@ class TestBuiltinToolAllowForSubagents:
             result = hook.process(input_data)
 
         _assert_not_deny(result)
+
+
+def test_tech_lead_git_commit_permission_marker():
+    """tech-leadのgit commit権限検証マーカー (issue_7217)"""
+    # tech-leadがこのファイルの変更をgit commitできることを検証する
+    # conventions denyでブロックされないことの確認用
+    assert True
