@@ -147,10 +147,8 @@ class SendMessageGuardHook(BaseHook):
             return {"valid": True}
 
         # caller roles 取得
-        tool_use_id = input_data.get('tool_use_id', '')
-        transcript_path = input_data.get('transcript_path', '')
         logger = logging.getLogger(__name__)
-        roles = get_caller_roles(input_data, tool_use_id, transcript_path, logger)
+        roles = get_caller_roles(input_data, logger=logger)
 
         # role不明 → allow（安全側: leader or 未識別）
         if not roles:
