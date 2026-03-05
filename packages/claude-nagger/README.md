@@ -8,6 +8,22 @@
 
 セッション管理、ファイル/コマンド規約、フック制御をYAML設定で宣言的に定義し、Claude Codeのフックイベント（PreToolUse / PostToolUse / Stop 等）経由で自動的に強制できます。
 
+## Claude Code公式機能との差分
+
+Claude Code本体もhooksシステムやagent frontmatter（`disallowedTools`, `tools`）でsubagent制御機能を提供しています。**claude-naggerは、公式機能だけでは実現できない以下の領域を補完します。**
+
+| 課題 | Claude Code公式 | claude-nagger |
+|------|----------------|---------------|
+| **PreToolUseでのcaller agent判定** | agent_id/agent_typeはSubagentStart/Stop時のみ提供。PreToolUse発火時にどのagentが呼び出したか判定不可 | agent_idフィールドを活用し、全PreToolUseイベントでleader/subagentを即座に判定 |
+| **role別の動的ツール制御** | `disallowedTools`による静的制限のみ。実行時の文脈に応じた制御不可 | conventions YAMLのdeny/scope体系で、role×ツール×条件の動的制御が可能 |
+| **セッション開始時の規約通知・宣言強制** | なし | session_startup hookでrole別の規約をブロッキング通知し、宣言を強制 |
+| **宣言的な規約管理** | agent frontmatterはagent単位の定義のみ | file/command/mcp_conventionsをYAMLで宣言的に定義し、プロジェクト全体に横断適用 |
+| **agent間通信の動的制御** | なし | SendMessageGuardでrole間通信マトリクスを定義し、許可経路のみ通信可能 |
+| **conventions判定の監査ログ** | なし | convention_logテーブルに全判定結果をDB永続化。監査・デバッグ時にSQL照会可能 |
+| **subagentライフサイクルのDB管理** | SubagentStart/Stopイベントのみ | SQLiteでsubagent登録/解除/履歴/roleマッチングを永続管理 |
+
+> **補足**: Claude Code v2.0.30以降のagent frontmatter `disallowedTools`/`tools`は、subagentのツール制限に有効です。claude-naggerの動的制御と公式の静的制限を併用することを推奨します。
+
 ## 主な特徴
 
 - **宣言的YAML設定** - フック動作・規約をコードを書かずにYAMLで定義

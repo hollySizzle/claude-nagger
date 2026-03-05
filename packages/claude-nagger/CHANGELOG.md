@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### leader判定のagent_id方式への完全移行
+Claude Code公式のhookイベントにはPreToolUse時点でcaller agentを識別するフィールドがない。従来のtranscript走査はファイル書込タイミングに依存し不安定だった。hookイベントのagent_idフィールド（undocumented）を直接参照する方式に全面移行し、判定の確実性と速度を大幅に改善した。
+→ transcript走査の完全廃止により、leader/subagent判定が即座かつ確実に動作するようになった。
+- leader判定をagent_id有無判定に置換: is_leader_tool_use()刷新 (issue_7312, issue_7352)
+- coygeek方式PoC残骸クリーンアップ (issue_7351)
+- get_caller_roles()新シグネチャ移行 (issue_7352, issue_7353, issue_7354)
+- should_process()でcallerのagent_idによるsubagentレコード直接特定 (issue_7412)
+- agent_idベース移行E2Eテスト整備 (issue_7355, issue_7356)
+- session-startup: subagent config未定義時のスキップ対応 (issue_7390)
+
+### 設定体系の簡素化
+rules/ディレクトリとconventions YAMLの二重管理で、どちらが権威的か混乱していた。rules/フォールバックを廃止し.claude-nagger/に一本化、初回セットアップ時にconventions YAML雛形を自動生成するようにした。
+→ 設定ファイルの配置先が.claude-nagger/に統一され、初期導入が簡素化された。
+- rules/フォールバック廃止・convention YAML雛形生成追加 (issue_7425, issue_7426)
+- rules/ディレクトリ廃止・.claude-nagger/統合 (issue_7427, issue_7428)
+
+### テスト・ドキュメント
+- テスト計画・PMOロール誤認識バグ報告ドキュメント追加 (issue_7435)
+- ドキュメント更新・レガシーテストクリーンアップ (issue_7357)
+
 ## [3.0.0] - 2026-03-04
 
 role別権限制御・監査基盤・通信制御を導入し、leader/subagent間の責務分離を技術的に強制可能にした。
