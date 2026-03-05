@@ -14,6 +14,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from domain.hooks.base_hook import BaseHook
 from infrastructure.db import NaggerStateDB, SubagentRepository, SessionRepository, SubagentHistoryRepository, SUBAGENT_TOOL_NAMES
 from shared.constants import SUGGESTED_RULES_FILENAME, SUGGESTED_RULES_DIRNAME
+from shared.trusted_prefixes import resolve_trusted_prefix
 
 
 def _deep_copy_dict(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -123,24 +124,6 @@ class SessionStartupHook(BaseHook):
             self.log_error(f"❌ Failed to load config: {e}")
             return {}
 
-    def _load_trusted_prefixes(self) -> dict:
-        """config.yamlからrole_resolution.trusted_prefixesを読み込む
-
-        self.configはsession_startupセクションのみなので、
-        config.yamlを再読み込みしてrole_resolutionセクションを取得する。
-        """
-        project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
-        base_path = Path(project_dir) if project_dir else Path.cwd()
-        config_file = base_path / ".claude-nagger" / "config.yaml"
-        try:
-            if config_file.exists():
-                with open(config_file, 'r', encoding='utf-8') as f:
-                    data = yaml.safe_load(f)
-                return (data or {}).get('role_resolution', {}).get('trusted_prefixes', {})
-        except Exception as e:
-            self.log_error(f"Failed to load trusted_prefixes: {e}")
-        return {}
-
     def should_skip_session(self, session_id: str, input_data: Dict[str, Any]) -> bool:
         """SessionStartupHookは独自のセッション管理機構(should_process内)を使用するため、
         BaseHookのセッション処理済みチェックを常にバイパスしてshould_processに委ねる。
@@ -167,18 +150,14 @@ class SessionStartupHook(BaseHook):
             解決済み設定辞書。_matched_type_specific: bool でconfig.yamlにマッチしたかを示す
         """
         # trusted_prefixes照合: agent_typeから直接roleを確定（race condition回避）
-        trusted_prefixes = self._load_trusted_prefixes()
-        if trusted_prefixes and agent_type:
-            # 最長一致: キーを長い順にソートし最初にマッチしたものを採用
-            for prefix in sorted(trusted_prefixes.keys(), key=len, reverse=True):
-                if agent_type.startswith(prefix):
-                    resolved_role = trusted_prefixes[prefix]
-                    self.log_info(
-                        f"trusted_prefix match: agent_type={agent_type}, "
-                        f"prefix={prefix}, role={role}->{resolved_role}"
-                    )
-                    role = resolved_role
-                    break
+        if agent_type:
+            trusted_role = resolve_trusted_prefix(agent_type)
+            if trusted_role:
+                self.log_info(
+                    f"trusted_prefix match: agent_type={agent_type}, "
+                    f"role={role}->{trusted_role}"
+                )
+                role = trusted_role
         overrides = self.config.get("overrides", {})
         subagent_default = overrides.get("subagent_default", {})
         subagent_types = overrides.get("subagent_types", {})
