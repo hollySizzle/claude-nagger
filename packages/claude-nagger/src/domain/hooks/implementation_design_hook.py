@@ -11,7 +11,7 @@ from domain.hooks.base_hook import BaseHook
 from domain.services.file_convention_matcher import FileConventionMatcher
 from domain.services.command_convention_matcher import CommandConventionMatcher
 from domain.services.mcp_convention_matcher import McpConventionMatcher
-from domain.services.leader_detection import is_leader_tool_use
+from domain.services.leader_detection import is_leader_tool_use, find_caller_agent_id
 from infrastructure.config.config_manager import ConfigManager
 from shared.structured_logging import get_logger
 
@@ -152,6 +152,114 @@ class ImplementationDesignHook(BaseHook):
             f"tool_use_id={tool_use_id}, transcript_path={transcript_path!r}, "
             f"caller_is_leader={caller_is_leader}, rules_count={len(rule_infos)}"
         )
+
+        # === デバッグダンプ: subagent transcript書込タイミング実測 (issue_7314) ===
+        try:
+            import json as _json
+            import glob as _glob
+            import datetime as _dt
+
+            debug_data = {
+                "timestamp": _dt.datetime.now().isoformat(),
+                "tool_use_id": tool_use_id,
+                "transcript_path": transcript_path,
+                "caller_is_leader": caller_is_leader,
+                "tool_name": input_data.get("tool_name", ""),
+                "scoped_rules": [r.get("rule_name") for r in rule_infos if r.get("scope")],
+            }
+
+            # find_caller_agent_idの結果
+            caller_agent_id = None
+            if transcript_path and tool_use_id:
+                try:
+                    caller_agent_id = find_caller_agent_id(transcript_path, tool_use_id)
+                except Exception as e:
+                    caller_agent_id = f"ERROR: {e}"
+            debug_data["find_caller_agent_id_result"] = caller_agent_id
+
+            # subagents/agent-*.jsonlファイルの存在確認と内容サンプル
+            subagent_files = {}
+            if transcript_path:
+                transcript_dir = str(Path(transcript_path).parent)
+                subagents_dir = str(Path(transcript_dir) / "subagents")
+                agent_files = _glob.glob(f"{subagents_dir}/agent-*.jsonl")
+                for af in agent_files:
+                    try:
+                        with open(af, "r", encoding="utf-8") as _f:
+                            lines = _f.readlines()
+                        # 最後の5行のみダンプ（ファイルサイズ制限）
+                        tail_lines = lines[-5:] if len(lines) > 5 else lines
+                        parsed_tail = []
+                        for ln in tail_lines:
+                            ln = ln.strip()
+                            if ln:
+                                try:
+                                    entry = _json.loads(ln)
+                                    # tool_use情報のみ抽出
+                                    if entry.get("type") == "assistant":
+                                        for ci in entry.get("message", {}).get("content", []):
+                                            if ci.get("type") == "tool_use":
+                                                parsed_tail.append({
+                                                    "type": "tool_use",
+                                                    "id": ci.get("id"),
+                                                    "name": ci.get("name"),
+                                                })
+                                    else:
+                                        parsed_tail.append({"type": entry.get("type")})
+                                except _json.JSONDecodeError:
+                                    parsed_tail.append({"raw": ln[:100]})
+                        subagent_files[Path(af).name] = {
+                            "total_lines": len(lines),
+                            "tail_entries": parsed_tail,
+                        }
+                    except Exception as e:
+                        subagent_files[Path(af).name] = {"error": str(e)}
+                debug_data["subagents_dir"] = subagents_dir
+                debug_data["subagent_files_found"] = len(agent_files)
+            debug_data["subagent_files"] = subagent_files
+
+            # main transcript内のTask tool_use確認
+            task_tool_uses = []
+            if transcript_path and Path(transcript_path).exists():
+                try:
+                    with open(transcript_path, "r", encoding="utf-8") as _f:
+                        for ln in _f:
+                            ln = ln.strip()
+                            if not ln:
+                                continue
+                            try:
+                                entry = _json.loads(ln)
+                            except _json.JSONDecodeError:
+                                continue
+                            if entry.get("type") != "assistant":
+                                continue
+                            for ci in entry.get("message", {}).get("content", []):
+                                if ci.get("type") == "tool_use" and ci.get("name") == "Task":
+                                    task_tool_uses.append({
+                                        "id": ci.get("id"),
+                                        "name": ci.get("name"),
+                                    })
+                except Exception:
+                    pass
+            debug_data["task_tool_uses_in_main_transcript"] = task_tool_uses
+
+            # /tmp/leader_debug.jsonに追記
+            debug_path = "/tmp/leader_debug.json"
+            existing = []
+            if Path(debug_path).exists():
+                try:
+                    with open(debug_path, "r", encoding="utf-8") as _f:
+                        existing = _json.load(_f)
+                except Exception:
+                    existing = []
+            existing.append(debug_data)
+            with open(debug_path, "w", encoding="utf-8") as _f:
+                _json.dump(existing, _f, ensure_ascii=False, indent=2)
+
+            _logger.info(f"[issue_7314_debug] ダンプ完了: {debug_path} ({len(existing)}件)")
+        except Exception as e:
+            _logger.warning(f"[issue_7314_debug] ダンプ失敗: {e}")
+        # === デバッグダンプ終了 ===
 
         # パッシブ異常検出: is_leader_tool_use連続False (#7235)
         if caller_is_leader:
