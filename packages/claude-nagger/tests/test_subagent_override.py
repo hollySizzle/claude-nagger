@@ -337,7 +337,7 @@ class TestSessionStartupHookShouldProcessSubagent:
             return SessionStartupHook()
 
     def test_subagent_detected_new(self):
-        """新規subagent検出時はTrue（DBベース, agent_idあり=subagent）"""
+        """新規subagent検出時はTrue（DBベース, config定義済みrole）"""
         hook = self._make_hook()
 
         mock_db = MagicMock()
@@ -348,13 +348,13 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record = MagicMock()
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-abc"
-        mock_record.role = None
+        mock_record.role = "coder"
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    # agent_idあり = subagent
+                    # agent_idあり = subagent, role=coderはconfig定義済み
                     result = hook.should_process({"session_id": "test-session", "agent_id": "agent-abc"})
 
         assert result is True
@@ -475,8 +475,8 @@ class TestSessionStartupHookShouldProcessSubagent:
         assert hook._is_subagent is True
         assert hook._current_agent_id == "agent-abc"
 
-    def test_subagent_with_agent_id_allows_blocking(self):
-        """agent_idあり（subagent）→ ブロッキング発火"""
+    def test_subagent_config_undefined_skips_with_mark_processed(self):
+        """issue_7390: config未定義subagentはスキップ+mark_processed実行"""
         hook = self._make_hook()
 
         mock_db = MagicMock()
@@ -498,8 +498,81 @@ class TestSessionStartupHookShouldProcessSubagent:
                         "agent_id": "agent-abc",
                     })
 
+        assert result is False
+        # mark_processedが呼ばれてstartup_processedフラグが正常にマークされること
+        mock_subagent_repo.mark_processed.assert_called_once_with("agent-abc")
+
+    def test_subagent_config_defined_role_processes(self):
+        """issue_7390: config定義済みroleのsubagentはTrue（正常処理）"""
+        hook = self._make_hook()
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "general-purpose"
+        mock_record.agent_id = "agent-pmo"
+        mock_record.role = "tester"
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "agent_id": "agent-pmo",
+                    })
+
         assert result is True
         assert hook._is_subagent is True
+
+    def test_subagent_config_defined_agent_type_processes(self):
+        """issue_7390: config定義済みagent_typeのsubagentはTrue"""
+        hook = self._make_hook()
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = True
+        mock_record = MagicMock()
+        mock_record.agent_type = "Bash"
+        mock_record.agent_id = "agent-bash"
+        mock_record.role = None
+        mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "agent_id": "agent-bash",
+                    })
+
+        assert result is True
+        assert hook._is_subagent is True
+
+    def test_leader_not_affected_by_config_skip(self):
+        """issue_7390: leaderはconfig未定義スキップの影響を受けない"""
+        hook = self._make_hook()
+
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.is_any_active.return_value = False
+        mock_session_repo.is_processed_context_aware.return_value = False
+
+        with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+            with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    # agent_id不在 = leader
+                    result = hook.should_process({"session_id": "new-session"})
+
+        assert result is True
+        assert hook._is_subagent is False
 
 
 class TestSessionStartupHookProcessSubagent:
@@ -1012,7 +1085,8 @@ class TestShouldProcessRoleParsing:
         mock_subagent_repo.update_role.assert_not_called()
 
     def test_no_role_in_transcript_no_update(self, tmp_path):
-        """transcriptにROLEがない場合はupdate_role呼ばれない（retry_matchもNone）"""
+        """transcriptにROLEがない場合はupdate_role呼ばれない（retry_matchもNone）
+        role=Noneかつconfig未定義→スキップ（issue_7390）"""
         hook = self._make_hook()
 
         transcript = tmp_path / "transcript.jsonl"
@@ -1041,8 +1115,10 @@ class TestShouldProcessRoleParsing:
                             "transcript_path": str(transcript),
                         })
 
-        assert result is True
+        # role=None + agent_type未定義 → config未マッチでスキップ（issue_7390）
+        assert result is False
         mock_subagent_repo.update_role.assert_not_called()
+        mock_subagent_repo.mark_processed.assert_called_once_with("agent-no-role")
 
     def test_role_passed_to_resolve_subagent_config(self, tmp_path):
         """解析されたroleが_resolve_subagent_configに渡される（retry_matchがNoneでフォールバック時）"""
@@ -1291,9 +1367,10 @@ class TestShouldProcessRetryMatch:
 
         transcript = tmp_path / "transcript.jsonl"
         with open(transcript, 'w') as f:
+            # config定義済みrole（coder）を使用（issue_7390: 未定義roleはスキップ対象）
             f.write(json.dumps({"type": "assistant", "message": {"content": [
                 {"type": "tool_use", "id": "toolu_01", "name": "Task",
-                 "input": {"subagent_type": "reviewer", "prompt": "Review."}},
+                 "input": {"subagent_type": "coder", "prompt": "Fix."}},
             ]}}) + '\n')
 
         mock_db = MagicMock()
@@ -1320,7 +1397,7 @@ class TestShouldProcessRetryMatch:
 
         assert result is True
         # retry_matchが失敗したのでtranscript解析でupdate_roleが呼ばれる
-        mock_subagent_repo.update_role.assert_called_once_with("agent-fallback", "reviewer", "transcript_parse")
+        mock_subagent_repo.update_role.assert_called_once_with("agent-fallback", "coder", "transcript_parse")
 
     def test_retry_match_not_called_when_role_exists(self, tmp_path):
         """既にroleがある場合はretry_matchが呼ばれない"""
@@ -1353,7 +1430,8 @@ class TestShouldProcessRetryMatch:
         mock_subagent_repo.retry_match_from_agent_progress.assert_not_called()
 
     def test_retry_match_not_called_without_transcript_path(self):
-        """transcript_pathがない場合はretry_matchが呼ばれない"""
+        """transcript_pathがない場合はretry_matchが呼ばれない
+        role=Noneかつconfig未定義→スキップ（issue_7390）"""
         hook = self._make_hook()
 
         mock_db = MagicMock()
@@ -1376,8 +1454,10 @@ class TestShouldProcessRetryMatch:
                         "agent_id": "agent-no-transcript",
                     })
 
-        assert result is True
+        # role=None + agent_type未定義 → config未マッチでスキップ（issue_7390）
+        assert result is False
         mock_subagent_repo.retry_match_from_agent_progress.assert_not_called()
+        mock_subagent_repo.mark_processed.assert_called_once_with("agent-no-transcript")
 
 
 class TestStripNumericSuffix:

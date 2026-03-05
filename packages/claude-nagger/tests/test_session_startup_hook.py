@@ -192,8 +192,12 @@ class TestShouldProcessSubagent:
     """should_process メソッドのsubagent検出テスト（DBベース）"""
 
     def test_subagent_detected_new(self):
-        """新規subagent検出時にTrueを返す"""
-        config = {'enabled': True, 'behavior': {'once_per_session': True}}
+        """新規subagent検出時にTrueを返す（config定義済みrole）"""
+        config = {
+            'enabled': True,
+            'behavior': {'once_per_session': True},
+            'overrides': {'subagent_types': {'coder': {'enabled': True}}},
+        }
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
             hook = SessionStartupHook()
 
@@ -207,7 +211,7 @@ class TestShouldProcessSubagent:
             mock_record = MagicMock()
             mock_record.agent_type = 'Task'
             mock_record.agent_id = 'agent-123'
-            mock_record.role = None
+            mock_record.role = 'coder'
             mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
             with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
@@ -1055,7 +1059,11 @@ class TestShouldProcessSubagentAgentIdBased:
 
     def _setup_subagent_mocks(self):
         """共通モックセットアップ"""
-        config = {'enabled': True, 'behavior': {'once_per_session': True}}
+        config = {
+            'enabled': True,
+            'behavior': {'once_per_session': True},
+            'overrides': {'subagent_types': {'coder': {'enabled': True}}},
+        }
         mock_db = MagicMock()
         mock_subagent_repo = MagicMock()
         mock_session_repo = MagicMock()

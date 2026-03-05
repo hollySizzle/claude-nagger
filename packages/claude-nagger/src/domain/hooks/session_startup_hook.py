@@ -152,7 +152,7 @@ class SessionStartupHook(BaseHook):
             role: サブエージェントのロール（優先マッチキー）
 
         Returns:
-            解決済み設定辞書
+            解決済み設定辞書。_matched_type_specific: bool でconfig.yamlにマッチしたかを示す
         """
         overrides = self.config.get("overrides", {})
         subagent_default = overrides.get("subagent_default", {})
@@ -160,6 +160,7 @@ class SessionStartupHook(BaseHook):
         # role完全一致 → role末尾-数字除去 → agent_type完全一致
         # → agent_type末尾-数字除去 → ":"区切り末尾 → 空dictフォールバック
         type_specific = None
+        matched = False
         if role:
             type_specific = subagent_types.get(role)
             # role末尾-数字除去フォールバック（例: tester-2 → tester）
@@ -176,15 +177,18 @@ class SessionStartupHook(BaseHook):
                 type_specific = subagent_types.get(base_agent_type)
         if type_specific is None and ":" in agent_type:
             short_name = agent_type.rsplit(":", 1)[-1]
-            type_specific = subagent_types.get(short_name, {})
-        elif type_specific is None:
+            type_specific = subagent_types.get(short_name)
+        if type_specific is None:
             type_specific = {}
+        else:
+            matched = True
 
         # base設定をコピー
         resolved = {
             "enabled": self.config.get("enabled", True),
             "messages": _deep_copy_dict(self.config.get("messages", {})),
             "behavior": _deep_copy_dict(self.config.get("behavior", {})),
+            "_matched_type_specific": matched,
         }
 
         # subagent_defaultで上書き
@@ -193,7 +197,7 @@ class SessionStartupHook(BaseHook):
         # subagent_types.{type}でさらに上書き
         _deep_merge(resolved, type_specific)
 
-        self.log_info(f"🔧 Resolved subagent config for '{agent_type}': enabled={resolved.get('enabled')}")
+        self.log_info(f"🔧 Resolved subagent config for '{agent_type}': enabled={resolved.get('enabled')}, matched={matched}")
         return resolved
 
     def _parse_role_from_transcript(self, transcript_path: str, parent_tool_use_id: Optional[str] = None) -> Optional[str]:
@@ -379,6 +383,17 @@ class SessionStartupHook(BaseHook):
             # override設定でenabled: falseの場合はスキップ
             if not resolved.get("enabled", True):
                 self.log_info(f"❌ Subagent type '{agent_type}' is disabled by overrides")
+                db.close()
+                return False
+
+            # config.yamlにsubagent_types定義がない場合はスキップ（issue_7390）
+            # startup_processedはマークしてclaim_next_unprocessedの副作用を回避
+            if not resolved.get("_matched_type_specific", False):
+                self.log_info(
+                    f"⏭️ Subagent type '{agent_type}' (role={role}) has no "
+                    f"config definition, skipping session-startup"
+                )
+                subagent_repo.mark_processed(agent_id)
                 db.close()
                 return False
 
