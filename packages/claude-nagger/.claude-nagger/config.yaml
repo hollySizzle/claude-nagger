@@ -1,6 +1,15 @@
 # claude-nagger 設定ファイル（ticket-tasukiサンプル）
 # claude-naggarの詳細: https://github.com/hollySizzle/claude-nagger
 
+# ロール解決設定（agent_typeの前方一致でroleを確定）
+role_resolution:
+  trusted_prefixes:
+    "ticket-tasuki:coder": "coder"
+    "ticket-tasuki:pmo": "pmo"
+    "ticket-tasuki:tech-lead": "tech-lead"
+    "ticket-tasuki:tester": "tester"
+    "ticket-tasuki:researcher": "researcher"
+
 # セッション開始時設定
 session_startup:
   enabled: true

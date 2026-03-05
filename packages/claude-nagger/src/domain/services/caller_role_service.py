@@ -6,7 +6,38 @@ issue_7352: agent_idベースに移行。transcript走査を全廃。
 """
 
 import logging
+import os
+from pathlib import Path
 from typing import Optional
+
+import yaml
+
+
+def _load_trusted_prefixes(logger: logging.Logger) -> dict:
+    """config.yamlからrole_resolution.trusted_prefixesを読み込む"""
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    base_path = Path(project_dir) if project_dir else Path.cwd()
+    config_file = base_path / ".claude-nagger" / "config.yaml"
+    try:
+        if config_file.exists():
+            with open(config_file, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            return (data or {}).get('role_resolution', {}).get('trusted_prefixes', {})
+    except Exception as e:
+        logger.warning(f"Failed to load trusted_prefixes: {e}")
+    return {}
+
+
+def _resolve_trusted_prefix(agent_type: str, logger: logging.Logger) -> Optional[str]:
+    """agent_typeをtrusted_prefixesで前方一致照合し、確定roleを返す（最長一致）"""
+    prefixes = _load_trusted_prefixes(logger)
+    if not prefixes:
+        return None
+    # 最長一致: キーを長い順にソートし最初にマッチしたものを採用
+    for prefix in sorted(prefixes.keys(), key=len, reverse=True):
+        if agent_type.startswith(prefix):
+            return prefixes[prefix]
+    return None
 
 
 def get_caller_roles(
@@ -38,6 +69,15 @@ def get_caller_roles(
             subagent_repo = SubagentRepository(db)
             record = subagent_repo.get(agent_id)
             db.close()
+            # trusted_prefixes照合: agent_typeから直接roleを確定（race condition回避）
+            if record and record.agent_type:
+                trusted_role = _resolve_trusted_prefix(record.agent_type, logger)
+                if trusted_role:
+                    logger.info(
+                        f"CALLER ROLES (trusted_prefix): agent_id={agent_id}, "
+                        f"agent_type={record.agent_type}, role={trusted_role}"
+                    )
+                    return {trusted_role}
             if record and record.role:
                 from infrastructure.db.subagent_repository import _normalize_role, _get_known_roles_from_config
                 known_roles = _get_known_roles_from_config()
