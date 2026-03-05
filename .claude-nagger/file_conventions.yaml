@@ -1,13 +1,146 @@
 # ファイル編集規約定義
-# 特定のファイルパターンに対して適用される規約を定義します
+# 特定のファイルパターンに対して適用される規約ドキュメントを定義します
+# ClaudeCodeがこれらのファイルを編集する際に、規約確認を促します
 
 rules:
-  # 例: View層編集規約
-  # - name: "View層編集規約"
-  #   patterns:
-  #     - "**/app/views/**/*.erb"
-  #   severity: "block"  # block: 完全ブロック, warn: 警告のみ
-  #   token_threshold: 35000
-  #   message: |
-  #     このファイルを変更する場合は規約を確認してください
-  []
+  # View層関連
+  - name: "View層編集規約"
+    patterns:
+      - "**/app/views/**.erb"
+      - "app/views/**.erb"
+      - "app/views/**/*.erb"
+      - "**/app/views/**.html.erb"
+      - "app/views/**.html.erb"
+    severity: "block"
+    token_threshold: 35000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/view_standards.md をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+
+  # フック開発関連
+  - name: "Claude Codeフック開発規約"
+    patterns:
+      - "**/src/domain/hooks/*.py"
+      - "src/domain/hooks/*.py"
+      - "**/src/domain/hooks/**/*.py"
+    severity: "warn"
+    token_threshold: 30000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/claude_code_hook_testing.yaml をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+
+  # テストフィクスチャ関連
+  - name: "テストフィクスチャ管理規約"
+    patterns:
+      - "**/tests/fixtures/**/*.json"
+      - "tests/fixtures/**/*.json"
+      - "**/tests/fixtures/claude_code/**"
+    severity: "block"
+    token_threshold: 20000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/claude_code_hook_testing.yaml をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+
+  # 規約ドキュメント関連
+  - name: "規約ドキュメント編集規約"
+    patterns:
+      - "**/vibes/docs/rules/*.yaml"
+      - "vibes/docs/rules/*.yaml"
+      - "**/vibes/docs/rules/*.md"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/documentation_standards.yaml をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+
+  # Python コード全般
+  - name: "Pythonコーディング規約"
+    patterns:
+      - "**/src/**/*.py"
+      - "src/**/*.py"
+      - "**/scripts/*.py"
+      - "scripts/*.py"
+    severity: "warn"
+    token_threshold: 40000
+    message: |
+      このファイルを変更する場合は､ @vibes/docs/rules/coding_standards.yaml をよく確認し従うこと
+      作業を続けるためには､上記ドキュメントを確認したことを示してください
+      また実装完了後は pytest tests/ -v を実行し、テスト成功を確認すること
+
+  # 設定ファイル(TOML)関連
+  - name: "設定ファイル(TOML)変更確認"
+    patterns:
+      - "**/*.toml"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      TOML設定ファイルを変更する際の注意:
+      - 変更が他の設定に影響しないか確認
+      - 特にpyproject.tomlのバージョン変更時はCHANGELOG.mdと一貫性を保つこと
+
+  # ドキュメント(Markdown)関連
+  - name: "ドキュメント(Markdown)更新確認"
+    patterns:
+      - "**/*.md"
+    severity: "warn"
+    token_threshold: 25000
+    message: |
+      Markdownドキュメント更新時の注意:
+      - 内容の正確性を確認
+      - リンク切れがないか確認
+      - 特にCHANGELOG.md更新時はpyproject.tomlのバージョンと一貫性を保つこと
+
+  # ticket-tasuki独立リポジトリ
+  - name: "ticket-tasuki独立リポジトリ警告"
+    patterns:
+      - ".claude/plugins/ticket-tasuki/**/*"
+    severity: "warn"
+    message: |
+      .claude/plugins/ticket-tasuki/ は独立gitリポジトリです（origin: github.com/hollySizzle/ticket-tasuki）。
+      親リポジトリ（claude-nagger）でコミットしてもこのディレクトリの変更は反映されません。
+      変更後は cd .claude/plugins/ticket-tasuki/ && git add && git commit でticket-tasukiリポジトリ側でもコミットしてください。
+
+  # --- role別制約 (#7058) ---
+
+  # 制約#1: leader Edit/Write/NotebookEdit全ファイルdeny
+  - name: "leader全ファイル編集禁止"
+    patterns:
+      - "**/*"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはファイル編集が禁止されています。
+      コード操作はsubagentに委譲してください（実装→coder、テスト→tester）
+
+  # 制約#5: tester プロダクションコード編集deny
+  - name: "testerプロダクションコード編集禁止"
+    patterns:
+      - "src/**/*"
+      - "**/src/**/*"
+    severity: "deny"
+    scope: "tester"
+    message: |
+      testerはプロダクションコード(src/**)の編集が禁止されています。
+      テストコード(tests/**)のみ編集可能です
+
+  # --- role別制約 (#7145) ---
+
+  # 制約#7: pmo全ファイル編集禁止
+  - name: "pmo全ファイル編集禁止"
+    patterns:
+      - "**/*"
+    severity: "deny"
+    scope: "pmo"
+    message: |
+      pmoはファイル編集が禁止されています。
+      コード操作はsubagentに委譲してください
+
+  # 制約#8: tech-lead全ファイル編集禁止
+  - name: "tech-lead全ファイル編集禁止"
+    patterns:
+      - "**/*"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadはファイル編集が禁止されています。
+      コード操作はsubagentに委譲してください

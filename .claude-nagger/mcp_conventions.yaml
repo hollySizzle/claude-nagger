@@ -1,0 +1,105 @@
+# MCP規約設定
+# MCPツール呼び出し時のパターンマッチ規約
+# tool_pattern: 正規表現（re.match）でMCPツール名にマッチ
+#
+# 例:
+# rules:
+#   - name: "Redmine更新確認"
+#     tool_pattern: "mcp__redmine_epic_grid__update.*"
+#     severity: "warn"
+#     message: "Redmineの更新操作を行います。確認してください。"
+#     token_threshold: null
+rules:
+  # --- role別制約 (#7058) ---
+
+  # 制約#3: leader Redmine非許可リストMCP deny
+  # 許可リスト: get_issue_detail, add_issue_comment, update_issue_status,
+  #            list_epics, list_versions, list_user_stories, list_statuses,
+  #            list_project_members, get_project_structure
+  # tool_patternはre.match: 否定先読みで許可リスト以外をマッチ
+  - name: "leaderRedmine非許可MCP禁止"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment|update_issue_status|list_epics|list_versions|list_user_stories|list_statuses|list_project_members|get_project_structure)_?tool)"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはこのRedmineツールの使用が禁止されています。
+      許可: 参照系(get/list)・コメント追加・ステータス更新のみ
+
+  # --- role別制約 (#7145) ---
+
+  # 制約#9: leaderSerena編集系MCP禁止 → #19で全般禁止に統合（#7187）
+
+  # 制約#10: pmo Serena MCP編集系deny
+  - name: "pmoSerena編集系MCP禁止"
+    tool_pattern: "mcp__serena__(replace_symbol_body|insert_after_symbol|insert_before_symbol|rename_symbol)"
+    severity: "deny"
+    scope: "pmo"
+    message: |
+      pmoはSerena編集系ツールの使用が禁止されています。
+      コード操作はsubagentに委譲してください
+
+  # 制約#11: tech-lead Serena MCP編集系deny
+  - name: "tech-leadSerena編集系MCP禁止"
+    tool_pattern: "mcp__serena__(replace_symbol_body|insert_after_symbol|insert_before_symbol|rename_symbol)"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadはSerena編集系ツールの使用が禁止されています。
+      コード操作はsubagentに委譲してください
+
+  # 制約#12: tech-lead Redmine参照+コメントのみ（許可リスト方式）
+  - name: "tech-leadRedmine非許可MCP禁止"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment|list_epics|list_versions|list_user_stories|list_statuses|list_project_members|get_project_structure)_?tool)"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadはこのRedmineツールの使用が禁止されています。
+      許可: 参照系(get/list)・コメント追加のみ
+
+  # 制約#13: coder Redmineコメント+detailのみ（許可リスト方式）
+  - name: "coderRedmine非許可MCP禁止"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment)_?tool)"
+    severity: "deny"
+    scope: "coder"
+    message: |
+      coderはこのRedmineツールの使用が禁止されています。
+      許可: issue詳細参照・コメント追加のみ
+
+  # 制約#16: tester Redmine非許可MCP禁止 (#7145)
+  - name: "testerRedmine非許可MCP禁止"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment)_?tool)"
+    severity: "deny"
+    scope: "tester"
+    message: |
+      testerはこのRedmineツールの使用が禁止されています。
+      許可: チケット参照(get_issue_detail)・コメント追加のみ
+
+  # --- leader/agent責務分離 (#7187) ---
+
+  # 制約#18: leader WebFetch/WebSearch禁止
+  - name: "leaderWebFetchWebSearch禁止"
+    tool_pattern: "^(WebFetch|WebSearch)$"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはWebFetch/WebSearchの使用が禁止されています。
+      Web調査はresearcherに委譲してください
+
+  # 制約#19: leader Serena MCP全般禁止（参照系含む）
+  - name: "leaderSerena全般MCP禁止"
+    tool_pattern: "mcp__serena__(?!(initial_instructions|check_onboarding_performed|onboarding|read_memory|list_memories))"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはSerena MCPツールの使用が禁止されています。
+      コード操作・調査はcoder/researcherに委譲してください
+
+  # 制約#20: leader Grep禁止（Globは許可: PMO判断）
+  - name: "leaderGrep禁止"
+    tool_pattern: "^Grep$"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはGrepの使用が禁止されています。
+      コード調査はcoder/researcherに委譲してください
+
