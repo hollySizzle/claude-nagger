@@ -326,8 +326,24 @@ class SessionStartupHook(BaseHook):
 
         # subagent検出（DBベース）
         if subagent_repo.is_any_active(session_id):
-            # claim_next_unprocessedでアトミックに取得（並列対応）
-            record = subagent_repo.claim_next_unprocessed(session_id)
+            # callerのagent_idで正しいsubagentレコードを特定（issue_7412）
+            # agent_idがある場合: callerのレコードを直接取得し、未処理なら使用
+            # フォールバック: claim_next_unprocessedで最古の未処理を取得（従来動作）
+            caller_agent_id = input_data.get('agent_id')
+            record = None
+            if caller_agent_id:
+                caller_record = subagent_repo.get(caller_agent_id)
+                if caller_record and not caller_record.startup_processed:
+                    record = caller_record
+                    self.log_info(f"🎯 Matched caller agent_id directly: {caller_agent_id}")
+                else:
+                    self.log_info(
+                        f"⚠️ Caller agent_id={caller_agent_id} not found or already processed, "
+                        f"falling back to claim_next_unprocessed"
+                    )
+                    record = subagent_repo.claim_next_unprocessed(session_id)
+            else:
+                record = subagent_repo.claim_next_unprocessed(session_id)
             if record is None:
                 # 全subagent処理済み
                 self.log_info("✅ All subagents already processed")
