@@ -1,13 +1,81 @@
 # コマンド実行規約定義
-# 危険なコマンドや確認が必要なコマンドに対して適用される規約を定義します
+# role別deny制約（応急処置: rules/command_conventions.yamlからコピー）
+# 根本修正: フォールバックロジック改善で解消予定
 
 rules:
-  # 例: Git操作規約
-  # - name: "Git操作規約"
-  #   patterns:
-  #     - "git*"
-  #   severity: "block"
-  #   token_threshold: 25000
-  #   message: |
-  #     Git操作を実行する場合は規約を確認してください
-  []
+  # 制約#2: leader Bash非gitコマンドdeny
+  - name: "leader非gitコマンド禁止"
+    patterns:
+      - "[!g]*"
+      - "g[!i]*"
+      - "gi[!t]*"
+      - "git[! ]*"
+    exclude_patterns:
+      - "rm -rf */.claude/teams/*"
+      - "rm -rf */.claude/tasks/*"
+    severity: "deny"
+    scope: "leader"
+    message: |
+      leaderはgitコマンド以外のBash実行が禁止されています。
+      コマンド実行はsubagentに委譲してください
+
+  # 制約#4: tech-lead破壊的コマンドdeny
+  - name: "tech-lead破壊的コマンド禁止"
+    patterns:
+      - "rm -rf*"
+      - "git push --force*"
+      - "git push -f*"
+      - "git reset --hard*"
+      - "git clean -f*"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadは破壊的コマンドが禁止されています
+
+  # 制約#4b: researcher破壊的コマンドdeny
+  - name: "researcher破壊的コマンド禁止"
+    patterns:
+      - "rm -rf*"
+      - "git push --force*"
+      - "git push -f*"
+      - "git reset --hard*"
+      - "git clean -f*"
+    severity: "deny"
+    scope: "researcher"
+    message: |
+      researcherは破壊的コマンドが禁止されています
+
+  # 制約#14: pmo非gitコマンド禁止
+  - name: "pmo非gitコマンド禁止"
+    patterns:
+      - "[!g]*"
+      - "g[!i]*"
+      - "gi[!t]*"
+      - "git[! ]*"
+    severity: "deny"
+    scope: "pmo"
+    message: |
+      pmoはgitコマンド以外のBash実行が禁止されています
+
+  # 制約#15: tech-lead非gitコマンド禁止
+  - name: "tech-lead非gitコマンド禁止"
+    patterns:
+      - "[!g]*"
+      - "g[!i]*"
+      - "gi[!t]*"
+      - "git[! ]*"
+    severity: "deny"
+    scope: "tech-lead"
+    message: |
+      tech-leadはgitコマンド以外のBash実行が禁止されています
+
+  # 制約#17: coder git commit/push禁止
+  - name: "coderGitCommit禁止"
+    patterns:
+      - "git commit*"
+      - "git push*"
+    severity: "deny"
+    scope: "coder"
+    message: |
+      coderはgit commit/pushが禁止されています。
+      レビュー承認後、tech-leadがコミットします

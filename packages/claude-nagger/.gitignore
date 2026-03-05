@@ -10,6 +10,8 @@ secrets.json5
 logs/
 log/
 
+tmp/
+
 # ビルド成果物
 build/
 dist/
