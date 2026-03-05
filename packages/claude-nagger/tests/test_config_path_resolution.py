@@ -1,8 +1,10 @@
-"""config pathデフォルト解決の統合テスト (#7234)
+"""config pathデフォルト解決の統合テスト (#7234, #7425)
 
 CLAUDE_PROJECT_DIR環境変数によるパス解決、.claude-nagger/優先、
-rules/フォールバックの3パターンをFileConventionMatcher,
+ファイル未存在時の空ルール動作をFileConventionMatcher,
 CommandConventionMatcher, McpConventionMatcherで検証。
+
+#7425でrules/フォールバックを廃止。.claude-nagger/にファイルがなければ空ルールで動作する。
 """
 
 import os
@@ -87,39 +89,30 @@ def _write_yaml(path: Path, data: dict):
 class TestDefaultPathResolution:
     """CLAUDE_PROJECT_DIR設定時のデフォルトパス解決テスト"""
 
-    def test_file_matcher_default_path(self, tmp_path):
-        """FileConventionMatcherがrules/フォールバックでルール読み込み"""
-        rules_dir = tmp_path / "rules"
-        rules_dir.mkdir()
-        _write_yaml(rules_dir / "file_conventions.yaml", _FILE_RULE)
+    def test_file_matcher_default_path_empty_when_no_config(self, tmp_path):
+        """.claude-nagger/不在時は空ルールで動作"""
+        with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_path)}):
+            matcher = FileConventionMatcher()
 
-        # CLAUDE_PROJECT_DIRを設定、.claude-nagger/不在→rules/フォールバック
-        # パッケージ内デフォルトパスをtmp_pathに差し替え
-        fake_pkg_rules = tmp_path / "rules" / "file_conventions.yaml"
-        with patch.object(Path, '__new__', wraps=Path.__new__):
-            with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_path)}):
-                matcher = FileConventionMatcher()
+        # .claude-nagger/にファイルがなければ空ルール
+        assert len(matcher.rules) == 0
+        assert ".claude-nagger" in str(matcher.rules_file)
 
-        # CLAUDE_PROJECT_DIR配下に.claude-nagger/がないため
-        # __file__ベースのrules/を使用（テスト環境ではプロジェクトルールが読まれる）
-        # ルールが正常にロードされることを確認
-        assert len(matcher.rules) > 0
-
-    def test_command_matcher_default_path(self, tmp_path):
-        """CommandConventionMatcherがrules/フォールバックでルール読み込み"""
+    def test_command_matcher_default_path_empty_when_no_config(self, tmp_path):
+        """.claude-nagger/不在時は空ルールで動作"""
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_path)}):
             matcher = CommandConventionMatcher()
 
-        # .claude-nagger/不在→パッケージ内rules/フォールバック
-        assert len(matcher.rules) > 0
+        assert len(matcher.rules) == 0
+        assert ".claude-nagger" in str(matcher.rules_file)
 
-    def test_mcp_matcher_default_path(self, tmp_path):
-        """McpConventionMatcherがrules/フォールバックでルール読み込み"""
+    def test_mcp_matcher_default_path_empty_when_no_config(self, tmp_path):
+        """.claude-nagger/不在時は空ルールで動作"""
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_path)}):
             matcher = McpConventionMatcher()
 
-        # .claude-nagger/不在→パッケージ内rules/フォールバック
-        assert len(matcher.rules) > 0
+        assert len(matcher.rules) == 0
+        assert ".claude-nagger" in str(matcher.rules_file)
 
 
 class TestClaudeNaggerPriority:
@@ -160,41 +153,39 @@ class TestClaudeNaggerPriority:
         assert matcher.rules[0].severity == 'block'
 
 
-class TestFallbackPath:
-    """.claude-nagger/不在時のrules/フォールバックテスト"""
+class TestNoFallbackToRulesDir:
+    """.claude-nagger/不在時にrules/へフォールバックしないことの確認 (#7425)"""
 
-    def test_file_matcher_fallback_to_package_rules(self, tmp_path):
-        """.claude-nagger/不在時にパッケージ内rules/へフォールバック"""
-        # tmp_pathに.claude-nagger/を作成しない
+    def test_file_matcher_no_rules_dir_fallback(self, tmp_path):
+        """.claude-nagger/不在時にrules/へフォールバックせず.claude-nagger/パスを使用"""
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_path)}):
             matcher = FileConventionMatcher()
 
-        # パッケージ内rules/file_conventions.yamlのルールがロードされる
         assert matcher.rules_file.name == "file_conventions.yaml"
-        assert "rules" in str(matcher.rules_file)
-        assert len(matcher.rules) > 0
+        assert ".claude-nagger" in str(matcher.rules_file)
+        assert len(matcher.rules) == 0
 
-    def test_command_matcher_fallback_to_package_rules(self, tmp_path):
-        """.claude-nagger/不在時にパッケージ内rules/へフォールバック"""
+    def test_command_matcher_no_rules_dir_fallback(self, tmp_path):
+        """.claude-nagger/不在時にrules/へフォールバックせず空ルール"""
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_path)}):
             matcher = CommandConventionMatcher()
 
         assert matcher.rules_file.name == "command_conventions.yaml"
-        assert "rules" in str(matcher.rules_file)
-        assert len(matcher.rules) > 0
+        assert ".claude-nagger" in str(matcher.rules_file)
+        assert len(matcher.rules) == 0
 
-    def test_mcp_matcher_fallback_to_package_rules(self, tmp_path):
-        """.claude-nagger/不在時にパッケージ内rules/へフォールバック"""
+    def test_mcp_matcher_no_rules_dir_fallback(self, tmp_path):
+        """.claude-nagger/不在時にrules/へフォールバックせず空ルール"""
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_path)}):
             matcher = McpConventionMatcher()
 
         assert matcher.rules_file.name == "mcp_conventions.yaml"
-        assert "rules" in str(matcher.rules_file)
-        assert len(matcher.rules) > 0
+        assert ".claude-nagger" in str(matcher.rules_file)
+        assert len(matcher.rules) == 0
 
-    def test_fallback_does_not_use_claude_nagger_dir(self, tmp_path):
-        """フォールバック時に.claude-nagger/パスを使用しない"""
+    def test_always_uses_claude_nagger_dir(self, tmp_path):
+        """常に.claude-nagger/パスを使用する"""
         with patch.dict(os.environ, {"CLAUDE_PROJECT_DIR": str(tmp_path)}):
             matcher = FileConventionMatcher()
 
-        assert ".claude-nagger" not in str(matcher.rules_file)
+        assert ".claude-nagger" in str(matcher.rules_file)

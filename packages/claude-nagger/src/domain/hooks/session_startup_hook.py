@@ -99,22 +99,16 @@ class SessionStartupHook(BaseHook):
         """
         設定ファイルを読み込む
         
-        優先順位:
-        1. .claude-nagger/config.yaml (プロジェクト設定)
-        2. rules/session_startup_settings.yaml (デフォルト設定)
-        
+        .claude-nagger/config.yaml のsession_startupセクションを参照。
+        ファイル未存在時は空設定で動作する。
+
         Returns:
             設定データの辞書
         """
         # CLAUDE_PROJECT_DIRを優先、フォールバックはcwd
         project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
         base_path = Path(project_dir) if project_dir else Path.cwd()
-        project_config = base_path / ".claude-nagger" / "config.yaml"
-        if project_config.exists():
-            config_file = project_config
-        else:
-            # フォールバック: デフォルト設定
-            config_file = Path(__file__).parent.parent.parent.parent / "rules" / "session_startup_settings.yaml"
+        config_file = base_path / ".claude-nagger" / "config.yaml"
         
         try:
             if config_file.exists():

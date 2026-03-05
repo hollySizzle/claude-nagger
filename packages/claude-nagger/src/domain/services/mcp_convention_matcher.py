@@ -38,12 +38,7 @@ class McpConventionMatcher(BaseConventionMatcher):
             # CLAUDE_PROJECT_DIRを優先、フォールバックはcwd
             project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
             base_path = Path(project_dir) if project_dir else Path.cwd()
-            project_config = base_path / ".claude-nagger" / "mcp_conventions.yaml"
-            if project_config.exists():
-                rules_file = project_config
-            else:
-                # パッケージ内デフォルトを使用
-                rules_file = Path(__file__).parent.parent.parent.parent / "rules" / "mcp_conventions.yaml"
+            rules_file = base_path / ".claude-nagger" / "mcp_conventions.yaml"
         else:
             rules_file = Path(config_dir) / "mcp_conventions.yaml"
 

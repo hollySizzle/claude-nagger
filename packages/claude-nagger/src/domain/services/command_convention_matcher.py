@@ -38,12 +38,7 @@ class CommandConventionMatcher(BaseConventionMatcher):
             # CLAUDE_PROJECT_DIRを優先、フォールバックはcwd
             project_dir = os.environ.get("CLAUDE_PROJECT_DIR")
             base_path = Path(project_dir) if project_dir else Path.cwd()
-            project_config = base_path / ".claude-nagger" / "command_conventions.yaml"
-            if project_config.exists():
-                rules_file = project_config
-            else:
-                # パッケージ内デフォルトを使用
-                rules_file = Path(__file__).parent.parent.parent.parent / "rules" / "command_conventions.yaml"
+            rules_file = base_path / ".claude-nagger" / "command_conventions.yaml"
         
         self.rules_file = Path(rules_file)
         self.debug = debug
