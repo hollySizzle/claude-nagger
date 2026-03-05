@@ -73,16 +73,24 @@ def _setup_subagent_transcript(tmp_path, agent_id, tool_use_id):
 
 
 def _setup_leader_transcript(tmp_path, tool_use_id, tool_name="Edit"):
-    """leader transcriptを作成するヘルパー（tool_use_idがleaderに属さないことを保証）"""
+    """leader transcriptを作成するヘルパー（Task/Agent tool_use含む=subagent起動済み）
+
+    coygeek方式ではTask/Agent tool_useの存在でleader/subagent判定を行う。
+    subagentシナリオのテストではTask tool_useを含める必要がある（issue_7314）。
+    """
     transcript = tmp_path / "transcript.jsonl"
-    # leader transcriptには別のtool_use_idのみ記録（tool_use_idがleaderに存在しない=subagent判定）
-    entry = {
-        "type": "assistant",
-        "message": {"content": [
+    entries = [
+        # leaderの操作
+        {"type": "assistant", "message": {"content": [
             {"type": "tool_use", "id": "toolu_LEADER_ONLY", "name": tool_name}
-        ]}
-    }
-    transcript.write_text(json.dumps(entry) + "\n")
+        ]}},
+        # leaderがsubagentを起動（coygeek方式でsubagent判定に必要）
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "toolu_TASK_SPAWN", "name": "Task",
+             "input": {"prompt": "subagent起動"}}
+        ]}},
+    ]
+    transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
     return transcript
 
 
@@ -257,7 +265,7 @@ class TestScopeRoleDenyE2E:
             str(transcript),
         )
         # 正規化後coder → scope=testerルールはスキップされる
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
                 with patch.object(hook, 'is_rule_processed', return_value=True):
@@ -280,7 +288,7 @@ class TestScopeRoleDenyE2E:
             str(transcript),
         )
         # _get_caller_rolesが正規化後の'tester'を返す（実際にはtester-7129→tester）
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'tester'}):
                 result = hook.process(input_data)
@@ -304,7 +312,7 @@ class TestScopeRoleDenyE2E:
             {'file_path': '/workspace/packages/claude-nagger/src/main.py'},
             str(transcript),
         )
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=True):
             result = hook.process(input_data)
 
@@ -326,7 +334,7 @@ class TestScopeRoleDenyE2E:
             {'file_path': '/workspace/packages/claude-nagger/src/main.py'},
             str(transcript),
         )
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'researcher'}):
                 with patch.object(hook, 'is_rule_processed', return_value=True):
@@ -349,7 +357,7 @@ class TestScopeRoleDenyE2E:
             str(transcript),
         )
         # tech-lead-123が正規化後tech-leadになったことを想定
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'tech-lead'}):
                 result = hook.process(input_data)
@@ -371,7 +379,7 @@ class TestScopeRoleDenyE2E:
             {'command': 'git push --force origin main'},
             str(transcript),
         )
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'researcher'}):
                 result = hook.process(input_data)
@@ -396,7 +404,7 @@ class TestScopeRoleDenyE2E:
             {},
             str(transcript),
         )
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=True):
             result = hook.process(input_data)
 
@@ -564,7 +572,7 @@ class TestFilterRulesByScopeWithNormalizedRole:
         ]
         input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
 
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             # _get_caller_rolesが正規化後のcoderを返す（coder-7097→coder）
             with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
@@ -581,7 +589,7 @@ class TestFilterRulesByScopeWithNormalizedRole:
         ]
         input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
 
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'tester'}):
                 result = hook._filter_rules_by_scope(rule_infos, input_data)
@@ -597,7 +605,7 @@ class TestFilterRulesByScopeWithNormalizedRole:
         ]
         input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
 
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
                 result = hook._filter_rules_by_scope(rule_infos, input_data)
@@ -612,7 +620,7 @@ class TestFilterRulesByScopeWithNormalizedRole:
         ]
         input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
 
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'tech-lead'}):
                 result = hook._filter_rules_by_scope(rule_infos, input_data)
@@ -631,7 +639,7 @@ class TestFilterRulesByScopeWithNormalizedRole:
         input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
 
         # 正規化後tester → scope=tester + scope=Noneのみマッチ
-        with patch('domain.hooks.implementation_design_hook.is_leader_tool_use',
+        with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                    return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'tester'}):
                 result = hook._filter_rules_by_scope(rule_infos, input_data)
