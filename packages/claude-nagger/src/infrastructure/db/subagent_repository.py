@@ -340,13 +340,8 @@ class SubagentRepository:
         _logger.info(f"find_parent_tool_use_id: found {agent_progress_count} agent_progress entries, no match")
         return None
 
-    def is_leader_tool_use(self, transcript_path: str) -> bool:
-        """coygeek方式leader判定のラッパー（issue_7312）
-
-        スタンドアロン関数へのラッパー（後方互換）。
-        """
-        from domain.services.leader_detection import is_leader_tool_use as _is_leader
-        return _is_leader(transcript_path)
+    # is_leader_tool_use()ラッパー削除（issue_7354: agent_id方式移行で不要）
+    # 直接 leader_detection.is_leader_tool_use(input_data) を使用すること
 
     def match_task_to_agent(
         self,

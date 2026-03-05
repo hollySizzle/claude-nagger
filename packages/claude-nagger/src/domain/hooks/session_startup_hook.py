@@ -330,45 +330,17 @@ class SessionStartupHook(BaseHook):
                 db.close()
                 return False
 
-            # issue_6952: tool_use_id transcript parseによるleader/subagent判定
-            # （issue_6057 transcript_path比較を置換: leader/subagentで同一値のため機能しなかった）
-            #
-            # 判定ロジック:
-            # 1. Anthropic公式agent_idフィールド存在時はtranscript parseバイパス（将来対応）
-            # 2. tool_use_idでmain transcript検索 → 見つかれば呼び出し元はleader → スキップ
-            # 3. tool_use_idフィールド不在時はフォールバック（subagent扱い=安全側で続行）
-
-            # D: Anthropic公式対応併存設計（将来のagent_id対応）
-            if 'agent_id' in input_data:
-                # Anthropic公式フィールド存在時はtranscript parseバイパス
-                # agent_idでleader/subagent判定が直接可能になった場合に実装
+            # agent_idベースのleader判定（issue_7352: transcript走査全廃）
+            from domain.services.leader_detection import is_leader_tool_use
+            if is_leader_tool_use(input_data):
                 self.log_info(
-                    f"🔮 agent_id field detected in PreToolUse payload "
-                    f"(agent_id={input_data['agent_id']}). "
-                    f"Future: use this for direct leader/subagent identification."
+                    "Skipping subagent blocking: caller is leader "
+                    "(agent_id不在)"
                 )
-                # 現時点ではフォールスルー（agent_idの値の使い方が確定していないため）
-
-            # B: coygeek方式leader判定（issue_7312: tool_use_id不要）
-            current_transcript = input_data.get('transcript_path', '')
-            if current_transcript:
-                from domain.services.leader_detection import is_leader_tool_use
-                if is_leader_tool_use(current_transcript):
-                    self.log_info(
-                        "⏭️ Skipping subagent blocking: caller is leader "
-                        "(coygeek方式: Task tool_use不在)"
-                    )
-                    # leaderのPreToolUseではsubagentをブロックしない
-                    # subagent自身のPreToolUseで再度claim_next_unprocessedが呼ばれる
-                    db.close()
-                    return False
-            else:
-                # C: フォールバック — transcript_pathがない場合
-                # 安全側: subagent扱いで続行（ブロッキング対象として処理続行）
-                self.log_warning(
-                    "⚠️ transcript_path missing in PreToolUse payload. "
-                    "Falling back to subagent assumption."
-                )
+                # leaderのPreToolUseではsubagentをブロックしない
+                # subagent自身のPreToolUseで再度claim_next_unprocessedが呼ばれる
+                db.close()
+                return False
 
             agent_type = record.agent_type
             agent_id = record.agent_id
