@@ -634,7 +634,7 @@ class TestScopeRoleName:
             {'rule_name': 'deny-coder-edit', 'severity': 'deny',
              'message': 'Coder deny', 'scope': 'coder'},
         ]
-        input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
+        input_data = {'tool_use_id': 'toolu_sub'}
 
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
@@ -649,7 +649,7 @@ class TestScopeRoleName:
             {'rule_name': 'deny-coder-edit', 'severity': 'deny',
              'message': 'Coder deny', 'scope': 'coder'},
         ]
-        input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
+        input_data = {'tool_use_id': 'toolu_sub'}
 
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'tester'}):
@@ -667,7 +667,7 @@ class TestScopeRoleName:
             {'rule_name': 'tester-rule', 'severity': 'block',
              'message': 'Tester block', 'scope': 'tester'},
         ]
-        input_data = {'tool_use_id': 'toolu_sub', 'transcript_path': '/test/t.jsonl'}
+        input_data = {'tool_use_id': 'toolu_sub'}
 
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
@@ -685,7 +685,7 @@ class TestScopeRoleName:
             {'rule_name': 'leader-rule', 'severity': 'deny',
              'message': 'Leader only', 'scope': 'leader'},
         ]
-        input_data = {'tool_use_id': 'toolu_leader', 'transcript_path': '/test/t.jsonl'}
+        input_data = {'tool_use_id': 'toolu_leader'}
 
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=True):
             with patch.object(hook, '_get_caller_roles', return_value=set()):
@@ -700,7 +700,7 @@ class TestScopeRoleName:
             {'rule_name': 'coder-rule', 'severity': 'deny',
              'message': 'Coder deny', 'scope': 'coder'},
         ]
-        input_data = {'tool_use_id': 'toolu_leader', 'transcript_path': '/test/t.jsonl'}
+        input_data = {'tool_use_id': 'toolu_leader'}
 
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=True):
             result = hook._filter_rules_by_scope(rule_infos, input_data)
@@ -716,13 +716,13 @@ class TestScopeRoleName:
         # leader
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=True):
             result_leader = hook._filter_rules_by_scope(
-                rule_infos, {'tool_use_id': 'toolu_l', 'transcript_path': '/t.jsonl'}
+                rule_infos, {'tool_use_id': 'toolu_l'}
             )
         # subagent
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=False):
             with patch.object(hook, '_get_caller_roles', return_value={'coder'}):
                 result_sub = hook._filter_rules_by_scope(
-                    rule_infos, {'tool_use_id': 'toolu_s', 'transcript_path': '/t.jsonl'}
+                    rule_infos, {'tool_use_id': 'toolu_s'}
                 )
 
         assert len(result_leader) == 1

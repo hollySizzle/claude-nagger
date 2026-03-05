@@ -74,27 +74,6 @@ def _setup_subagent_transcript(tmp_path, agent_id, tool_use_id):
     return subagents_dir
 
 
-def _setup_leader_transcript(tmp_path, tool_use_id, tool_name="Edit"):
-    """leader transcriptを作成するヘルパー（Task/Agent tool_use含む=subagent起動済み）
-
-    coygeek方式ではTask/Agent tool_useの存在でleader/subagent判定を行う。
-    subagentシナリオのテストではTask tool_useを含める必要がある（issue_7314）。
-    """
-    transcript = tmp_path / "transcript.jsonl"
-    entries = [
-        # leaderの操作
-        {"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "id": "toolu_LEADER_ONLY", "name": tool_name}
-        ]}},
-        # leaderがsubagentを起動（coygeek方式でsubagent判定に必要）
-        {"type": "assistant", "message": {"content": [
-            {"type": "tool_use", "id": "toolu_TASK_SPAWN", "name": "Task",
-             "input": {"prompt": "subagent起動"}}
-        ]}},
-    ]
-    transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
-    return transcript
-
 
 def _assert_deny(result):
     """deny判定アサート"""
