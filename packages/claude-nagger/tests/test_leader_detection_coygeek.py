@@ -183,3 +183,30 @@ class TestIsLeaderCoygeek:
 
         # 実際はleaderだがFalse返却（誤判定=既知の限界）
         assert is_leader_coygeek(transcript) is False
+
+    def test_agent_tool_use_detected(self, tmp_path):
+        """Agent tool_useあり → False（issue_7314: Agent tool_use対応）"""
+        transcript = str(tmp_path / "transcript.jsonl")
+        entries = [
+            _make_user_entry("作業して"),
+            _make_assistant_entry([
+                {"id": "toolu_01AGENT1", "name": "Agent", "input": {"prompt": "調査実行"}},
+            ]),
+        ]
+        _write_jsonl(transcript, entries)
+
+        assert is_leader_coygeek(transcript) is False
+
+    def test_mixed_task_and_agent(self, tmp_path):
+        """Task+Agent混在 → False"""
+        transcript = str(tmp_path / "transcript.jsonl")
+        entries = [
+            _make_user_entry(),
+            _make_assistant_entry([
+                {"id": "toolu_01TASK1", "name": "Task", "input": {"prompt": "実装"}},
+                {"id": "toolu_01AGENT1", "name": "Agent", "input": {"prompt": "調査"}},
+            ]),
+        ]
+        _write_jsonl(transcript, entries)
+
+        assert is_leader_coygeek(transcript) is False

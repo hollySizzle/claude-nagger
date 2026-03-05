@@ -1579,6 +1579,18 @@ class TestIsLeaderToolUse:
 
         assert repo.is_leader_tool_use(str(transcript)) is True
 
+    def test_agent_tool_use_detected(self, db, tmp_path):
+        """Agent tool_useあり → False（issue_7314: Agent tool_use対応）"""
+        repo = SubagentRepository(db)
+        transcript = tmp_path / "transcript.jsonl"
+        with open(transcript, 'w') as f:
+            f.write(self._make_assistant_entry([
+                {"type": "tool_use", "id": "toolu_AGENT_001", "name": "Agent",
+                 "input": {"prompt": "調査"}}
+            ]) + '\n')
+
+        assert repo.is_leader_tool_use(str(transcript)) is False
+
 
 class TestTeamCreateStep0Match:
     """TeamCreate方式subagentのStep 0マッチングテスト（issue_7017）

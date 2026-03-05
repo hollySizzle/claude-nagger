@@ -105,6 +105,37 @@ class TestIsLeaderToolUseStandalone:
 
         assert is_leader_tool_use(str(transcript)) is False
 
+    def test_agent_tool_use_detected(self, tmp_path):
+        """Agent tool_useあり → False（issue_7314: Agent tool_use対応）"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "toolu_AGENT_001", "name": "Agent"}
+                ]
+            }
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        assert is_leader_tool_use(str(transcript)) is False
+
+    def test_mixed_agent_and_non_task(self, tmp_path):
+        """Agent + 非Task tool_use → False"""
+        transcript = tmp_path / "transcript.jsonl"
+        entry = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "toolu_AAA", "name": "Read"},
+                    {"type": "tool_use", "id": "toolu_AGENT_001", "name": "Agent"},
+                ]
+            }
+        }
+        transcript.write_text(json.dumps(entry) + "\n")
+
+        assert is_leader_tool_use(str(transcript)) is False
+
 
 class TestConventionRuleScopeField:
     """ConventionRuleのscopeフィールドのテスト"""

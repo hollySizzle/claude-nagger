@@ -8,18 +8,18 @@ _logger = logging.getLogger(__name__)
 
 
 def is_leader_tool_use(transcript_path: str) -> bool:
-    """coygeek方式: Task tool_use有無でleader判定（issue_7312）
+    """coygeek方式: Task/Agent tool_use有無でleader判定（issue_7312, issue_7314）
 
-    transcriptを走査し、Task tool_useの存在を確認。
-    Task tool_useが1つでも存在すればsubagentが起動済み → False（非leader）。
-    Task tool_useが不在 → leader単独 → True。
+    transcriptを走査し、Task/Agent tool_useの存在を確認。
+    Task/Agent tool_useが1つでも存在すればsubagentが起動済み → False（非leader）。
+    Task/Agent tool_useが不在 → leader単独 → True。
 
     Args:
         transcript_path: main transcript（.jsonl）のパス
 
     Returns:
-        True: leader（Task tool_useなし）
-        False: 非leader（Task tool_useあり）
+        True: leader（Task/Agent tool_useなし）
+        False: 非leader（Task/Agent tool_useあり）
 
     フォールバック方針:
         - transcript未存在/読み込みエラー → False（安全側=subagent扱い）
@@ -29,7 +29,7 @@ def is_leader_tool_use(transcript_path: str) -> bool:
 
     制約:
         - tool_use_idを使わないため、呼び出し元の特定は不可
-        - leader自身もTask tool_useを発行するため、leaderのPreToolUseでもFalse返却
+        - leader自身もTask/Agent tool_useを発行するため、leaderのPreToolUseでもFalse返却
         - 複数subagent環境でどのsubagentかは識別不可
     """
     path = Path(transcript_path)
@@ -53,9 +53,9 @@ def is_leader_tool_use(transcript_path: str) -> bool:
                 for content_item in message.get("content", []):
                     if content_item.get("type") != "tool_use":
                         continue
-                    if content_item.get("name") == "Task":
+                    if content_item.get("name") in {"Task", "Agent"}:
                         _logger.info(
-                            f"is_leader_tool_use: Task tool_use発見 "
+                            f"is_leader_tool_use: {content_item.get('name')} tool_use発見 "
                             f"id={content_item.get('id')} → 非leader"
                         )
                         return False
@@ -63,7 +63,7 @@ def is_leader_tool_use(transcript_path: str) -> bool:
         _logger.warning(f"is_leader_tool_use: ファイル読み込みエラー: {e}")
         return False
 
-    _logger.info("is_leader_tool_use: Task tool_use不在 → leader")
+    _logger.info("is_leader_tool_use: Task/Agent tool_use不在 → leader")
     return True
 
 

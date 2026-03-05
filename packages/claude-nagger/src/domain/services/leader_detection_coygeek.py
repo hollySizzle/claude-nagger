@@ -1,14 +1,14 @@
-"""coygeek方式leader検出PoC（issue_7327）
+"""coygeek方式leader検出PoC（issue_7327, issue_7314）
 
-GitHub #6885提案のTask tool_use逆順走査によるleader/subagent判定。
+GitHub #6885提案のTask/Agent tool_use逆順走査によるleader/subagent判定。
 現行is_leader_tool_use()はPreToolUseタイミング問題で常にFalse返却するが、
-coygeek方式はTask tool_useがsubagent起動前にtranscriptに書込済みのため
+coygeek方式はTask/Agent tool_useがsubagent起動前にtranscriptに書込済みのため
 タイミング問題を回避可能。
 
 ロジック:
-- transcriptを逆順走査し、最新のTask tool_use（name='Task'）を探す
-- Task tool_useが存在 → subagentが起動済み → 非leader（False）
-- Task tool_useが不在 → leader単独 → leader（True）
+- transcriptを逆順走査し、最新のTask/Agent tool_use（name in {'Task','Agent'}）を探す
+- Task/Agent tool_useが存在 → subagentが起動済み → 非leader（False）
+- Task/Agent tool_useが不在 → leader単独 → leader（True）
 """
 
 import json
@@ -19,18 +19,18 @@ _logger = logging.getLogger(__name__)
 
 
 def is_leader_coygeek(transcript_path: str) -> bool:
-    """coygeek方式: Task tool_use有無でleader判定（PoC）
+    """coygeek方式: Task/Agent tool_use有無でleader判定（PoC, issue_7314）
 
-    transcriptを逆順走査し、Task tool_useの存在を確認。
-    Task tool_useが1つでも存在すればsubagentが起動済み → False（非leader）。
-    Task tool_useが不在 → leader単独 → True。
+    transcriptを逆順走査し、Task/Agent tool_useの存在を確認。
+    Task/Agent tool_useが1つでも存在すればsubagentが起動済み → False（非leader）。
+    Task/Agent tool_useが不在 → leader単独 → True。
 
     Args:
         transcript_path: main transcript（.jsonl）のパス
 
     Returns:
-        True: leader（Task tool_useなし）
-        False: 非leader（Task tool_useあり）
+        True: leader（Task/Agent tool_useなし）
+        False: 非leader（Task/Agent tool_useあり）
 
     フォールバック方針:
         - transcript未存在/読み込みエラー → False（安全側=subagent扱い）
@@ -40,7 +40,7 @@ def is_leader_coygeek(transcript_path: str) -> bool:
 
     制約:
         - tool_use_idを使わないため、呼び出し元の特定は不可
-        - leader自身もTask tool_useを発行するため、leaderのPreToolUseでもFalse返却
+        - leader自身もTask/Agent tool_useを発行するため、leaderのPreToolUseでもFalse返却
         - 複数subagent環境でどのsubagentかは識別不可
     """
     path = Path(transcript_path)
@@ -70,12 +70,12 @@ def is_leader_coygeek(transcript_path: str) -> bool:
         for content_item in message.get("content", []):
             if content_item.get("type") != "tool_use":
                 continue
-            if content_item.get("name") == "Task":
+            if content_item.get("name") in {"Task", "Agent"}:
                 _logger.info(
-                    f"is_leader_coygeek: Task tool_use発見 "
+                    f"is_leader_coygeek: {content_item.get('name')} tool_use発見 "
                     f"id={content_item.get('id')} → 非leader"
                 )
                 return False
 
-    _logger.info("is_leader_coygeek: Task tool_use不在 → leader")
+    _logger.info("is_leader_coygeek: Task/Agent tool_use不在 → leader")
     return True
