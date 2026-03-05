@@ -17,124 +17,35 @@ from src.domain.services.leader_detection import is_leader_tool_use
 
 
 class TestIsLeaderToolUseStandalone:
-    """is_leader_tool_use()スタンドアロン関数のユニットテスト（coygeek方式 issue_7312）"""
+    """is_leader_tool_use()スタンドアロン関数のユニットテスト（agent_idベース issue_7352）"""
 
-    def test_leader_no_task_tool_use(self, tmp_path):
-        """Task tool_useなし（leader単独作業）→ True"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "toolu_LEADER_001", "name": "Edit"}
-                ]
-            }
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
+    def test_leader_no_agent_id(self):
+        """agent_idなし（leader）→ True"""
+        assert is_leader_tool_use({'tool_name': 'Edit'}) is True
 
-        assert is_leader_tool_use(str(transcript)) is True
+    def test_subagent_with_agent_id(self):
+        """agent_idあり（subagent）→ False"""
+        assert is_leader_tool_use({'agent_id': 'agent-123', 'tool_name': 'Edit'}) is False
 
-    def test_subagent_spawned_task_present(self, tmp_path):
-        """Task tool_useあり（subagent起動済み）→ False"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "toolu_TASK_001", "name": "Task"}
-                ]
-            }
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
+    def test_empty_dict(self):
+        """空dict → True（agent_id不在=leader）"""
+        assert is_leader_tool_use({}) is True
 
-        assert is_leader_tool_use(str(transcript)) is False
+    def test_non_dict_input(self):
+        """dictでない入力 → False（安全側フォールバック）"""
+        assert is_leader_tool_use("not a dict") is False
 
-    def test_nonexistent_transcript(self):
-        """存在しないtranscript→False（安全側フォールバック）"""
-        assert is_leader_tool_use("/nonexistent/path.jsonl") is False
+    def test_agent_id_empty_string(self):
+        """agent_id空文字 → True（falsy=leader扱い）"""
+        assert is_leader_tool_use({'agent_id': '', 'tool_name': 'Edit'}) is True
 
-    def test_empty_transcript(self, tmp_path):
-        """空のtranscript→True（セッション開始直後=leader単独）"""
-        transcript = tmp_path / "transcript.jsonl"
-        transcript.write_text("")
+    def test_agent_id_none(self):
+        """agent_id=None → True（falsy=leader扱い）"""
+        assert is_leader_tool_use({'agent_id': None, 'tool_name': 'Edit'}) is True
 
-        assert is_leader_tool_use(str(transcript)) is True
-
-    def test_non_assistant_entries_ignored(self, tmp_path):
-        """type!=assistantのエントリは無視"""
-        transcript = tmp_path / "transcript.jsonl"
-        entries = [
-            {"type": "user", "message": {"content": [{"type": "tool_use", "id": "toolu_123", "name": "Task"}]}},
-            {"type": "system", "message": {"content": [{"type": "tool_use", "id": "toolu_456", "name": "Task"}]}},
-        ]
-        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
-
-        # user/systemエントリのTask tool_useは無視 → leader扱い
-        assert is_leader_tool_use(str(transcript)) is True
-
-    def test_multiple_tool_uses_no_task(self, tmp_path):
-        """複数tool_use（Task以外のみ）→ True"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "toolu_AAA", "name": "Read"},
-                    {"type": "text", "text": "some text"},
-                    {"type": "tool_use", "id": "toolu_BBB", "name": "Edit"},
-                ]
-            }
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
-        assert is_leader_tool_use(str(transcript)) is True
-
-    def test_multiple_tool_uses_with_task(self, tmp_path):
-        """複数tool_use（Taskあり）→ False"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "toolu_AAA", "name": "Read"},
-                    {"type": "tool_use", "id": "toolu_BBB", "name": "Task"},
-                ]
-            }
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
-        assert is_leader_tool_use(str(transcript)) is False
-
-    def test_agent_tool_use_detected(self, tmp_path):
-        """Agent tool_useあり → False（issue_7314: Agent tool_use対応）"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "toolu_AGENT_001", "name": "Agent"}
-                ]
-            }
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
-        assert is_leader_tool_use(str(transcript)) is False
-
-    def test_mixed_agent_and_non_task(self, tmp_path):
-        """Agent + 非Task tool_use → False"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "toolu_AAA", "name": "Read"},
-                    {"type": "tool_use", "id": "toolu_AGENT_001", "name": "Agent"},
-                ]
-            }
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
-        assert is_leader_tool_use(str(transcript)) is False
+    def test_subagent_with_uuid_agent_id(self):
+        """UUID形式のagent_id → False"""
+        assert is_leader_tool_use({'agent_id': 'aaaaaaaa-1111-2222-3333-444444444444'}) is False
 
 
 class TestConventionRuleScopeField:
@@ -318,64 +229,34 @@ class TestFilterRulesByScope:
         result = hook._filter_rules_by_scope(rules, {})
         assert len(result) == 2
 
-    def test_scope_leader_caller_is_leader(self, hook, tmp_path):
-        """scope=leaderのルール、callerがleader→通過"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
+    def test_scope_leader_caller_is_leader(self, hook):
+        """scope=leaderのルール、callerがleader（agent_id不在）→通過"""
         rules = [
             {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
         ]
-        input_data = {
-            'tool_use_id': 'toolu_L1',
-            'transcript_path': str(transcript),
-        }
+        # agent_id不在 = leader
+        input_data = {'tool_name': 'Edit'}
         result = hook._filter_rules_by_scope(rules, input_data)
         assert len(result) == 1
 
-    def test_scope_leader_caller_is_subagent(self, hook, tmp_path):
-        """scope=leaderのルール、callerがsubagent→フィルタアウト"""
-        transcript = tmp_path / "transcript.jsonl"
-        # Task tool_useあり → subagent起動済み → 非leader
-        entries = [
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_TASK_001", "name": "Task"}
-            ]}},
-        ]
-        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
-
+    def test_scope_leader_caller_is_subagent(self, hook):
+        """scope=leaderのルール、callerがsubagent（agent_idあり）→フィルタアウト"""
         rules = [
             {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
         ]
-        input_data = {
-            'tool_use_id': 'toolu_SUBAGENT',
-            'transcript_path': str(transcript),
-        }
+        # agent_idあり = subagent
+        input_data = {'agent_id': 'agent-sub-001', 'tool_name': 'Edit'}
         result = hook._filter_rules_by_scope(rules, input_data)
         assert len(result) == 0
 
-    def test_mixed_scoped_and_unscoped(self, hook, tmp_path):
+    def test_mixed_scoped_and_unscoped(self, hook):
         """scope付きとscope無しのルール混在"""
-        transcript = tmp_path / "transcript.jsonl"
-        # Task tool_useあり → subagent起動済み → 非leader
-        entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_TASK_001", "name": "Task"}]}
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
         rules = [
             {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
             {'rule_name': 'warn-all', 'severity': 'warn', 'message': 'warning', 'scope': None},
         ]
-        input_data = {
-            'tool_use_id': 'toolu_OTHER',  # subagent
-            'transcript_path': str(transcript),
-        }
+        # agent_idあり = subagent
+        input_data = {'agent_id': 'agent-sub-001', 'tool_name': 'Edit'}
         result = hook._filter_rules_by_scope(rules, input_data)
         # scope=leaderはフィルタアウト、scope=Noneは通過
         assert len(result) == 1
@@ -386,13 +267,13 @@ class TestFilterRulesByScope:
         result = hook._filter_rules_by_scope([], {})
         assert result == []
 
-    def test_no_transcript_path(self, hook):
-        """transcript_pathがない場合、leader判定不能→scope=leaderはフィルタアウト"""
+    def test_no_agent_id_is_leader(self, hook):
+        """agent_idがない場合→leader判定→scope=leaderは通過"""
         rules = [
             {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
         ]
         result = hook._filter_rules_by_scope(rules, {})
-        assert len(result) == 0
+        assert len(result) == 1
 
 
 class TestDenySeverityProcess:
@@ -537,15 +418,8 @@ class TestDenyScopeIntegration:
         assert result.get('skip_warn_only') is True
         assert 'Leader edit denied' in result['reason']
 
-    def test_deny_leader_scope_from_subagent_edit(self, hook, tmp_path):
+    def test_deny_leader_scope_from_subagent_edit(self, hook):
         """subagentからのEdit + deny + scope=leader → approve（scope不一致）"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_OTHER", "name": "Task"}]}
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
             mock_match.return_value = [{
                 'rule_name': 'deny-edit',
@@ -558,8 +432,7 @@ class TestDenyScopeIntegration:
                 'tool_name': 'Edit',
                 'tool_input': {'file_path': '/test/file.md'},
                 'session_id': 'test-session',
-                'tool_use_id': 'toolu_SUBAGENT',
-                'transcript_path': str(transcript),
+                'agent_id': 'agent-sub-001',
             })
 
         assert result['decision'] == 'approve'
@@ -937,175 +810,39 @@ class TestDenyPriority:
         assert deny_pos < block_pos < warn_pos
 
 
-class TestPassiveDetection:
-    """パッシブ異常検出テスト (#7235)"""
+class TestPassiveDetectionRemoved:
+    """パッシブ異常検出機構が削除されたことの検証（issue_7352: agent_idベース移行）"""
 
     @pytest.fixture
     def hook(self):
         return ImplementationDesignHook()
 
-    def test_consecutive_false_triggers_warning(self, hook, tmp_path, caplog):
-        """連続False回数が閾値到達時にwarning出力"""
-        # Task tool_useあり → 非leader
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_TASK_001", "name": "Task"}]}
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
-        rules = [
-            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
-        ]
-        input_data = {
-            'tool_use_id': 'toolu_SUBAGENT',
-            'transcript_path': str(transcript),
-        }
-
-        # 閾値を小さくしてテスト
-        hook._passive_detect_threshold = 3
-
-        import logging
-        with caplog.at_level(logging.WARNING):
-            # 3回連続Falseで閾値到達
-            for i in range(3):
-                hook._filter_rules_by_scope(rules, input_data)
-
-        assert any("[passive_detect]" in record.message for record in caplog.records)
-
-    def test_true_resets_counter(self, hook, tmp_path, caplog):
-        """caller_is_leader=Trueでカウンタリセット"""
-        # subagent用transcript（Task tool_useあり → 非leader）
-        sub_transcript = tmp_path / "sub_transcript.jsonl"
-        sub_entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_TASK_001", "name": "Task"}]}
-        }
-        sub_transcript.write_text(json.dumps(sub_entry) + "\n")
-
-        # leader用transcript（Task tool_useなし → leader）
-        leader_transcript = tmp_path / "leader_transcript.jsonl"
-        leader_entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
-        }
-        leader_transcript.write_text(json.dumps(leader_entry) + "\n")
-
-        rules = [
-            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
-        ]
-
-        # subagentとして2回呼出（Task tool_useあり=非leader）
-        sub_input = {
-            'tool_use_id': 'toolu_SUBAGENT',
-            'transcript_path': str(sub_transcript),
-        }
-        hook._passive_detect_threshold = 5
-        hook._filter_rules_by_scope(rules, sub_input)
-        hook._filter_rules_by_scope(rules, sub_input)
-        assert hook._consecutive_non_leader_count == 2
-
-        # leaderとして1回呼出（Task不在=leader）→ リセット
-        leader_input = {
-            'tool_use_id': 'toolu_L1',
-            'transcript_path': str(leader_transcript),
-        }
-        hook._filter_rules_by_scope(rules, leader_input)
-        assert hook._consecutive_non_leader_count == 0
-
-    def test_no_warning_when_leader_mixed(self, hook, tmp_path, caplog):
-        """leader=True混在時にwarning未出力"""
-        # leader用transcript（Task不在）
-        leader_transcript = tmp_path / "leader_transcript.jsonl"
-        leader_entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
-        }
-        leader_transcript.write_text(json.dumps(leader_entry) + "\n")
-
-        # subagent用transcript（Task tool_useあり）
-        sub_transcript = tmp_path / "sub_transcript.jsonl"
-        sub_entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_TASK_001", "name": "Task"}]}
-        }
-        sub_transcript.write_text(json.dumps(sub_entry) + "\n")
-
-        rules = [
-            {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
-        ]
-        sub_input = {
-            'tool_use_id': 'toolu_SUBAGENT',
-            'transcript_path': str(sub_transcript),
-        }
-        leader_input = {
-            'tool_use_id': 'toolu_L1',
-            'transcript_path': str(leader_transcript),
-        }
-
-        hook._passive_detect_threshold = 3
-
-        import logging
-        with caplog.at_level(logging.WARNING):
-            # sub, sub, leader, sub, sub のパターン → 最大連続2で閾値3未満
-            hook._filter_rules_by_scope(rules, sub_input)
-            hook._filter_rules_by_scope(rules, sub_input)
-            hook._filter_rules_by_scope(rules, leader_input)
-            hook._filter_rules_by_scope(rules, sub_input)
-            hook._filter_rules_by_scope(rules, sub_input)
-
-        assert not any("[passive_detect]" in record.message for record in caplog.records)
+    def test_passive_detect_attribute_removed(self, hook):
+        """_consecutive_non_leader_countアトリビュートが存在しないこと"""
+        assert not hasattr(hook, '_consecutive_non_leader_count')
 
 
 # --- T4: 実transcriptフィクスチャテスト (#7232) ---
 
-class TestIsLeaderToolUseRealTranscript:
-    """enriched形式（実transcript構造）でのis_leader_tool_use()テスト（coygeek方式 issue_7312）"""
+class TestIsLeaderToolUseAgentIdBased:
+    """agent_idベースのis_leader_tool_use()テスト（issue_7352）
 
-    FIXTURE_PATH = Path(__file__).parent / "fixtures" / "claude_code" / "transcript" / "real_transcript_sample.jsonl"
+    transcript走査は全廃され、input_data['agent_id']の有無で判定する。
+    """
 
-    def test_real_transcript_no_task_is_leader(self):
-        """enriched形式transcript（Task tool_useなし）→ True（leader）"""
-        # real_transcript_sample.jsonlにはRead/Edit/Bashのみ、Taskなし
-        assert is_leader_tool_use(str(self.FIXTURE_PATH)) is True
+    def test_leader_no_agent_id(self):
+        """agent_id不在 → True（leader）"""
+        assert is_leader_tool_use({'tool_name': 'Edit', 'session_id': 'test'}) is True
 
-    def test_real_transcript_structure_matches_synthetic(self, tmp_path):
-        """enriched形式と合成形式で同一結果（どちらもTask不在→True）"""
-        # 合成形式（Task tool_useなし）
-        synthetic = tmp_path / "synthetic.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "toolu_01REAL_LEADER_BBB", "name": "Edit"}
-                ]
-            }
-        }
-        synthetic.write_text(json.dumps(entry) + "\n")
+    def test_subagent_with_agent_id(self):
+        """agent_idあり → False（subagent）"""
+        assert is_leader_tool_use({'agent_id': 'agent-123', 'tool_name': 'Edit'}) is False
 
-        # 両方ともTask不在 → True
-        assert is_leader_tool_use(str(self.FIXTURE_PATH)) == is_leader_tool_use(str(synthetic))
-        assert is_leader_tool_use(str(self.FIXTURE_PATH)) is True
-
-    def test_real_transcript_with_task_appended(self, tmp_path):
-        """enriched形式にTask tool_useを追加 → False（subagent起動済み）"""
-        # 実transcriptをコピーしてTask行を追加
-        import shutil
-        modified = tmp_path / "modified_transcript.jsonl"
-        shutil.copy(str(self.FIXTURE_PATH), str(modified))
-        task_entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": "toolu_TASK_001", "name": "Task",
-                     "input": {"prompt": "テスト実行"}}
-                ]
-            }
-        }
-        with open(modified, "a", encoding="utf-8") as f:
-            f.write(json.dumps(task_entry) + "\n")
-
-        assert is_leader_tool_use(str(modified)) is False
+    def test_non_dict_input_safe_fallback(self):
+        """dictでない入力 → False（安全側=subagent扱い）"""
+        assert is_leader_tool_use("string input") is False
+        assert is_leader_tool_use(42) is False
+        assert is_leader_tool_use(None) is False
 
 
 # --- T5: transcript形式スキーマ検証テスト (#7233) ---
@@ -1172,80 +909,48 @@ class TestTranscriptSchemaValidation:
 # カテゴリD: tool_use_id引数削除後の呼び出し元テスト (issue_7313)
 # ============================================================================
 
-class TestCallSiteAfterToolUseIdRemoval:
-    """is_leader_tool_use()がtranscript_pathのみで呼ばれることの検証
+class TestCallSiteAgentIdBased:
+    """is_leader_tool_use()がinput_dataで呼ばれることの検証（issue_7352 agent_idベース）
 
-    issue_7312でtool_use_id引数を削除した後、各呼び出し元が
-    正しくis_leader_tool_use(transcript_path)を呼んでいることを確認する。
+    _filter_rules_by_scopeがis_leader_tool_use(input_data)をdict引数で呼んでいることを確認する。
     """
 
     @pytest.fixture
     def hook(self):
         return ImplementationDesignHook()
 
-    def test_filter_rules_by_scope_calls_without_tool_use_id(self, hook, tmp_path):
-        """_filter_rules_by_scopeがis_leader_tool_use(transcript_path)を単一引数で呼出"""
-        transcript = tmp_path / "transcript.jsonl"
-        entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
+    def test_filter_rules_by_scope_calls_with_input_data(self, hook):
+        """_filter_rules_by_scopeがis_leader_tool_use(input_data)をdict引数で呼出"""
         rules = [
             {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
         ]
-        input_data = {
-            'tool_use_id': 'toolu_L1',
-            'transcript_path': str(transcript),
-        }
+        input_data = {'tool_name': 'Edit', 'session_id': 'test'}
 
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use',
                     return_value=True) as mock_leader:
             hook._filter_rules_by_scope(rules, input_data)
 
-        # 単一引数(transcript_path)で呼ばれていること
-        mock_leader.assert_called_once_with(str(transcript))
+        # input_data dictで呼ばれていること
+        mock_leader.assert_called_once_with(input_data)
 
-    def test_filter_rules_leader_transcript_only(self, hook, tmp_path):
-        """実transcriptでleader判定: Task tool_useなし→leader→deny通過"""
-        transcript = tmp_path / "transcript.jsonl"
-        # Editのみ、Taskなし → leader
-        entry = {
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "toolu_L1", "name": "Edit"}]}
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
+    def test_filter_rules_leader_no_agent_id(self, hook):
+        """agent_id不在→leader→deny通過"""
         rules = [
             {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
         ]
-        input_data = {
-            'tool_use_id': 'toolu_L1',
-            'transcript_path': str(transcript),
-        }
+        # agent_idなし = leader
+        input_data = {'tool_name': 'Edit'}
 
         result = hook._filter_rules_by_scope(rules, input_data)
         assert len(result) == 1, "leader判定でscope=leaderルールが通過すべき"
 
-    def test_filter_rules_subagent_transcript_only(self, hook, tmp_path):
-        """実transcriptでsubagent判定: Task tool_useあり→非leader→denyフィルタアウト"""
-        transcript = tmp_path / "transcript.jsonl"
-        # Taskあり → subagent起動済み → 非leader
-        entries = [
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_TASK_001", "name": "Task"}
-            ]}},
-        ]
-        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
-
+    def test_filter_rules_subagent_with_agent_id(self, hook):
+        """agent_idあり→subagent→denyフィルタアウト"""
         rules = [
             {'rule_name': 'deny-edit', 'severity': 'deny', 'message': 'denied', 'scope': 'leader'},
         ]
-        input_data = {
-            'tool_use_id': 'toolu_CODER_001',
-            'transcript_path': str(transcript),
-        }
+        # agent_idあり = subagent
+        input_data = {'agent_id': 'agent-coder-001', 'tool_name': 'Edit'}
 
         result = hook._filter_rules_by_scope(rules, input_data)
         assert len(result) == 0, "非leader判定でscope=leaderルールはフィルタアウトすべき"
@@ -1256,151 +961,91 @@ class TestCallSiteAfterToolUseIdRemoval:
 # ============================================================================
 
 class TestScopeApplySkipRegression:
-    """coygeek方式切替後のscope適用/スキップ回帰テスト
+    """agent_idベース切替後のscope適用/スキップ回帰テスト（issue_7352）
 
-    is_leader_tool_use()がcoygeek方式に変更されても、
+    is_leader_tool_use()がagent_idベースに変更された後も、
     scope=leader deny/scope=None/scope=role の動作が正しいことを検証する。
-    mockを使わず、実際のtranscriptデータで判定する。
     """
 
     @pytest.fixture
     def hook(self):
         return ImplementationDesignHook()
 
-    def _make_leader_transcript(self, tmp_path):
-        """leader用transcript作成（Task tool_useなし）"""
-        transcript = tmp_path / "leader_transcript.jsonl"
-        entries = [
-            {"type": "user", "message": {"role": "user", "content": [
-                {"type": "text", "text": "ファイルを修正して"}
-            ]}},
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_LEADER_001", "name": "Read",
-                 "input": {"file_path": "/src/main.py"}},
-            ]}},
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_LEADER_002", "name": "Edit",
-                 "input": {"file_path": "/src/main.py"}},
-            ]}},
-        ]
-        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
-        return str(transcript)
-
-    def _make_subagent_transcript(self, tmp_path):
-        """subagent用transcript作成（Task tool_useあり）"""
-        transcript = tmp_path / "subagent_transcript.jsonl"
-        entries = [
-            {"type": "user", "message": {"role": "user", "content": [
-                {"type": "text", "text": "テスト実行して"}
-            ]}},
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_LEADER_READ", "name": "Read",
-                 "input": {"file_path": "/src/main.py"}},
-            ]}},
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_TASK_001", "name": "Task",
-                 "input": {"prompt": "coderとしてファイル修正"}},
-            ]}},
-        ]
-        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
-        return str(transcript)
-
-    def test_scope_leader_deny_fires_for_leader(self, hook, tmp_path):
-        """scope=leader deny: leader transcript → ルール適用"""
-        transcript_path = self._make_leader_transcript(tmp_path)
+    def test_scope_leader_deny_fires_for_leader(self, hook):
+        """scope=leader deny: agent_id不在（leader）→ ルール適用"""
         rules = [
             {'rule_name': 'leader-edit-deny', 'severity': 'deny',
              'message': 'leaderはファイル編集が禁止されています', 'scope': 'leader'},
         ]
-        result = hook._filter_rules_by_scope(rules, {
-            'transcript_path': transcript_path,
-            'tool_use_id': 'toolu_LEADER_002',
-        })
+        # agent_id不在 = leader
+        result = hook._filter_rules_by_scope(rules, {'tool_name': 'Edit'})
         assert len(result) == 1
         assert result[0]['rule_name'] == 'leader-edit-deny'
 
-    def test_scope_leader_deny_skips_for_subagent(self, hook, tmp_path):
-        """scope=leader deny: subagent transcript → ルールスキップ"""
-        transcript_path = self._make_subagent_transcript(tmp_path)
+    def test_scope_leader_deny_skips_for_subagent(self, hook):
+        """scope=leader deny: agent_idあり（subagent）→ ルールスキップ"""
         rules = [
             {'rule_name': 'leader-edit-deny', 'severity': 'deny',
              'message': 'leaderはファイル編集が禁止されています', 'scope': 'leader'},
         ]
+        # agent_idあり = subagent
         result = hook._filter_rules_by_scope(rules, {
-            'transcript_path': transcript_path,
-            'tool_use_id': 'toolu_CODER_001',
+            'agent_id': 'agent-coder-001', 'tool_name': 'Edit',
         })
         assert len(result) == 0
 
-    def test_scope_none_applies_regardless_of_leader(self, hook, tmp_path):
+    def test_scope_none_applies_regardless_of_leader(self, hook):
         """scope=None: leader/subagent両方でルール適用"""
-        leader_tp = self._make_leader_transcript(tmp_path)
-        subagent_tp = self._make_subagent_transcript(tmp_path)
-
         rules = [
             {'rule_name': 'warn-all', 'severity': 'warn',
              'message': '全agent対象の警告', 'scope': None},
         ]
 
-        # leaderでも適用
-        result_leader = hook._filter_rules_by_scope(rules, {
-            'transcript_path': leader_tp,
-            'tool_use_id': 'toolu_L1',
-        })
+        # leader（agent_id不在）
+        result_leader = hook._filter_rules_by_scope(rules, {'tool_name': 'Edit'})
         assert len(result_leader) == 1
 
-        # subagentでも適用
+        # subagent（agent_idあり）
         result_sub = hook._filter_rules_by_scope(rules, {
-            'transcript_path': subagent_tp,
-            'tool_use_id': 'toolu_S1',
+            'agent_id': 'agent-sub', 'tool_name': 'Edit',
         })
         assert len(result_sub) == 1
 
-    def test_mixed_scope_leader_and_none_leader_session(self, hook, tmp_path):
+    def test_mixed_scope_leader_and_none_leader_session(self, hook):
         """leader session: scope=leaderは通過、scope=Noneも通過"""
-        transcript_path = self._make_leader_transcript(tmp_path)
         rules = [
             {'rule_name': 'deny-leader', 'severity': 'deny',
              'message': 'leader deny', 'scope': 'leader'},
             {'rule_name': 'warn-all', 'severity': 'warn',
              'message': 'all warning', 'scope': None},
         ]
-        result = hook._filter_rules_by_scope(rules, {
-            'transcript_path': transcript_path,
-            'tool_use_id': 'toolu_L1',
-        })
+        # agent_id不在 = leader
+        result = hook._filter_rules_by_scope(rules, {'tool_name': 'Edit'})
         assert len(result) == 2
 
-    def test_mixed_scope_leader_and_none_subagent_session(self, hook, tmp_path):
+    def test_mixed_scope_leader_and_none_subagent_session(self, hook):
         """subagent session: scope=leaderはスキップ、scope=Noneは通過"""
-        transcript_path = self._make_subagent_transcript(tmp_path)
         rules = [
             {'rule_name': 'deny-leader', 'severity': 'deny',
              'message': 'leader deny', 'scope': 'leader'},
             {'rule_name': 'warn-all', 'severity': 'warn',
              'message': 'all warning', 'scope': None},
         ]
+        # agent_idあり = subagent
         result = hook._filter_rules_by_scope(rules, {
-            'transcript_path': transcript_path,
-            'tool_use_id': 'toolu_S1',
+            'agent_id': 'agent-sub', 'tool_name': 'Edit',
         })
         assert len(result) == 1
         assert result[0]['rule_name'] == 'warn-all'
 
-    def test_empty_transcript_treated_as_leader(self, hook, tmp_path):
-        """空transcript → leader判定 → scope=leaderルール適用"""
-        transcript = tmp_path / "empty_transcript.jsonl"
-        transcript.write_text("")  # 空ファイル
-
+    def test_empty_input_treated_as_leader(self, hook):
+        """空input_data → leader判定（agent_id不在）→ scope=leaderルール適用"""
         rules = [
             {'rule_name': 'deny-edit', 'severity': 'deny',
              'message': 'denied', 'scope': 'leader'},
         ]
-        result = hook._filter_rules_by_scope(rules, {
-            'transcript_path': str(transcript),
-            'tool_use_id': 'toolu_001',
-        })
-        assert len(result) == 1, "空transcript=leader=scope=leaderルール適用"
+        result = hook._filter_rules_by_scope(rules, {})
+        assert len(result) == 1, "空input_data=leader=scope=leaderルール適用"
 
 
 # ============================================================================
@@ -1408,45 +1053,20 @@ class TestScopeApplySkipRegression:
 # ============================================================================
 
 class TestBlockerPreventionCoderEdit:
-    """coder(subagent)がEdit時にscope=leader denyが発火しないことの検証
+    """coder(subagent)がEdit時にscope=leader denyが発火しないことの検証（agent_idベース）
 
     issue_7291で発生したブロッカー再発防止:
     coderがEdit/Write/NotebookEditを使用する際に、
     scope=leader deny rules が誤発火しないことを保証する。
+    agent_idの有無でleader/subagentを判定する（issue_7352）。
     """
 
     @pytest.fixture
     def hook(self):
         return ImplementationDesignHook()
 
-    def _make_coder_scenario_transcript(self, tmp_path):
-        """coder（subagent）シナリオのtranscript
-
-        leaderがTask tool_useでcoderを起動 → transcriptにTask存在 → 非leader
-        """
-        transcript = tmp_path / "coder_scenario.jsonl"
-        entries = [
-            {"type": "user", "message": {"role": "user", "content": [
-                {"type": "text", "text": "コードを修正して"}
-            ]}},
-            # leaderの操作
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_LEADER_001", "name": "Read",
-                 "input": {"file_path": "/src/main.py"}},
-            ]}},
-            # leaderがcoderをsubagentとして起動
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_TASK_CODER", "name": "Task",
-                 "input": {"prompt": "coderとしてsrc/main.pyを修正してください"}},
-            ]}},
-        ]
-        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
-        return str(transcript)
-
-    def test_coder_edit_not_blocked_by_leader_deny(self, hook, tmp_path):
-        """coderのEdit → scope=leader deny非発火 → approve"""
-        transcript_path = self._make_coder_scenario_transcript(tmp_path)
-
+    def test_coder_edit_not_blocked_by_leader_deny(self, hook):
+        """coderのEdit（agent_idあり）→ scope=leader deny非発火 → approve"""
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
             mock_match.return_value = [{
                 'rule_name': 'leader-edit-deny',
@@ -1459,17 +1079,14 @@ class TestBlockerPreventionCoderEdit:
                 'tool_name': 'Edit',
                 'tool_input': {'file_path': '/src/main.py'},
                 'session_id': 'test-session',
-                'tool_use_id': 'toolu_CODER_EDIT_001',
-                'transcript_path': transcript_path,
+                'agent_id': 'agent-coder-001',
             })
 
-        # Task tool_use存在 → 非leader → scope=leaderルールスキップ → approve
+        # agent_idあり → subagent → scope=leaderルールスキップ → approve
         assert result['decision'] == 'approve'
 
-    def test_coder_write_not_blocked_by_leader_deny(self, hook, tmp_path):
-        """coderのWrite → scope=leader deny非発火 → approve"""
-        transcript_path = self._make_coder_scenario_transcript(tmp_path)
-
+    def test_coder_write_not_blocked_by_leader_deny(self, hook):
+        """coderのWrite（agent_idあり）→ scope=leader deny非発火 → approve"""
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
             mock_match.return_value = [{
                 'rule_name': 'leader-write-deny',
@@ -1482,16 +1099,13 @@ class TestBlockerPreventionCoderEdit:
                 'tool_name': 'Write',
                 'tool_input': {'file_path': '/src/new_file.py'},
                 'session_id': 'test-session',
-                'tool_use_id': 'toolu_CODER_WRITE_001',
-                'transcript_path': transcript_path,
+                'agent_id': 'agent-coder-001',
             })
 
         assert result['decision'] == 'approve'
 
-    def test_coder_notebook_edit_not_blocked(self, hook, tmp_path):
-        """coderのNotebookEdit → scope=leader deny非発火 → approve"""
-        transcript_path = self._make_coder_scenario_transcript(tmp_path)
-
+    def test_coder_notebook_edit_not_blocked(self, hook):
+        """coderのNotebookEdit（agent_idあり）→ scope=leader deny非発火 → approve"""
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
             mock_match.return_value = [{
                 'rule_name': 'leader-notebook-deny',
@@ -1504,25 +1118,13 @@ class TestBlockerPreventionCoderEdit:
                 'tool_name': 'NotebookEdit',
                 'tool_input': {'notebook_path': '/notebooks/analysis.ipynb'},
                 'session_id': 'test-session',
-                'tool_use_id': 'toolu_CODER_NB_001',
-                'transcript_path': transcript_path,
+                'agent_id': 'agent-coder-001',
             })
 
         assert result['decision'] == 'approve'
 
-    def test_leader_edit_still_blocked(self, hook, tmp_path):
-        """対照テスト: leaderのEdit → scope=leader deny発火 → block"""
-        transcript = tmp_path / "leader_transcript.jsonl"
-        # Taskなし → leader
-        entry = {
-            "type": "assistant",
-            "message": {"content": [
-                {"type": "tool_use", "id": "toolu_LEADER_001", "name": "Read",
-                 "input": {"file_path": "/src/main.py"}},
-            ]}
-        }
-        transcript.write_text(json.dumps(entry) + "\n")
-
+    def test_leader_edit_still_blocked(self, hook):
+        """対照テスト: leaderのEdit（agent_id不在）→ scope=leader deny発火 → block"""
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
             mock_match.return_value = [{
                 'rule_name': 'leader-edit-deny',
@@ -1535,30 +1137,14 @@ class TestBlockerPreventionCoderEdit:
                 'tool_name': 'Edit',
                 'tool_input': {'file_path': '/src/main.py'},
                 'session_id': 'test-session',
-                'tool_use_id': 'toolu_LEADER_EDIT_001',
-                'transcript_path': str(transcript),
+                # agent_id不在 = leader
             })
 
-        # Taskなし → leader → scope=leaderルール適用 → block
         assert result['decision'] == 'block'
         assert result.get('skip_warn_only') is True
 
-    def test_parallel_subagents_no_false_leader(self, hook, tmp_path):
-        """並列subagent起動済みtranscript → どのsubagentのEditもapprove"""
-        transcript = tmp_path / "parallel_transcript.jsonl"
-        entries = [
-            {"type": "user", "message": {"role": "user", "content": [
-                {"type": "text", "text": "並列で作業して"}
-            ]}},
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "toolu_TASK_CODER", "name": "Task",
-                 "input": {"prompt": "coder: 実装"}},
-                {"type": "tool_use", "id": "toolu_TASK_TESTER", "name": "Task",
-                 "input": {"prompt": "tester: テスト"}},
-            ]}},
-        ]
-        transcript.write_text("\n".join(json.dumps(e) for e in entries) + "\n")
-
+    def test_parallel_subagents_no_false_leader(self, hook):
+        """並列subagent（agent_idあり）→ どのsubagentのEditもapprove"""
         with patch.object(hook.matcher, 'get_confirmation_message') as mock_match:
             mock_match.return_value = [{
                 'rule_name': 'leader-edit-deny',
@@ -1571,8 +1157,7 @@ class TestBlockerPreventionCoderEdit:
                 'tool_name': 'Edit',
                 'tool_input': {'file_path': '/src/main.py'},
                 'session_id': 'test-session',
-                'tool_use_id': 'toolu_CODER_EDIT_001',
-                'transcript_path': str(transcript),
+                'agent_id': 'agent-coder-001',
             })
 
         assert result['decision'] == 'approve'

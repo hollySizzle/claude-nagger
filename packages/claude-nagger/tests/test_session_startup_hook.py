@@ -213,7 +213,8 @@ class TestShouldProcessSubagent:
             with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
                 with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                     with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                        result = hook.should_process({'session_id': 'test'})
+                        # agent_idあり = subagent（agent_idベースleader判定でsubagent判定）
+                        result = hook.should_process({'session_id': 'test', 'agent_id': 'agent-123'})
 
         assert result is True
         assert hook._is_subagent is True
@@ -1049,8 +1050,8 @@ class TestBuildMessageWithSubagentHistory:
         assert '履歴サマリ' in message
 
 
-class TestShouldProcessSubagentToolUseId:
-    """should_process tool_use_id判定テスト（issue_6952）"""
+class TestShouldProcessSubagentAgentIdBased:
+    """should_process agent_idベース判定テスト（issue_7352）"""
 
     def _setup_subagent_mocks(self):
         """共通モックセットアップ"""
@@ -1069,8 +1070,8 @@ class TestShouldProcessSubagentToolUseId:
 
         return config, mock_db, mock_subagent_repo, mock_session_repo
 
-    def test_leader_skipped_via_tool_use_id(self):
-        """leaderのtool_use_idがtranscriptに見つかった場合はFalse"""
+    def test_leader_skipped_no_agent_id(self):
+        """agent_id不在（leader）→ subagentブロッキングスキップ → False"""
         config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_subagent_mocks()
 
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
@@ -1078,18 +1079,16 @@ class TestShouldProcessSubagentToolUseId:
             with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
                 with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                     with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                        with patch('domain.services.leader_detection.is_leader_tool_use', return_value=True) as mock_leader:
-                            result = hook.should_process({
-                                'session_id': 'test',
-                                'tool_use_id': 'toolu_LEADER_123',
-                                'transcript_path': '/tmp/transcript.jsonl'
-                            })
+                        # agent_id不在 = leader
+                        result = hook.should_process({
+                            'session_id': 'test',
+                            'tool_use_id': 'toolu_LEADER_123',
+                        })
 
         assert result is False
-        mock_leader.assert_called_once_with('/tmp/transcript.jsonl')
 
-    def test_subagent_detected_via_tool_use_id(self):
-        """coygeek方式でsubagent判定（Task tool_useあり）→ True"""
+    def test_subagent_detected_with_agent_id(self):
+        """agent_idあり（subagent）→ ブロッキング発火 → True"""
         config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_subagent_mocks()
 
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
@@ -1097,19 +1096,17 @@ class TestShouldProcessSubagentToolUseId:
             with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
                 with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                     with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                        with patch('domain.services.leader_detection.is_leader_tool_use', return_value=False) as mock_leader:
-                            result = hook.should_process({
-                                'session_id': 'test',
-                                'tool_use_id': 'toolu_SUBAGENT_456',
-                                'transcript_path': '/tmp/transcript.jsonl'
-                            })
+                        # agent_idあり = subagent
+                        result = hook.should_process({
+                            'session_id': 'test',
+                            'agent_id': 'agent-123',
+                        })
 
         assert result is True
         assert hook._is_subagent is True
-        mock_leader.assert_called_once_with('/tmp/transcript.jsonl')
 
-    def test_fallback_no_transcript_path(self):
-        """transcript_pathがない場合はフォールバック（subagent扱い=True）"""
+    def test_fallback_no_agent_id_no_transcript(self):
+        """agent_id不在、transcript_pathもなし → leader判定 → False"""
         config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_subagent_mocks()
 
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
@@ -1121,11 +1118,11 @@ class TestShouldProcessSubagentToolUseId:
                             'session_id': 'test'
                         })
 
-        assert result is True
-        assert hook._is_subagent is True
+        # agent_id不在 = leader → スキップ
+        assert result is False
 
-    def test_agent_id_field_detected(self):
-        """agent_idフィールド存在時もtool_use_id判定が実行される"""
+    def test_agent_id_present_detected_as_subagent(self):
+        """agent_idフィールド存在 → subagent判定 → True"""
         config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_subagent_mocks()
 
         with patch.object(SessionStartupHook, '_load_config', return_value=config):
@@ -1133,14 +1130,11 @@ class TestShouldProcessSubagentToolUseId:
             with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
                 with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                     with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                        with patch('domain.services.leader_detection.is_leader_tool_use', return_value=True) as mock_leader:
-                            result = hook.should_process({
-                                'session_id': 'test',
-                                'agent_id': 'agent-main-001',
-                                'tool_use_id': 'toolu_LEADER_789',
-                                'transcript_path': '/tmp/transcript.jsonl'
-                            })
+                        result = hook.should_process({
+                            'session_id': 'test',
+                            'agent_id': 'agent-main-001',
+                            'tool_use_id': 'toolu_LEADER_789',
+                        })
 
-        # agent_idがあってもcoygeek方式leader判定→False
-        assert result is False
-        mock_leader.assert_called_once_with('/tmp/transcript.jsonl')
+        assert result is True
+        assert hook._is_subagent is True

@@ -1,4 +1,4 @@
-"""find_caller_agent_id() / _get_caller_roles() tool_use_idベース改修テスト（issue_7105）"""
+"""find_caller_agent_id() / _get_caller_roles() agent_idベーステスト（issue_7352）"""
 
 import json
 import uuid
@@ -14,107 +14,50 @@ from src.domain.models.records import SubagentRecord
 # === 1. find_caller_agent_id() 単体テスト ===
 
 class TestFindCallerAgentId:
-    """find_caller_agent_id()のユニットテスト"""
+    """find_caller_agent_id()のユニットテスト（agent_idベース issue_7352）"""
 
-    def _make_agent_jsonl_entry(self, tool_use_id: str, tool_name: str = "Read") -> str:
-        """テスト用JSONLエントリを生成"""
-        entry = {
-            "type": "assistant",
-            "message": {
-                "content": [
-                    {"type": "tool_use", "id": tool_use_id, "name": tool_name}
-                ]
-            }
-        }
-        return json.dumps(entry)
+    def test_正常系_agent_idあり(self):
+        """input_dataにagent_idあり → agent_id返却"""
+        input_data = {'agent_id': 'agent-123', 'tool_name': 'Edit'}
+        result = find_caller_agent_id(input_data)
+        assert result == 'agent-123'
 
-    def test_正常系_subagent_transcriptからtool_use_idマッチ(self, tmp_path):
-        """subagentsディレクトリ内のagent-{UUID}.jsonlからtool_use_idマッチ → UUID返却"""
-        # leader用transcript（空ファイル）
-        transcript = tmp_path / "transcript.jsonl"
-        transcript.write_text("")
+    def test_agent_id不在(self):
+        """input_dataにagent_idなし → None"""
+        input_data = {'tool_name': 'Edit', 'session_id': 'test'}
+        result = find_caller_agent_id(input_data)
+        assert result is None
 
-        # subagentsディレクトリにagent-{UUID}.jsonlを作成
-        subagents_dir = tmp_path / "subagents"
-        subagents_dir.mkdir()
+    def test_空dict(self):
+        """空dict → None"""
+        result = find_caller_agent_id({})
+        assert result is None
+
+    def test_非dict入力(self):
+        """dictでない入力 → None"""
+        result = find_caller_agent_id("not a dict")
+        assert result is None
+
+    def test_UUID形式のagent_id(self):
+        """UUID形式のagent_id → そのまま返却"""
         agent_uuid = str(uuid.uuid4())
-        agent_file = subagents_dir / f"agent-{agent_uuid}.jsonl"
-        agent_file.write_text(self._make_agent_jsonl_entry("target_id") + "\n")
-
-        result = find_caller_agent_id(str(transcript), "target_id")
+        input_data = {'agent_id': agent_uuid}
+        result = find_caller_agent_id(input_data)
         assert result == agent_uuid
-
-    def test_複数subagent_正しいagentにマッチ(self, tmp_path):
-        """2つのagent-*.jsonlから正しいagentのUUIDを返却"""
-        transcript = tmp_path / "transcript.jsonl"
-        transcript.write_text("")
-
-        subagents_dir = tmp_path / "subagents"
-        subagents_dir.mkdir()
-
-        # agent-aaa: target_idを含む
-        agent_a = subagents_dir / "agent-aaa.jsonl"
-        agent_a.write_text(self._make_agent_jsonl_entry("target_id") + "\n")
-
-        # agent-bbb: 別のIDを含む
-        agent_b = subagents_dir / "agent-bbb.jsonl"
-        agent_b.write_text(self._make_agent_jsonl_entry("other_id") + "\n")
-
-        result = find_caller_agent_id(str(transcript), "target_id")
-        assert result == "aaa"
-
-    def test_未ヒット_tool_use_id未存在(self, tmp_path):
-        """subagent transcriptにtool_use_idが存在しない → None"""
-        transcript = tmp_path / "transcript.jsonl"
-        transcript.write_text("")
-
-        subagents_dir = tmp_path / "subagents"
-        subagents_dir.mkdir()
-        agent_file = subagents_dir / "agent-xxx.jsonl"
-        agent_file.write_text(self._make_agent_jsonl_entry("different_id") + "\n")
-
-        result = find_caller_agent_id(str(transcript), "target_id")
-        assert result is None
-
-    def test_subagentsディレクトリ不在(self, tmp_path):
-        """subagentsディレクトリが存在しない → None"""
-        # 存在しないパスを指定
-        transcript = tmp_path / "nonexistent" / "transcript.jsonl"
-        result = find_caller_agent_id(str(transcript), "target_id")
-        assert result is None
-
-    def test_壊れたJSONスキップ(self, tmp_path):
-        """不正JSON行をスキップし、正常行からマッチ"""
-        transcript = tmp_path / "transcript.jsonl"
-        transcript.write_text("")
-
-        subagents_dir = tmp_path / "subagents"
-        subagents_dir.mkdir()
-        agent_file = subagents_dir / "agent-recovered.jsonl"
-
-        # 壊れたJSON行 + 正常なマッチ行
-        lines = [
-            "{invalid json",
-            self._make_agent_jsonl_entry("target_id"),
-        ]
-        agent_file.write_text("\n".join(lines) + "\n")
-
-        result = find_caller_agent_id(str(transcript), "target_id")
-        assert result == "recovered"
 
 
 # === 2. _get_caller_roles() 統合テスト ===
 
 class TestGetCallerRolesToolUseId:
-    """_get_caller_roles() tool_use_idベース統合テスト"""
+    """_get_caller_roles() agent_idベース統合テスト"""
 
     @pytest.fixture
     def hook(self):
         return ImplementationDesignHook()
 
-    def test_tool_use_idベースで単一role返却(self, hook):
+    def test_agent_idベースで単一role返却(self, hook):
         """find_caller_agent_idでagent特定 → SubagentRepository.getでrole返却"""
-        input_data = {'session_id': 'test-session'}
+        input_data = {'agent_id': 'agent-123', 'session_id': 'test-session'}
         mock_record = SubagentRecord(
             agent_id='agent-123',
             session_id='test-session',
@@ -137,21 +80,21 @@ class TestGetCallerRolesToolUseId:
                     MockDB.return_value = mock_db_instance
                     MockDB.resolve_db_path.return_value = '/tmp/test.db'
 
-                    result = hook._get_caller_roles(input_data, 'tool_use_id_1', '/tmp/transcript')
+                    result = hook._get_caller_roles(input_data)
 
         assert result == {'coder'}
 
-    def test_tool_use_idベース失敗_空set(self, hook):
-        """find_caller_agent_idがNone → 空set"""
+    def test_agent_id不在_空set(self, hook):
+        """agent_idがない → 空set（leader扱いでrole取得不要）"""
         input_data = {'session_id': 'test-session'}
 
         with patch('domain.services.leader_detection.find_caller_agent_id', return_value=None):
-            result = hook._get_caller_roles(input_data, 'tool_use_id_1', '/tmp/transcript')
+            result = hook._get_caller_roles(input_data)
 
         assert result == set()
 
-    def test_後方互換_tool_use_id未指定(self, hook):
-        """tool_use_id/transcript_pathなし → session_idベース既存ロジック"""
+    def test_後方互換_session_idベースフォールバック(self, hook):
+        """agent_idなし、session_idあり → session_idベース既存ロジック"""
         input_data = {'session_id': 'test-session'}
         mock_record = SubagentRecord(
             agent_id='agent-456',
@@ -174,7 +117,6 @@ class TestGetCallerRolesToolUseId:
                 MockDB.return_value = mock_db_instance
                 MockDB.resolve_db_path.return_value = '/tmp/test.db'
 
-                # tool_use_id/transcript_pathなし → 後方互換パス
                 result = hook._get_caller_roles(input_data)
 
         assert result == {'tester'}
@@ -195,7 +137,7 @@ class TestScopeLeaderRegression:
             {'rule_name': 'leader-deny', 'severity': 'deny',
              'message': 'Leader only', 'scope': 'leader'},
         ]
-        input_data = {'tool_use_id': 'toolu_leader', 'transcript_path': '/test/t.jsonl'}
+        input_data = {'tool_name': 'Edit'}
 
         with patch('src.domain.hooks.implementation_design_hook.is_leader_tool_use', return_value=True):
             with patch.object(hook, '_get_caller_roles') as mock_get_roles:

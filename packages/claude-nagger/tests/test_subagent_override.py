@@ -337,7 +337,7 @@ class TestSessionStartupHookShouldProcessSubagent:
             return SessionStartupHook()
 
     def test_subagent_detected_new(self):
-        """新規subagent検出時はTrue（DBベース）"""
+        """新規subagent検出時はTrue（DBベース, agent_idあり=subagent）"""
         hook = self._make_hook()
 
         mock_db = MagicMock()
@@ -354,7 +354,8 @@ class TestSessionStartupHookShouldProcessSubagent:
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    result = hook.should_process({"session_id": "test-session"})
+                    # agent_idあり = subagent
+                    result = hook.should_process({"session_id": "test-session", "agent_id": "agent-abc"})
 
         assert result is True
         assert hook._is_subagent is True
@@ -420,8 +421,8 @@ class TestSessionStartupHookShouldProcessSubagent:
         assert result is True
         assert hook._is_subagent is False
 
-    def test_leader_transcript_skips_subagent_blocking(self):
-        """issue_6952: leaderのtool_use_idがtranscriptに見つかる場合はsubagentブロッキングをスキップ"""
+    def test_leader_skips_subagent_blocking(self):
+        """issue_7352: agent_id不在（leader）→ subagentブロッキングスキップ"""
         hook = self._make_hook()
 
         mock_db = MagicMock()
@@ -433,59 +434,49 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-abc"
         mock_record.role = None
-        mock_record.leader_transcript_path = "/home/user/.claude/projects/test/leader-session.jsonl"
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    with patch('domain.services.leader_detection.is_leader_tool_use', return_value=True) as mock_leader:
-                        # leaderのtool_use_id + transcript_path → スキップ
-                        result = hook.should_process({
-                            "session_id": "test-session",
-                            "transcript_path": "/home/user/.claude/projects/test/leader-session.jsonl",
-                            "tool_use_id": "toolu_LEADER_001",
-                        })
+                    # agent_id不在 = leader → スキップ
+                    result = hook.should_process({
+                        "session_id": "test-session",
+                        "tool_use_id": "toolu_LEADER_001",
+                    })
 
         assert result is False
-        mock_leader.assert_called_once_with(
-            "/home/user/.claude/projects/test/leader-session.jsonl"
-        )
 
-    def test_subagent_transcript_triggers_blocking(self):
-        """issue_6057: subagentのtranscript_pathはleaderと異なるためブロッキング発火"""
+    def test_subagent_with_agent_id_triggers_blocking(self):
+        """issue_7352: agent_idあり（subagent）→ ブロッキング発火"""
         hook = self._make_hook()
 
         mock_db = MagicMock()
         mock_subagent_repo = MagicMock()
         mock_session_repo = MagicMock()
-
-        leader_transcript = "/home/user/.claude/projects/test/leader-session.jsonl"
-        subagent_transcript = "/home/user/.claude/projects/test/subagent-session.jsonl"
 
         mock_subagent_repo.is_any_active.return_value = True
         mock_record = MagicMock()
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-abc"
         mock_record.role = "coder"
-        mock_record.leader_transcript_path = leader_transcript
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
-                    # subagent自身のtranscript_path → ブロッキング発火
+                    # agent_idあり = subagent → ブロッキング発火
                     result = hook.should_process({
                         "session_id": "test-session",
-                        "transcript_path": subagent_transcript,
+                        "agent_id": "agent-abc",
                     })
 
         assert result is True
         assert hook._is_subagent is True
         assert hook._current_agent_id == "agent-abc"
 
-    def test_no_leader_transcript_path_allows_blocking(self):
-        """leader_transcript_pathがNone（旧DB）の場合は従来通りブロッキング発火"""
+    def test_subagent_with_agent_id_allows_blocking(self):
+        """agent_idあり（subagent）→ ブロッキング発火"""
         hook = self._make_hook()
 
         mock_db = MagicMock()
@@ -497,7 +488,6 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-abc"
         mock_record.role = None
-        mock_record.leader_transcript_path = None  # 旧スキーマ互換
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
@@ -505,7 +495,7 @@ class TestSessionStartupHookShouldProcessSubagent:
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
                     result = hook.should_process({
                         "session_id": "test-session",
-                        "transcript_path": "/some/transcript.jsonl",
+                        "agent_id": "agent-abc",
                     })
 
         assert result is True
@@ -973,8 +963,10 @@ class TestShouldProcessRoleParsing:
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    # agent_idあり = subagent
                     result = hook.should_process({
                         "session_id": "test-session",
+                        "agent_id": "agent-role-test",
                         "transcript_path": str(transcript),
                     })
 
@@ -1008,8 +1000,10 @@ class TestShouldProcessRoleParsing:
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    # agent_idあり = subagent
                     result = hook.should_process({
                         "session_id": "test-session",
+                        "agent_id": "agent-existing-role",
                         "transcript_path": str(transcript),
                     })
 
@@ -1078,8 +1072,10 @@ class TestShouldProcessRoleParsing:
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
                     with patch.object(hook, '_resolve_subagent_config', return_value={"enabled": True, "messages": {}, "behavior": {}}) as mock_resolve:
+                        # agent_idあり = subagent
                         hook.should_process({
                             "session_id": "test-session",
+                            "agent_id": "agent-resolve-test",
                             "transcript_path": str(transcript),
                         })
 
@@ -1315,8 +1311,10 @@ class TestShouldProcessRetryMatch:
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    # agent_idあり = subagent
                     result = hook.should_process({
                         "session_id": "test-session",
+                        "agent_id": "agent-fallback",
                         "transcript_path": str(transcript),
                     })
 
@@ -1372,9 +1370,10 @@ class TestShouldProcessRetryMatch:
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
                 with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                    # agent_idあり = subagent, transcript_pathなし
                     result = hook.should_process({
                         "session_id": "test-session",
-                        # transcript_pathなし
+                        "agent_id": "agent-no-transcript",
                     })
 
         assert result is True

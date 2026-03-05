@@ -28,7 +28,7 @@ _KNOWN_ROLES = {"coder", "tester", "researcher", "tech-lead", "Bash", "Explore",
 
 
 def _make_input(tool_name, tool_input=None, transcript_path=None,
-                tool_use_id='toolu_E2E_NORM_001'):
+                tool_use_id='toolu_E2E_NORM_001', agent_id=None):
     """テスト用input_data生成ヘルパー"""
     data = {
         'tool_name': tool_name,
@@ -38,6 +38,8 @@ def _make_input(tool_name, tool_input=None, transcript_path=None,
     }
     if transcript_path:
         data['transcript_path'] = transcript_path
+    if agent_id:
+        data['agent_id'] = agent_id
     return data
 
 
@@ -123,20 +125,17 @@ class TestRoleNormalizationInGetCallerRoles:
         """coder-7097 → coder に正規化されること"""
         agent_id = "aaaaaaaa-1111-2222-3333-444444444444"
         session_id = "test-session-norm-e2e"
-        tool_use_id = "toolu_CODER_7097"
 
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "coder-7097")
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id)
 
-        input_data = _make_input('Edit', tool_use_id=tool_use_id,
-                                 transcript_path=str(transcript))
+        # agent_idベース: input_dataにagent_idを渡す
+        input_data = _make_input('Edit', agent_id=agent_id)
 
         with patch('infrastructure.db.subagent_repository._get_known_roles_from_config',
                    return_value=_KNOWN_ROLES):
             with patch('infrastructure.db.nagger_state_db.NaggerStateDB.resolve_db_path',
                        return_value=db._db_path):
-                roles = hook._get_caller_roles(input_data, tool_use_id, str(transcript))
+                roles = hook._get_caller_roles(input_data)
 
         db.close()
         assert roles == {"coder"}
@@ -145,20 +144,16 @@ class TestRoleNormalizationInGetCallerRoles:
         """researcher-db → researcher に正規化されること"""
         agent_id = "bbbbbbbb-1111-2222-3333-444444444444"
         session_id = "test-session-norm-e2e"
-        tool_use_id = "toolu_RESEARCHER_DB"
 
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "researcher-db")
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id)
 
-        input_data = _make_input('Edit', tool_use_id=tool_use_id,
-                                 transcript_path=str(transcript))
+        input_data = _make_input('Edit', agent_id=agent_id)
 
         with patch('infrastructure.db.subagent_repository._get_known_roles_from_config',
                    return_value=_KNOWN_ROLES):
             with patch('infrastructure.db.nagger_state_db.NaggerStateDB.resolve_db_path',
                        return_value=db._db_path):
-                roles = hook._get_caller_roles(input_data, tool_use_id, str(transcript))
+                roles = hook._get_caller_roles(input_data)
 
         db.close()
         assert roles == {"researcher"}
@@ -167,20 +162,16 @@ class TestRoleNormalizationInGetCallerRoles:
         """tech-lead → tech-lead のまま（既知roleとの完全一致で壊れない）"""
         agent_id = "cccccccc-1111-2222-3333-444444444444"
         session_id = "test-session-norm-e2e"
-        tool_use_id = "toolu_TECH_LEAD"
 
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "tech-lead")
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id)
 
-        input_data = _make_input('Edit', tool_use_id=tool_use_id,
-                                 transcript_path=str(transcript))
+        input_data = _make_input('Edit', agent_id=agent_id)
 
         with patch('infrastructure.db.subagent_repository._get_known_roles_from_config',
                    return_value=_KNOWN_ROLES):
             with patch('infrastructure.db.nagger_state_db.NaggerStateDB.resolve_db_path',
                        return_value=db._db_path):
-                roles = hook._get_caller_roles(input_data, tool_use_id, str(transcript))
+                roles = hook._get_caller_roles(input_data)
 
         db.close()
         assert roles == {"tech-lead"}
@@ -189,20 +180,16 @@ class TestRoleNormalizationInGetCallerRoles:
         """coder → coder（回帰なし: 既に正規化されたroleはそのまま）"""
         agent_id = "dddddddd-1111-2222-3333-444444444444"
         session_id = "test-session-norm-e2e"
-        tool_use_id = "toolu_CODER_PURE"
 
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "coder")
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id)
 
-        input_data = _make_input('Edit', tool_use_id=tool_use_id,
-                                 transcript_path=str(transcript))
+        input_data = _make_input('Edit', agent_id=agent_id)
 
         with patch('infrastructure.db.subagent_repository._get_known_roles_from_config',
                    return_value=_KNOWN_ROLES):
             with patch('infrastructure.db.nagger_state_db.NaggerStateDB.resolve_db_path',
                        return_value=db._db_path):
-                roles = hook._get_caller_roles(input_data, tool_use_id, str(transcript))
+                roles = hook._get_caller_roles(input_data)
 
         db.close()
         assert roles == {"coder"}
@@ -211,20 +198,16 @@ class TestRoleNormalizationInGetCallerRoles:
         """tester → tester（回帰なし: 既に正規化されたroleはそのまま）"""
         agent_id = "eeeeeeee-1111-2222-3333-444444444444"
         session_id = "test-session-norm-e2e"
-        tool_use_id = "toolu_TESTER_PURE"
 
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "tester")
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id)
 
-        input_data = _make_input('Edit', tool_use_id=tool_use_id,
-                                 transcript_path=str(transcript))
+        input_data = _make_input('Edit', agent_id=agent_id)
 
         with patch('infrastructure.db.subagent_repository._get_known_roles_from_config',
                    return_value=_KNOWN_ROLES):
             with patch('infrastructure.db.nagger_state_db.NaggerStateDB.resolve_db_path',
                        return_value=db._db_path):
-                roles = hook._get_caller_roles(input_data, tool_use_id, str(transcript))
+                roles = hook._get_caller_roles(input_data)
 
         db.close()
         assert roles == {"tester"}
@@ -431,25 +414,18 @@ class TestFullFlowIntegration:
         return h
 
     def test_full_flow_tester_suffix_deny(self, hook, tmp_path):
-        """フルフロー: tester-7129をDBに登録→find_caller_agent_id→正規化→scope=tester denyが発動"""
+        """フルフロー: tester-7129をDBに登録→agent_idベースでDB検索→正規化→scope=tester denyが発動"""
         agent_id = "ffffffff-1111-2222-3333-444444444444"
         session_id = "test-session-full-e2e"
-        tool_use_id = "toolu_FULL_TESTER"
 
         # DBに不正規化role 'tester-7129' で登録
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "tester-7129")
 
-        # subagent transcript作成（find_caller_agent_idが参照）
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-
-        # leader transcript作成（tool_use_idがleaderに存在しない=subagent判定）
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id, tool_name="Edit")
-
+        # agent_idベース: input_dataにagent_idを渡す（transcript走査不要）
         input_data = _make_input(
             'Edit',
             {'file_path': '/workspace/packages/claude-nagger/src/main.py'},
-            str(transcript),
-            tool_use_id=tool_use_id,
+            agent_id=agent_id,
         )
 
         # find_caller_agent_id → SubagentRepository.get() → _normalize_role の全経路
@@ -468,19 +444,14 @@ class TestFullFlowIntegration:
         """フルフロー: coder-7097をDBに登録→正規化coder→scope=tester denyは適用されない"""
         agent_id = "11111111-aaaa-bbbb-cccc-dddddddddddd"
         session_id = "test-session-full-e2e"
-        tool_use_id = "toolu_FULL_CODER"
 
         # DBに不正規化role 'coder-7097' で登録
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "coder-7097")
 
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id, tool_name="Edit")
-
         input_data = _make_input(
             'Edit',
             {'file_path': '/workspace/packages/claude-nagger/src/main.py'},
-            str(transcript),
-            tool_use_id=tool_use_id,
+            agent_id=agent_id,
         )
 
         with patch('infrastructure.db.subagent_repository._get_known_roles_from_config',
@@ -499,19 +470,14 @@ class TestFullFlowIntegration:
         """フルフロー: tech-leadをDBに登録→そのまま保持→scope=tech-lead denyが発動"""
         agent_id = "22222222-aaaa-bbbb-cccc-dddddddddddd"
         session_id = "test-session-full-e2e"
-        tool_use_id = "toolu_FULL_TECH_LEAD"
 
         # tech-leadはknown_rolesに完全一致 → そのまま保持
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "tech-lead")
 
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id, tool_name="Bash")
-
         input_data = _make_input(
             'Bash',
             {'command': 'rm -rf /tmp'},
-            str(transcript),
-            tool_use_id=tool_use_id,
+            agent_id=agent_id,
         )
 
         with patch('infrastructure.db.subagent_repository._get_known_roles_from_config',
@@ -528,18 +494,13 @@ class TestFullFlowIntegration:
         """フルフロー: researcher-db→researcher正規化→scope=researcher denyが発動"""
         agent_id = "33333333-aaaa-bbbb-cccc-dddddddddddd"
         session_id = "test-session-full-e2e"
-        tool_use_id = "toolu_FULL_RESEARCHER"
 
         db, repo = _setup_db_with_subagent(tmp_path, agent_id, session_id, "researcher-db")
-
-        _setup_subagent_transcript(tmp_path, agent_id, tool_use_id)
-        transcript = _setup_leader_transcript(tmp_path, tool_use_id, tool_name="Bash")
 
         input_data = _make_input(
             'Bash',
             {'command': 'git push --force origin main'},
-            str(transcript),
-            tool_use_id=tool_use_id,
+            agent_id=agent_id,
         )
 
         with patch('infrastructure.db.subagent_repository._get_known_roles_from_config',

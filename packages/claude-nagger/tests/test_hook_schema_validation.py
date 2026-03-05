@@ -397,9 +397,9 @@ class TestImplementationDesignHookIntegration:
             validation = result['validation']
             assert validation['valid'] is True, f"Schema errors: {validation['errors']}"
             
-            # decision フィールドの存在確認
+            # hookSpecificOutput形式の確認
             if validation['data']:
-                assert 'decision' in validation['data']
+                assert 'hookSpecificOutput' in validation['data']
 
 
 class TestCapturedFixtures:
