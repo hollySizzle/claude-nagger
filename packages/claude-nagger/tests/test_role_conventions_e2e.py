@@ -1,7 +1,7 @@
 """role別conventions YAML制約のE2Eテスト（issue_7063）
 
-実際のYAMLファイル（rules/file_conventions.yaml, rules/command_conventions.yaml,
-rules/mcp_conventions.yaml）を読み込み、ImplementationDesignHook.process()経由で
+実際のYAMLファイル（.claude-nagger/file_conventions.yaml, .claude-nagger/command_conventions.yaml,
+.claude-nagger/mcp_conventions.yaml）を読み込み、ImplementationDesignHook.process()経由で
 各role × 各ツール制限の動作を検証する。
 """
 
@@ -15,8 +15,8 @@ from src.domain.services.file_convention_matcher import FileConventionMatcher
 from src.domain.services.command_convention_matcher import CommandConventionMatcher
 from src.domain.services.mcp_convention_matcher import McpConventionMatcher
 
-# 実際のrules/ディレクトリのYAMLを使用（.claude-nagger/ではなく）
-_RULES_DIR = Path(__file__).parent.parent / "rules"
+# 実際の.claude-nagger/ディレクトリのYAMLを使用
+_RULES_DIR = Path(__file__).parent.parent / ".claude-nagger"
 
 
 def _make_input(tool_name, tool_input=None, transcript_path=None):
@@ -84,7 +84,7 @@ class TestDenyByRole:
 
     @pytest.fixture
     def hook(self):
-        """実際のYAMLルール（rules/）を読み込むhook"""
+        """実際のYAMLルール（.claude-nagger/）を読み込むhook"""
         h = ImplementationDesignHook()
         h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
         h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
@@ -228,7 +228,7 @@ class TestAllowedOperations:
 
     @pytest.fixture
     def hook(self):
-        """実際のYAMLルール（rules/）を読み込むhook"""
+        """実際のYAMLルール（.claude-nagger/）を読み込むhook"""
         h = ImplementationDesignHook()
         h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
         h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
@@ -401,7 +401,7 @@ class TestDenyByRoleExtended:
 
     @pytest.fixture
     def hook(self):
-        """実際のYAMLルール（rules/）を読み込むhook"""
+        """実際のYAMLルール（.claude-nagger/）を読み込むhook"""
         h = ImplementationDesignHook()
         h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
         h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
@@ -651,7 +651,7 @@ class TestAllowedOperationsExtended:
 
     @pytest.fixture
     def hook(self):
-        """実際のYAMLルール（rules/）を読み込むhook"""
+        """実際のYAMLルール（.claude-nagger/）を読み込むhook"""
         h = ImplementationDesignHook()
         h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
         h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
@@ -900,7 +900,7 @@ class TestLeaderBuiltinToolDeny:
 
     @pytest.fixture
     def hook(self):
-        """実際のYAMLルール（rules/）を読み込むhook"""
+        """実際のYAMLルール（.claude-nagger/）を読み込むhook"""
         h = ImplementationDesignHook()
         h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
         h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
@@ -1102,7 +1102,7 @@ class TestBuiltinToolAllowForSubagents:
 
     @pytest.fixture
     def hook(self):
-        """実際のYAMLルール（rules/）を読み込むhook"""
+        """実際のYAMLルール（.claude-nagger/）を読み込むhook"""
         h = ImplementationDesignHook()
         h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
         h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")

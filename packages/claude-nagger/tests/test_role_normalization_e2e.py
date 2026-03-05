@@ -20,8 +20,8 @@ from src.domain.services.mcp_convention_matcher import McpConventionMatcher
 from src.infrastructure.db.nagger_state_db import NaggerStateDB
 from src.infrastructure.db.subagent_repository import SubagentRepository
 
-# 実際のrules/ディレクトリのYAMLを使用
-_RULES_DIR = Path(__file__).parent.parent / "rules"
+# 実際の.claude-nagger/ディレクトリのYAMLを使用
+_RULES_DIR = Path(__file__).parent.parent / ".claude-nagger"
 
 # テスト用known_roles（config.yaml相当）
 _KNOWN_ROLES = {"coder", "tester", "researcher", "tech-lead", "Bash", "Explore", "Plan"}
@@ -204,7 +204,7 @@ class TestScopeRoleDenyE2E:
 
     @pytest.fixture
     def hook(self):
-        """実際のYAMLルール（rules/）を読み込むhook"""
+        """実際のYAMLルール（.claude-nagger/）を読み込むhook"""
         h = ImplementationDesignHook()
         h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
         h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
@@ -385,7 +385,7 @@ class TestFullFlowIntegration:
 
     @pytest.fixture
     def hook(self):
-        """実際のYAMLルール（rules/）を読み込むhook"""
+        """実際のYAMLルール（.claude-nagger/）を読み込むhook"""
         h = ImplementationDesignHook()
         h.matcher = FileConventionMatcher(_RULES_DIR / "file_conventions.yaml")
         h.command_matcher = CommandConventionMatcher(_RULES_DIR / "command_conventions.yaml")
