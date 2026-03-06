@@ -370,8 +370,20 @@ class SessionStartupHook(BaseHook):
             agent_id = record.agent_id
             role = record.role
 
-            # roleがない場合: 案D簡易版（ハイブリッドアプローチ）
-            # SubagentStart時点でagent_progressが未書き込みのため、PreToolUse時に再マッチを試行
+            # roleがない場合: trusted_prefix照合を最優先で試行し、
+            # 失敗時のみretry_match/transcript_parseにフォールバック
+            if not role:
+                # trusted_prefixes照合: agent_typeから直接roleを確定（誤認識回避）
+                if agent_type:
+                    trusted_role = resolve_trusted_prefix(agent_type)
+                    if trusted_role:
+                        self.log_info(
+                            f"trusted_prefix match (PreToolUse): "
+                            f"agent_type={agent_type}, role={trusted_role}"
+                        )
+                        subagent_repo.update_role(agent_id, trusted_role, 'trusted_prefix')
+                        role = trusted_role
+
             if not role:
                 transcript_path = input_data.get('transcript_path')
                 if transcript_path:
