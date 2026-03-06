@@ -179,9 +179,6 @@ class SessionStartupHook(BaseHook):
             base_agent_type = _strip_numeric_suffix(agent_type)
             if base_agent_type != agent_type:
                 type_specific = subagent_types.get(base_agent_type)
-        if type_specific is None and ":" in agent_type:
-            short_name = agent_type.rsplit(":", 1)[-1]
-            type_specific = subagent_types.get(short_name)
         if type_specific is None:
             type_specific = {}
         else:

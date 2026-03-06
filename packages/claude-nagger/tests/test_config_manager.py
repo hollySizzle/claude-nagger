@@ -1169,8 +1169,8 @@ class TestGetTrustedPrefixes:
             },
             "role_resolution": {
                 "trusted_prefixes": {
-                    "ticket-tasuki:coder": "coder",
-                    "ticket-tasuki:pmo": "pmo",
+                    "coder": "coder",
+                    "pmo": "pmo",
                 }
             }
         }
@@ -1181,8 +1181,8 @@ class TestGetTrustedPrefixes:
         result = manager.get_trusted_prefixes()
 
         assert result == {
-            "ticket-tasuki:coder": "coder",
-            "ticket-tasuki:pmo": "pmo",
+            "coder": "coder",
+            "pmo": "pmo",
         }
 
     def test_trusted_prefixes_undefined(self, temp_dir):

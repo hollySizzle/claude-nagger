@@ -87,7 +87,7 @@ session_startup:
   # subagent別override設定（subagent自身に直接ブロッキング通知される）
   # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
   # 解決順序: base(上記) → subagent_default → subagent_types.{type}
-  # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
+  # suffix対応: "coder-fix-bug" → "coder" にフォールバック
   # 命名規約: Agent Teamsメンバーのnameはsubagent_typesのキーと一致させること
   #   例: name="coder" → subagent_types.coder にマッチ
   overrides:
@@ -187,15 +187,10 @@ context_management:
     critical_warning: 100000
 
 # role判定: agent_typeの前方一致でroleを確定（最長一致優先）
+# suffix多様性を吸収（coder-fix-bug → coder, pmo-2 → pmo）
 # trusted_prefixesにマッチしない場合はtask_spawnsフォールバック
 role_resolution:
   trusted_prefixes: {}
-  #  "ticket-tasuki:coder": "coder"
-  #  "ticket-tasuki:pmo": "pmo"
-  #  "ticket-tasuki:tech-lead": "tech-lead"
-  #  "ticket-tasuki:tester": "tester"
-  #  "ticket-tasuki:researcher": "researcher"
-  #  # Agent tool直接起動時のフォールバック
   #  "coder": "coder"
   #  "pmo": "pmo"
   #  "tech-lead": "tech-lead"

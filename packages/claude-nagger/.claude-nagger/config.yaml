@@ -4,13 +4,8 @@
 # ロール解決設定（agent_typeの前方一致でroleを確定）
 role_resolution:
   trusted_prefixes:
-    # TeamCreate経由（既存）
-    "ticket-tasuki:coder": "coder"
-    "ticket-tasuki:pmo": "pmo"
-    "ticket-tasuki:tech-lead": "tech-lead"
-    "ticket-tasuki:tester": "tester"
-    "ticket-tasuki:researcher": "researcher"
-    # Agent tool直接起動フォールバック
+    # agent_typeの前方一致でroleを確定
+    # suffix多様性を吸収（coder-fix-bug → coder, pmo-2 → pmo）
     "coder": "coder"
     "pmo": "pmo"
     "tech-lead": "tech-lead"
@@ -107,7 +102,7 @@ session_startup:
   # ※ Leader向けではなく、subagent自身に直接ブロッキング通知される
   # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
   # 解決順序: base(上記) → subagent_default → subagent_types.{type}
-  # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
+  # suffix対応: "coder-fix-bug" → "coder" にフォールバック
   overrides:
     subagent_default:
       messages:

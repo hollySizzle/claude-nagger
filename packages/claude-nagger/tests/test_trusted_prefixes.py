@@ -29,11 +29,11 @@ def config_dir(tmp_path):
     config = {
         "role_resolution": {
             "trusted_prefixes": {
-                "ticket-tasuki:coder": "coder",
-                "ticket-tasuki:pmo": "pmo",
-                "ticket-tasuki:tech-lead": "tech-lead",
-                "ticket-tasuki:tester": "tester",
-                "ticket-tasuki:researcher": "researcher",
+                "coder": "coder",
+                "pmo": "pmo",
+                "tech-lead": "tech-lead",
+                "tester": "tester",
+                "researcher": "researcher",
             }
         }
     }
@@ -60,28 +60,28 @@ class TestResolveTrustedPrefix:
 
     def test_完全一致(self, config_dir, monkeypatch):
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(config_dir))
-        assert resolve_trusted_prefix("ticket-tasuki:coder") == "coder"
+        assert resolve_trusted_prefix("coder") == "coder"
 
     def test_前方一致(self, config_dir, monkeypatch):
         """agent_typeがprefixより長い場合も前方一致でマッチ"""
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(config_dir))
-        assert resolve_trusted_prefix("ticket-tasuki:coder-extra") == "coder"
+        assert resolve_trusted_prefix("coder-extra") == "coder"
 
     def test_pmo解決(self, config_dir, monkeypatch):
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(config_dir))
-        assert resolve_trusted_prefix("ticket-tasuki:pmo") == "pmo"
+        assert resolve_trusted_prefix("pmo") == "pmo"
 
     def test_tech_lead解決(self, config_dir, monkeypatch):
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(config_dir))
-        assert resolve_trusted_prefix("ticket-tasuki:tech-lead") == "tech-lead"
+        assert resolve_trusted_prefix("tech-lead") == "tech-lead"
 
     def test_未マッチ_None返却(self, config_dir, monkeypatch):
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(config_dir))
-        assert resolve_trusted_prefix("unknown-plugin:coder") is None
+        assert resolve_trusted_prefix("unknown-plugin") is None
 
     def test_trusted_prefixes未定義_None返却(self, empty_config_dir, monkeypatch):
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(empty_config_dir))
-        assert resolve_trusted_prefix("ticket-tasuki:coder") is None
+        assert resolve_trusted_prefix("coder") is None
 
     def test_最長一致(self, tmp_path, monkeypatch):
         """複数のprefixがマッチする場合、最長のものが優先される"""
@@ -90,17 +90,17 @@ class TestResolveTrustedPrefix:
         config = {
             "role_resolution": {
                 "trusted_prefixes": {
-                    "ticket": "generic",
-                    "ticket-tasuki": "tasuki-generic",
-                    "ticket-tasuki:coder": "coder",
+                    "cod": "generic",
+                    "coder": "coder",
+                    "coder-special": "special-coder",
                 }
             }
         }
         with open(nagger_dir / "config.yaml", 'w') as f:
             yaml.dump(config, f)
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
-        # "ticket-tasuki:coder"が最長一致で"coder"を返す
-        assert resolve_trusted_prefix("ticket-tasuki:coder") == "coder"
+        # "coder-special"が最長一致で"special-coder"を返す
+        assert resolve_trusted_prefix("coder-special") == "special-coder"
 
     def test_最長一致_中間マッチ(self, tmp_path, monkeypatch):
         """最長一致で中間のprefixがマッチするケース"""
@@ -109,17 +109,17 @@ class TestResolveTrustedPrefix:
         config = {
             "role_resolution": {
                 "trusted_prefixes": {
-                    "ticket": "generic",
-                    "ticket-tasuki": "tasuki-generic",
-                    "ticket-tasuki:coder": "coder",
+                    "cod": "generic",
+                    "coder": "coder",
+                    "coder-special": "special-coder",
                 }
             }
         }
         with open(nagger_dir / "config.yaml", 'w') as f:
             yaml.dump(config, f)
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
-        # "ticket-tasuki:unknown"は"ticket-tasuki"にマッチ
-        assert resolve_trusted_prefix("ticket-tasuki:unknown") == "tasuki-generic"
+        # "coder-unknown"は"coder"にマッチ（"cod"より長い）
+        assert resolve_trusted_prefix("coder-unknown") == "coder"
 
 
 class TestLoadTrustedPrefixes:
@@ -156,11 +156,11 @@ def integration_env(tmp_path, monkeypatch):
     config = {
         "role_resolution": {
             "trusted_prefixes": {
-                "ticket-tasuki:coder": "coder",
-                "ticket-tasuki:pmo": "pmo",
-                "ticket-tasuki:tech-lead": "tech-lead",
-                "ticket-tasuki:tester": "tester",
-                "ticket-tasuki:researcher": "researcher",
+                "coder": "coder",
+                "pmo": "pmo",
+                "tech-lead": "tech-lead",
+                "tester": "tester",
+                "researcher": "researcher",
             }
         },
         "session_startup": {
@@ -223,13 +223,13 @@ class TestSubagentStartTrustedPrefixDB:
     """
 
     def test_pmo_register_and_role_update(self, integration_env):
-        """agent_type="ticket-tasuki:pmo"でregister→trusted_prefix照合→DB書込"""
+        """agent_type="pmo"でregister→trusted_prefix照合→DB書込"""
         db, repo, _ = integration_env
         clear_cache()
 
         agent_id = "agent-pmo-001"
         session_id = "session-001"
-        agent_type = "ticket-tasuki:pmo"
+        agent_type = "pmo"
 
         # SubagentStart処理フローを再現
         repo.register(agent_id, session_id, agent_type)
@@ -254,7 +254,7 @@ class TestSubagentStartTrustedPrefixDB:
 
         agent_id = "agent-coder-001"
         session_id = "session-002"
-        agent_type = "ticket-tasuki:coder"
+        agent_type = "coder"
 
         repo.register(agent_id, session_id, agent_type)
 
@@ -290,7 +290,7 @@ class TestPreToolUseTrustedPrefixDB:
 
         agent_id = "agent-tech-001"
         session_id = "session-003"
-        agent_type = "ticket-tasuki:tech-lead"
+        agent_type = "tech-lead"
 
         # register時はrole=None（SubagentStart時にtrusted_prefixが失敗したケースを模擬）
         repo.register(agent_id, session_id, agent_type, role=None)
@@ -318,7 +318,7 @@ class TestPreToolUseTrustedPrefixDB:
 
         agent_id = "agent-coder-002"
         session_id = "session-004"
-        agent_type = "ticket-tasuki:coder"
+        agent_type = "coder"
 
         # register時にrole='coder'が既に設定されているケース
         repo.register(agent_id, session_id, agent_type, role=None)
@@ -372,22 +372,22 @@ class TestTrustedPrefixFallback:
 class TestSuffixAgentTypeTrustedPrefix:
     """suffix付きagent_typeのtrusted_prefix統合テスト（issue_7440 T3-4）
 
-    agent_type="ticket-tasuki:coder-fix-bug" のように
+    agent_type="coder-fix-bug" のように
     定義済みprefixにsuffixが付いたケースの前方一致を検証。
     """
 
     def test_suffix付きagent_typeの前方一致解決(self, integration_env):
-        """agent_type="ticket-tasuki:coder-fix-bug" → role='coder'に解決"""
+        """agent_type="coder-fix-bug" → role='coder'に解決"""
         db, repo, _ = integration_env
         clear_cache()
 
         agent_id = "agent-coder-fix-001"
         session_id = "session-006"
-        agent_type = "ticket-tasuki:coder-fix-bug"
+        agent_type = "coder-fix-bug"
 
         repo.register(agent_id, session_id, agent_type)
 
-        # 前方一致: "ticket-tasuki:coder" が最長一致でマッチ
+        # 前方一致: "coder" が最長一致でマッチ
         trusted_role = resolve_trusted_prefix(agent_type)
         assert trusted_role == "coder"
 
@@ -405,7 +405,7 @@ class TestSuffixAgentTypeTrustedPrefix:
 
         agent_id = "agent-tester-extra-001"
         session_id = "session-007"
-        agent_type = "ticket-tasuki:tester-regression"
+        agent_type = "tester-regression"
 
         repo.register(agent_id, session_id, agent_type)
 

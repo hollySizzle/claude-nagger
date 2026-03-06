@@ -164,35 +164,6 @@ class TestSessionStartupHookSubagentOverride:
 
         assert resolved["messages"]["first_time"]["title"] == "base"
 
-    def test_resolve_namespaced_agent_type_matches_short_key(self):
-        """名前空間付きagent_type（例: my-plugin:coder）が短いキーにマッチ"""
-        config = {
-            "enabled": True,
-            "messages": {
-                "first_time": {"title": "base", "main_text": "base text"},
-            },
-            "overrides": {
-                "subagent_default": {
-                    "messages": {"first_time": {"title": "subagent default"}}
-                },
-                "subagent_types": {
-                    "coder": {
-                        "messages": {
-                            "first_time": {
-                                "title": "coder規約",
-                                "main_text": "[ ] スコープ外編集禁止",
-                            }
-                        }
-                    },
-                },
-            },
-        }
-        hook = self._make_hook(config)
-        resolved = hook._resolve_subagent_config("my-plugin:coder")
-
-        assert resolved["messages"]["first_time"]["title"] == "coder規約"
-        assert resolved["messages"]["first_time"]["main_text"] == "[ ] スコープ外編集禁止"
-
     def test_resolve_exact_match_takes_priority_over_short_name(self):
         """完全一致が部分一致（短いキー）より優先される"""
         config = {
@@ -1443,7 +1414,10 @@ class TestShouldProcessRetryMatch:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-no-transcript"
         mock_record.role = None
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
