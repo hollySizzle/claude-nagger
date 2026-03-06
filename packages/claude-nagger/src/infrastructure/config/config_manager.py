@@ -274,6 +274,21 @@ class ConfigManager:
         """表示レベル設定を取得"""
         return self.config.get("convention_hooks", {}).get("display_levels", {}).get(level, {})
 
+    def get_trusted_prefixes(self) -> Dict[str, str]:
+        """role_resolution.trusted_prefixesを取得
+
+        agent_typeの前方一致でroleを確定するためのマッピング。
+        未定義時は空dict（フォールバック動作に影響なし）。
+
+        Returns:
+            prefix → role のマッピング
+        """
+        prefixes = self.config.get("role_resolution", {}).get("trusted_prefixes", {})
+        if not isinstance(prefixes, dict):
+            logger.warning(f"trusted_prefixesの型が不正（dict期待）: {type(prefixes)}")
+            return {}
+        return prefixes
+
     def get_permission_mode_behaviors(self) -> Dict[str, str]:
         """permission_mode別の挙動設定を取得
 

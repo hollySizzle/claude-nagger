@@ -186,6 +186,16 @@ context_management:
     medium_warning: 60000
     critical_warning: 100000
 
+# role判定: agent_typeの前方一致でroleを確定（最長一致優先）
+# trusted_prefixesにマッチしない場合はtask_spawnsフォールバック
+role_resolution:
+  trusted_prefixes: {}
+  #  "ticket-tasuki:coder": "coder"
+  #  "ticket-tasuki:pmo": "pmo"
+  #  "ticket-tasuki:tech-lead": "tech-lead"
+  #  "ticket-tasuki:tester": "tester"
+  #  "ticket-tasuki:researcher": "researcher"
+
 # デバッグ設定
 debug:
   enable_logging: false

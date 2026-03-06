@@ -1142,3 +1142,120 @@ class TestGetClaudeDir:
 
         with pytest.raises(ValueError, match="claude_dirが設定されていません"):
             manager.get_claude_dir()
+
+
+class TestGetTrustedPrefixes:
+    """get_trusted_prefixesメソッドのテスト（issue_7476）"""
+
+    @pytest.fixture
+    def temp_dir(self):
+        """テスト用一時ディレクトリ"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def test_trusted_prefixes_defined(self, temp_dir):
+        """trusted_prefixesが定義されている場合、dict[str, str]を返す"""
+        config = {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            },
+            "role_resolution": {
+                "trusted_prefixes": {
+                    "ticket-tasuki:coder": "coder",
+                    "ticket-tasuki:pmo": "pmo",
+                }
+            }
+        }
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_trusted_prefixes()
+
+        assert result == {
+            "ticket-tasuki:coder": "coder",
+            "ticket-tasuki:pmo": "pmo",
+        }
+
+    def test_trusted_prefixes_undefined(self, temp_dir):
+        """role_resolutionが未定義の場合、空dictを返す"""
+        config = {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            }
+        }
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_trusted_prefixes()
+
+        assert result == {}
+
+    def test_trusted_prefixes_empty_dict(self, temp_dir):
+        """trusted_prefixesが空dictの場合、空dictを返す"""
+        config = {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            },
+            "role_resolution": {
+                "trusted_prefixes": {}
+            }
+        }
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_trusted_prefixes()
+
+        assert result == {}
+
+    def test_trusted_prefixes_invalid_type(self, temp_dir):
+        """trusted_prefixesが不正な型の場合、空dictを返す"""
+        config = {
+            "system": {
+                "version": "1.0.0",
+                "rails_root": "./",
+                "doc_root": "./docs",
+                "scripts_root": "./"
+            },
+            "document": {
+                "templates_dir": "templates",
+                "output_dir": "output",
+                "target_dirs": {}
+            },
+            "role_resolution": {
+                "trusted_prefixes": "invalid_string"
+            }
+        }
+        config_path = temp_dir / "config.json"
+        config_path.write_text(json.dumps(config), encoding="utf-8")
+
+        manager = ConfigManager(config_path=config_path)
+        result = manager.get_trusted_prefixes()
+
+        assert result == {}
