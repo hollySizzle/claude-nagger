@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 
 import pytest
 
@@ -28,7 +29,7 @@ GUARD_SCRIPT = os.path.join(
 GUARD_SCRIPT = os.path.normpath(GUARD_SCRIPT)
 
 
-def _run_guard(input_data: dict) -> tuple[int, dict | None]:
+def _run_guard(input_data: dict, env: dict | None = None) -> tuple[int, dict | None]:
     """ガードスクリプトを実行し、(終了コード, stdout JSONまたはNone) を返す"""
     proc = subprocess.run(
         [sys.executable, GUARD_SCRIPT],
@@ -36,6 +37,7 @@ def _run_guard(input_data: dict) -> tuple[int, dict | None]:
         capture_output=True,
         text=True,
         timeout=10,
+        env=env,
     )
     stdout_json = None
     if proc.stdout.strip():
@@ -106,16 +108,36 @@ class TestBuiltinWhitelist:
 class TestTeamNameHandling:
     """team_name指定による許可・拒否テスト"""
 
-    def test_allow_with_team_name(self):
-        """team_name指定ありは許可"""
+    def test_allow_with_team_name(self, tmp_path):
+        """team_name指定あり＋config.json実在は許可"""
+        # config.jsonを配置した仮HOMEを作成
+        config_dir = tmp_path / ".claude" / "teams" / "my-team"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.json").write_text("{}")
+        env = {**os.environ, "HOME": str(tmp_path)}
+
         data = _make_agent_input(
             subagent_type="general-purpose",
             team_name="my-team",
         )
-        rc, out = _run_guard(data)
+        rc, out = _run_guard(data, env=env)
 
         assert rc == 0
         assert out is None
+
+    def test_block_fake_team_name(self):
+        """team_name指定あり＋config.json不在はdeny（偽装対策）"""
+        # 存在しないチーム名を使用
+        env = {**os.environ, "HOME": tempfile.mkdtemp()}
+        data = _make_agent_input(
+            subagent_type="general-purpose",
+            team_name="fake-team",
+        )
+        rc, out = _run_guard(data, env=env)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_block_without_team_name(self):
         """team_name未指定はdeny"""
