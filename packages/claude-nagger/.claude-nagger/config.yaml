@@ -4,11 +4,18 @@
 # ロール解決設定（agent_typeの前方一致でroleを確定）
 role_resolution:
   trusted_prefixes:
+    # TeamCreate経由（既存）
     "ticket-tasuki:coder": "coder"
     "ticket-tasuki:pmo": "pmo"
     "ticket-tasuki:tech-lead": "tech-lead"
     "ticket-tasuki:tester": "tester"
     "ticket-tasuki:researcher": "researcher"
+    # Agent tool直接起動フォールバック
+    "coder": "coder"
+    "pmo": "pmo"
+    "tech-lead": "tech-lead"
+    "tester": "tester"
+    "researcher": "researcher"
 
 # セッション開始時設定
 session_startup:

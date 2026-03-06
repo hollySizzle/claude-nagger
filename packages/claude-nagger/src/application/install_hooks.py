@@ -195,6 +195,12 @@ role_resolution:
   #  "ticket-tasuki:tech-lead": "tech-lead"
   #  "ticket-tasuki:tester": "tester"
   #  "ticket-tasuki:researcher": "researcher"
+  #  # Agent tool直接起動時のフォールバック
+  #  "coder": "coder"
+  #  "pmo": "pmo"
+  #  "tech-lead": "tech-lead"
+  #  "tester": "tester"
+  #  "researcher": "researcher"
 
 # デバッグ設定
 debug:
