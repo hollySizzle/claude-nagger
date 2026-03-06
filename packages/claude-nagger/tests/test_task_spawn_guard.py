@@ -388,3 +388,18 @@ class TestEdgeCases:
         assert rc == 0
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_whitespace_only_team_name_treated_as_empty(self):
+        """team_name=" "（空白文字のみ）はstrip()で空扱い→deny"""
+        data = _make_task_input(
+            subagent_type="general-purpose",
+            team_name=" ",
+            prompt="issue_1234: テスト",
+        )
+        # _make_task_inputはteam_name truthyなのでtool_inputに含まれる
+        # しかしguard側で team_name.strip() が空→team_name無し扱い
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
