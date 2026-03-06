@@ -18,6 +18,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from infrastructure.db import NaggerStateDB, SubagentRepository
 from shared.structured_logging import StructuredLogger, DEFAULT_LOG_DIR
+from shared.trusted_prefixes import resolve_trusted_prefix
 
 # モジュールレベルのロガー
 _logger = StructuredLogger(name="SubagentEventHook", log_dir=DEFAULT_LOG_DIR)
@@ -173,21 +174,31 @@ def main():
                 f"type={agent_type}, leader_transcript={leader_transcript_path}"
             )
 
-            # 親セッションのtranscriptからtask_spawnsを登録（共通フィールド）
-            transcript_path = leader_transcript_path
-            if transcript_path:
-                try:
-                    count = repo.register_task_spawns(session_id, transcript_path)
-                    _logger.info(f"Task spawns registered: {count} new entries")
+            # trusted_prefix照合によるrole解決（issue_7440）
+            # race condition回避: task_spawnsマッチングより先に確定roleを書き込む
+            trusted_role = resolve_trusted_prefix(agent_type, _logger)
+            if trusted_role:
+                repo.update_role(agent_id, trusted_role, 'trusted_prefix')
+                _logger.info(
+                    f"Role resolved via trusted_prefix: {trusted_role} "
+                    f"(agent_type={agent_type})"
+                )
+            else:
+                # trusted_prefixで解決できない場合のみtask_spawnsフォールバック
+                transcript_path = leader_transcript_path
+                if transcript_path:
+                    try:
+                        count = repo.register_task_spawns(session_id, transcript_path)
+                        _logger.info(f"Task spawns registered: {count} new entries")
 
-                    # Step 0: agent_progressベースの正確マッチング（issue_5947, issue_7016: Step 0のみ）
-                    role = repo.match_task_to_agent(
-                        session_id, agent_id, agent_type, transcript_path=transcript_path
-                    )
-                    if role:
-                        _logger.info(f"Role matched from task_spawns: {role}")
-                except Exception as e:
-                    _logger.error(f"Failed to process task_spawns: {e}")
+                        # Step 0: agent_progressベースの正確マッチング（issue_5947, issue_7016: Step 0のみ）
+                        role = repo.match_task_to_agent(
+                            session_id, agent_id, agent_type, transcript_path=transcript_path
+                        )
+                        if role:
+                            _logger.info(f"Role matched from task_spawns: {role}")
+                    except Exception as e:
+                        _logger.error(f"Failed to process task_spawns: {e}")
 
         elif event_name == "SubagentStop":
             # agent_transcript_path: subagent自身のトランスクリプトパス（issue_6184）
