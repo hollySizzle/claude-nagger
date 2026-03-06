@@ -191,7 +191,7 @@ class TestTeamNameRequirement:
 class TestTeamExemptTypes:
     """ビルトイン軽量エージェントのホワイトリスト"""
 
-    @pytest.mark.parametrize("agent_type", ["Explore", "Plan", "Bash"])
+    @pytest.mark.parametrize("agent_type", ["Explore", "Plan"])
     def test_allow_exempt_types_without_team_name(self, agent_type):
         """ホワイトリスト対象はteam_name不要で許可"""
         data = _make_task_input(

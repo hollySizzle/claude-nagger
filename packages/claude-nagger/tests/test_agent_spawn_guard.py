@@ -1,7 +1,7 @@
 """agent_spawn_guard.py のテスト
 
 Agent tool経由のsub-agent直接起動ガードの動作を検証する。
-- ビルトインホワイトリスト（Explore, Plan, Bash, statusline-setup, claude-code-guide）は許可
+- ビルトインホワイトリスト（Explore, Plan, statusline-setup, claude-code-guide）は許可
 - team_name指定あり → 許可
 - team_name空白のみ → deny（strip()で空扱い）
 - subagent（agent_context="subagent"）は制約対象外
@@ -68,7 +68,7 @@ def _make_agent_input(
 class TestBuiltinWhitelist:
     """ビルトインホワイトリストの許可テスト"""
 
-    @pytest.mark.parametrize("agent_type", ["Explore", "Plan", "Bash"])
+    @pytest.mark.parametrize("agent_type", ["Explore", "Plan"])
     def test_allow_builtin_types(self, agent_type):
         """ホワイトリスト対象はteam_name不要で許可"""
         data = _make_agent_input(subagent_type=agent_type)

@@ -20,7 +20,7 @@ import sys
 BLOCKED_PREFIX = "ticket-tasuki:"
 
 # team_name不要で許可するsubagent_type（ビルトイン軽量エージェント）
-TEAM_EXEMPT_TYPES = {"Explore", "Plan", "Bash", "statusline-setup", "claude-code-guide"}
+TEAM_EXEMPT_TYPES = {"Explore", "Plan", "statusline-setup", "claude-code-guide"}
 
 # ブロック時メッセージ (ticket-tasuki:* 直接起動)
 BLOCK_MESSAGE_TEMPLATE = """\
@@ -45,7 +45,7 @@ Task spawn規約: team_name未指定のTask spawn制限
 2. 常駐エージェント (tech-lead, PMO等) にSendMessageで委譲してください
 3. 1-3ツールコールで済む作業はleader自身で直接実行してください
 
-⚠ team_name不要のエージェント: Explore, Plan, Bash のみ"""
+⚠ team_name不要のエージェント: Explore, Plan のみ"""
 
 # issue_{id}パターン（トレーサビリティチェック用）
 ISSUE_ID_PATTERN = re.compile(r"issue_\d+")
