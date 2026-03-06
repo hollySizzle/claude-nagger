@@ -325,32 +325,38 @@ class SessionStartupHook(BaseHook):
         subagent_repo = SubagentRepository(db)
         session_repo = SessionRepository(db)
 
-        # subagent検出（DBベース）
-        if subagent_repo.is_any_active(session_id):
-            # callerのagent_idで正しいsubagentレコードを特定（issue_7412）
-            # agent_idがある場合: callerのレコードを直接取得し、未処理なら使用
-            # フォールバック: claim_next_unprocessedで最古の未処理を取得（従来動作）
-            caller_agent_id = input_data.get('agent_id')
-            record = None
-            if caller_agent_id:
-                caller_record = subagent_repo.get(caller_agent_id)
-                if caller_record and not caller_record.startup_processed:
-                    record = caller_record
-                    self.log_info(f"🎯 Matched caller agent_id directly: {caller_agent_id}")
-                else:
-                    self.log_info(
-                        f"⚠️ Caller agent_id={caller_agent_id} not found or already processed, "
-                        f"falling back to claim_next_unprocessed"
-                    )
-                    record = subagent_repo.claim_next_unprocessed(session_id)
-            else:
-                record = subagent_repo.claim_next_unprocessed(session_id)
-            if record is None:
-                # 全subagent処理済み
-                self.log_info("✅ All subagents already processed")
+        # subagent検出（agent_id直接マッチ優先 — issue_7531）
+        # Phase 1: agent_id直接マッチ（is_any_activeゲート不要）
+        caller_agent_id = input_data.get('agent_id')
+        record = None
+
+        if caller_agent_id:
+            caller_record = subagent_repo.get(caller_agent_id)
+            if caller_record and not caller_record.startup_processed:
+                # subagentフロー直行（is_any_active不要）
+                record = caller_record
+                self.log_info(f"🎯 agent_id直接マッチ成功: {caller_agent_id}")
+            elif caller_record and caller_record.startup_processed:
+                self.log_info(f"✅ agent_id={caller_agent_id} 処理済み、スキップ")
                 db.close()
                 return False
+            else:
+                # DB未登録: SubagentStartが未完了の可能性→is_any_activeフォールバック
+                self.log_info(f"⚠️ agent_id={caller_agent_id} DB未登録、is_any_activeフォールバック")
+                if subagent_repo.is_any_active(session_id):
+                    record = subagent_repo.claim_next_unprocessed(session_id)
+                    self.log_info(f"⚠️ claim_next_unprocessed最終手段使用（非推奨）: {record}")
+                else:
+                    record = None
+        else:
+            # Phase 2: agent_idなし（leader or 旧バージョン）
+            # agent_id不在 → is_any_active + claim_next_unprocessed（従来動作維持）
+            if subagent_repo.is_any_active(session_id):
+                record = subagent_repo.claim_next_unprocessed(session_id)
+            else:
+                record = None
 
+        if record is not None:
             # agent_idベースのleader判定（issue_7352: transcript走査全廃）
             from domain.services.leader_detection import is_leader_tool_use
             if is_leader_tool_use(input_data):
@@ -439,7 +445,7 @@ class SessionStartupHook(BaseHook):
             self.log_info(f"🚀 New subagent requires startup processing: {agent_type}/{agent_id}")
             return True
 
-        # main agentフロー
+        # main agentフロー（record=None: subagentではないかDB未登録）
         self._is_subagent = False
         self._resolved_config = None
         self._db = db

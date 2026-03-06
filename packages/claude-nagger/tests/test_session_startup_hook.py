@@ -212,7 +212,10 @@ class TestShouldProcessSubagent:
             mock_record.agent_type = 'Task'
             mock_record.agent_id = 'agent-123'
             mock_record.role = 'coder'
+            mock_record.startup_processed = False
             mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+            # agent_id直接マッチ用（issue_7531）
+            mock_subagent_repo.get.return_value = mock_record
 
             with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
                 with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -1074,7 +1077,10 @@ class TestShouldProcessSubagentAgentIdBased:
         mock_record.agent_type = 'Task'
         mock_record.agent_id = 'agent-123'
         mock_record.role = 'coder'
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
 
         return config, mock_db, mock_subagent_repo, mock_session_repo
 
@@ -1146,3 +1152,142 @@ class TestShouldProcessSubagentAgentIdBased:
 
         assert result is True
         assert hook._is_subagent is True
+
+
+class TestShouldProcessAgentIdDirectMatch:
+    """should_process agent_id直接マッチ必須化テスト（issue_7531）"""
+
+    def _setup_mocks(self, agent_id_record=None, is_any_active=False, claim_record=None):
+        """共通モックセットアップ
+
+        Args:
+            agent_id_record: subagent_repo.get()の返値
+            is_any_active: subagent_repo.is_any_active()の返値
+            claim_record: subagent_repo.claim_next_unprocessed()の返値
+        """
+        config = {
+            'enabled': True,
+            'behavior': {'once_per_session': True},
+            'overrides': {'subagent_types': {'coder': {'enabled': True}}},
+        }
+        mock_db = MagicMock()
+        mock_subagent_repo = MagicMock()
+        mock_session_repo = MagicMock()
+
+        mock_subagent_repo.get.return_value = agent_id_record
+        mock_subagent_repo.is_any_active.return_value = is_any_active
+        mock_subagent_repo.claim_next_unprocessed.return_value = claim_record
+
+        return config, mock_db, mock_subagent_repo, mock_session_repo
+
+    def _run_should_process(self, config, mock_db, mock_subagent_repo, mock_session_repo, input_data):
+        """should_processを実行するヘルパー"""
+        with patch.object(SessionStartupHook, '_load_config', return_value=config):
+            hook = SessionStartupHook()
+            with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
+                with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
+                    with patch('src.domain.hooks.session_startup_hook.SessionRepository', return_value=mock_session_repo):
+                        result = hook.should_process(input_data)
+        return hook, result
+
+    def test_agent_id_direct_match_unprocessed(self):
+        """agent_idがDBにあり未処理→record取得成功、is_any_active不要"""
+        mock_record = MagicMock()
+        mock_record.agent_type = 'Task'
+        mock_record.agent_id = 'agent-direct-001'
+        mock_record.role = 'coder'
+        mock_record.startup_processed = False
+
+        config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_mocks(
+            agent_id_record=mock_record,
+        )
+
+        hook, result = self._run_should_process(
+            config, mock_db, mock_subagent_repo, mock_session_repo,
+            {'session_id': 'sess-1', 'agent_id': 'agent-direct-001'},
+        )
+
+        assert result is True
+        assert hook._is_subagent is True
+        assert hook._current_agent_id == 'agent-direct-001'
+        # is_any_activeは呼ばれないこと（直接マッチのため）
+        mock_subagent_repo.is_any_active.assert_not_called()
+        mock_subagent_repo.claim_next_unprocessed.assert_not_called()
+
+    def test_agent_id_already_processed_returns_false(self):
+        """agent_idがDBにあり処理済み→return False"""
+        mock_record = MagicMock()
+        mock_record.agent_type = 'Task'
+        mock_record.agent_id = 'agent-done-001'
+        mock_record.role = 'coder'
+        mock_record.startup_processed = True
+
+        config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_mocks(
+            agent_id_record=mock_record,
+        )
+
+        hook, result = self._run_should_process(
+            config, mock_db, mock_subagent_repo, mock_session_repo,
+            {'session_id': 'sess-1', 'agent_id': 'agent-done-001'},
+        )
+
+        assert result is False
+        # is_any_activeもclaim_next_unprocessedも呼ばれない
+        mock_subagent_repo.is_any_active.assert_not_called()
+        mock_subagent_repo.claim_next_unprocessed.assert_not_called()
+
+    def test_agent_id_not_in_db_fallback_claim(self):
+        """agent_id DB未登録→is_any_activeフォールバック→claim_next_unprocessed"""
+        fallback_record = MagicMock()
+        fallback_record.agent_type = 'Task'
+        fallback_record.agent_id = 'agent-fallback-001'
+        fallback_record.role = 'coder'
+        fallback_record.startup_processed = False
+
+        config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_mocks(
+            agent_id_record=None,  # DB未登録
+            is_any_active=True,
+            claim_record=fallback_record,
+        )
+
+        hook, result = self._run_should_process(
+            config, mock_db, mock_subagent_repo, mock_session_repo,
+            {'session_id': 'sess-1', 'agent_id': 'agent-unknown-001'},
+        )
+
+        assert result is True
+        assert hook._is_subagent is True
+        # フォールバックでis_any_active→claim_next_unprocessedが呼ばれる
+        mock_subagent_repo.is_any_active.assert_called_once_with('sess-1')
+        mock_subagent_repo.claim_next_unprocessed.assert_called_once_with('sess-1')
+
+    def test_cross_session_race_condition(self):
+        """セッション跨ぎ: agent_idの登録session_idが現在session_idと異なる→agent_id直接マッチで正常取得
+
+        PMOが旧セッションで登録→leaderセッション切替→新session_idでis_any_active検索→
+        検出不可のrace conditionを、agent_id直接マッチで回避。
+        """
+        # 旧session_idで登録されたrecord（session_idが異なる）
+        mock_record = MagicMock()
+        mock_record.agent_type = 'Task'
+        mock_record.agent_id = 'agent-cross-001'
+        mock_record.role = 'coder'
+        mock_record.startup_processed = False
+
+        config, mock_db, mock_subagent_repo, mock_session_repo = self._setup_mocks(
+            agent_id_record=mock_record,
+            is_any_active=False,  # 新session_idではactive subagentなし
+        )
+
+        # 新しいsession_idでshould_processを呼ぶが、agent_idは旧セッションのもの
+        hook, result = self._run_should_process(
+            config, mock_db, mock_subagent_repo, mock_session_repo,
+            {'session_id': 'new-session-id', 'agent_id': 'agent-cross-001'},
+        )
+
+        # agent_id直接マッチでrecord取得成功（session_idに依存しない）
+        assert result is True
+        assert hook._is_subagent is True
+        assert hook._current_agent_id == 'agent-cross-001'
+        # is_any_activeは呼ばれない（直接マッチ成功のため）
+        mock_subagent_repo.is_any_active.assert_not_called()

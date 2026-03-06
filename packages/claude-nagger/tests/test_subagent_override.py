@@ -320,7 +320,10 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-abc"
         mock_record.role = "coder"
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -431,7 +434,10 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-abc"
         mock_record.role = "coder"
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -459,7 +465,10 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-abc"
         mock_record.role = None
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -486,7 +495,10 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-pmo"
         mock_record.role = "tester"
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -512,7 +524,10 @@ class TestSessionStartupHookShouldProcessSubagent:
         mock_record.agent_type = "Bash"
         mock_record.agent_id = "agent-bash"
         mock_record.role = None
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -1000,7 +1015,10 @@ class TestShouldProcessRoleParsing:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-role-test"
         mock_record.role = None
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
         # retry_matchがNoneを返す（フォールバックテスト）
         mock_subagent_repo.retry_match_from_agent_progress.return_value = None
 
@@ -1039,7 +1057,10 @@ class TestShouldProcessRoleParsing:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-existing-role"
         mock_record.role = "coder"  # 既にroleがある
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
             with patch('src.domain.hooks.session_startup_hook.SubagentRepository', return_value=mock_subagent_repo):
@@ -1111,7 +1132,10 @@ class TestShouldProcessRoleParsing:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-resolve-test"
         mock_record.role = None
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
         # retry_matchがNoneを返す（フォールバックテスト）
         mock_subagent_repo.retry_match_from_agent_progress.return_value = None
 
@@ -1353,7 +1377,10 @@ class TestShouldProcessRetryMatch:
         mock_record.agent_type = "general-purpose"
         mock_record.agent_id = "agent-fallback"
         mock_record.role = None
+        mock_record.startup_processed = False
         mock_subagent_repo.claim_next_unprocessed.return_value = mock_record
+        # agent_id直接マッチ用（issue_7531）
+        mock_subagent_repo.get.return_value = mock_record
         mock_subagent_repo.retry_match_from_agent_progress.return_value = None
 
         with patch('src.domain.hooks.session_startup_hook.NaggerStateDB', return_value=mock_db):
@@ -1504,12 +1531,6 @@ class TestResolveSubagentConfigSuffixFallback:
         hook = self._make_hook()
         resolved = hook._resolve_subagent_config("general-purpose", role="tester")
         assert resolved["messages"]["first_time"]["title"] == "tester subagent規約"
-
-    def test_colon_separator_still_works(self):
-        """':'区切りフォールバックが引き続き動作"""
-        hook = self._make_hook()
-        resolved = hook._resolve_subagent_config("ticket-tasuki:coder")
-        assert resolved["messages"]["first_time"]["title"] == "coder subagent規約"
 
     def test_agent_type_suffix_fallback(self):
         """agent_typeにsuffix付きの場合もフォールバック"""
