@@ -423,3 +423,53 @@ class TestSuffixAgentTypeTrustedPrefix:
         assert row is not None
         assert row[0] == "tester"
         assert row[1] == "trusted_prefix"
+
+
+class TestN3TrustedPrefixTypeValidation:
+    """N3: trusted_prefixesが不正型の場合の防御テスト（issue_7565）
+
+    trusted_prefixesにdict以外（リスト、文字列、整数等）が設定された場合、
+    resolve_trusted_prefix()がNoneを返すことを検証。
+    """
+
+    def test_trusted_prefixesがリスト型_None返却(self, tmp_path, monkeypatch):
+        """trusted_prefixesがリスト型の場合Noneを返す"""
+        nagger_dir = tmp_path / ".claude-nagger"
+        nagger_dir.mkdir()
+        config = {
+            "role_resolution": {
+                "trusted_prefixes": ["coder", "tester"]
+            }
+        }
+        with open(nagger_dir / "config.yaml", 'w') as f:
+            yaml.dump(config, f)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        assert resolve_trusted_prefix("coder") is None
+
+    def test_trusted_prefixesが文字列型_None返却(self, tmp_path, monkeypatch):
+        """trusted_prefixesが文字列型の場合Noneを返す"""
+        nagger_dir = tmp_path / ".claude-nagger"
+        nagger_dir.mkdir()
+        config = {
+            "role_resolution": {
+                "trusted_prefixes": "coder:coder"
+            }
+        }
+        with open(nagger_dir / "config.yaml", 'w') as f:
+            yaml.dump(config, f)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        assert resolve_trusted_prefix("coder") is None
+
+    def test_trusted_prefixesが整数型_None返却(self, tmp_path, monkeypatch):
+        """trusted_prefixesが整数型の場合Noneを返す"""
+        nagger_dir = tmp_path / ".claude-nagger"
+        nagger_dir.mkdir()
+        config = {
+            "role_resolution": {
+                "trusted_prefixes": 42
+            }
+        }
+        with open(nagger_dir / "config.yaml", 'w') as f:
+            yaml.dump(config, f)
+        monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+        assert resolve_trusted_prefix("coder") is None

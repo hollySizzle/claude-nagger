@@ -54,6 +54,12 @@ def resolve_trusted_prefix(agent_type: str, logger: Optional[logging.Logger] = N
     prefixes = _load_trusted_prefixes(logger)
     if not prefixes:
         return None
+    # N3: trusted_prefixesがdict以外の場合は型不正として警告しNone返却
+    if not isinstance(prefixes, dict):
+        if logger is None:
+            logger = logging.getLogger(__name__)
+        logger.warning(f"trusted_prefixes型不正（期待: dict, 実際: {type(prefixes).__name__}）")
+        return None
     # 最長一致: キーを長い順にソートし最初にマッチしたものを採用
     for prefix in sorted(prefixes.keys(), key=len, reverse=True):
         if agent_type.startswith(prefix):
