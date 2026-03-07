@@ -140,7 +140,7 @@ class SessionStartupHook(BaseHook):
 
         解決順序: base → subagent_default → subagent_types.{type}
         type解決順序: role完全一致 → role末尾-数字除去 → agent_type完全一致
-                     → agent_type末尾-数字除去 → ":"区切り末尾 → 空dict
+                     → agent_type末尾-数字除去 → 空dict
 
         Args:
             agent_type: サブエージェント種別
@@ -162,7 +162,7 @@ class SessionStartupHook(BaseHook):
         subagent_default = overrides.get("subagent_default", {})
         subagent_types = overrides.get("subagent_types", {})
         # role完全一致 → role末尾-数字除去 → agent_type完全一致
-        # → agent_type末尾-数字除去 → ":"区切り末尾 → 空dictフォールバック
+        # → agent_type末尾-数字除去 → 空dictフォールバック
         type_specific = None
         matched = False
         if role:
