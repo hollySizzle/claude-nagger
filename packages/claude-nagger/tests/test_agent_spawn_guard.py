@@ -52,11 +52,14 @@ def _make_agent_input(
     subagent_type: str = "",
     team_name: str = "",
     agent_context: str = "",
+    prompt: str = "",
 ) -> dict:
     """PreToolUse Agent入力データを生成"""
     tool_input = {"subagent_type": subagent_type}
     if team_name:
         tool_input["team_name"] = team_name
+    if prompt:
+        tool_input["prompt"] = prompt
     data = {
         "hook_event_name": "PreToolUse",
         "tool_name": "Agent",
@@ -73,7 +76,7 @@ class TestBuiltinWhitelist:
     @pytest.mark.parametrize("agent_type", ["Explore", "Plan"])
     def test_allow_builtin_types(self, agent_type):
         """ホワイトリスト対象はteam_name不要で許可"""
-        data = _make_agent_input(subagent_type=agent_type)
+        data = _make_agent_input(subagent_type=agent_type, prompt="issue_1234 do something")
         rc, out = _run_guard(data)
 
         assert rc == 0
@@ -81,7 +84,7 @@ class TestBuiltinWhitelist:
 
     def test_allow_statusline_setup(self):
         """statusline-setupは許可（BUILTIN_WHITELISTに含まれる）"""
-        data = _make_agent_input(subagent_type="statusline-setup")
+        data = _make_agent_input(subagent_type="statusline-setup", prompt="issue_1234")
         rc, out = _run_guard(data)
 
         assert rc == 0
@@ -89,7 +92,7 @@ class TestBuiltinWhitelist:
 
     def test_allow_claude_code_guide(self):
         """claude-code-guideは許可（BUILTIN_WHITELISTに含まれる）"""
-        data = _make_agent_input(subagent_type="claude-code-guide")
+        data = _make_agent_input(subagent_type="claude-code-guide", prompt="issue_1234")
         rc, out = _run_guard(data)
 
         assert rc == 0
@@ -119,6 +122,7 @@ class TestTeamNameHandling:
         data = _make_agent_input(
             subagent_type="general-purpose",
             team_name="my-team",
+            prompt="issue_7579 implement feature",
         )
         rc, out = _run_guard(data, env=env)
 
@@ -186,6 +190,63 @@ class TestNonAgentTool:
 
         assert rc == 0
         assert out is None
+
+
+class TestIssueIdCheck:
+    """issue_{id}トレーサビリティチェックのテスト"""
+
+    def test_warn_when_issue_id_missing_builtin(self):
+        """ビルトイン許可時にissue_id欠落でask警告"""
+        data = _make_agent_input(subagent_type="Explore", prompt="do something")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+    def test_warn_when_issue_id_missing_team_name(self, tmp_path):
+        """team_name許可時にissue_id欠落でask警告"""
+        config_dir = tmp_path / ".claude" / "teams" / "my-team"
+        config_dir.mkdir(parents=True)
+        (config_dir / "config.json").write_text("{}")
+        env = {**os.environ, "HOME": str(tmp_path)}
+
+        data = _make_agent_input(
+            subagent_type="general-purpose",
+            team_name="my-team",
+            prompt="no ticket reference here",
+        )
+        rc, out = _run_guard(data, env=env)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+    def test_no_warn_when_issue_id_present(self):
+        """issue_id含む場合は警告なしで許可"""
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_1234 fix bug")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_warn_when_prompt_empty(self):
+        """prompt空文字でask警告"""
+        data = _make_agent_input(subagent_type="Plan", prompt="")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+    def test_deny_takes_priority_over_issue_id_warn(self):
+        """deny判定はissue_id警告より優先"""
+        data = _make_agent_input(subagent_type="general-purpose", prompt="no issue id")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
 
 class TestEdgeCases:
