@@ -2,8 +2,8 @@
   "extraKnownMarketplaces": {
     "ticket-tasuki": {
       "source": {
-        "source": "github",
-        "repo": "hollySizzle/ticket-tasuki"
+        "source": "directory",
+        "path": "/workspace/packages/claude-nagger/.claude/plugins/ticket-tasuki"
       }
     }
   },

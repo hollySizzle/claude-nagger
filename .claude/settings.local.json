@@ -43,7 +43,8 @@
       "Bash(docker ps:*)",
       "Bash(docker exec:*)",
       "WebFetch(domain:docs.docker.com)",
-      "WebFetch(domain:zenn.dev)"
+      "WebFetch(domain:zenn.dev)",
+      "Bash(gh issue:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
