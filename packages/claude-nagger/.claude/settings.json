@@ -122,15 +122,16 @@
     "type": "command",
     "command": "node \"$CLAUDE_PROJECT_DIR\"/.claude/statusline.js"
   },
-  "enabledPlugins": {
-    "ticket-tasuki@ticket-tasuki": true
-  },
   "extraKnownMarketplaces": {
     "ticket-tasuki": {
       "source": {
         "source": "directory",
-        "path": "/workspace/packages/claude-nagger/.claude/plugins/ticket-tasuki"
-      }
+        "path": ".claude/plugins/ticket-tasuki"
+      },
+      "autoUpdate": true
     }
+  },
+  "enabledPlugins": {
+    "ticket-tasuki@ticket-tasuki": true
   }
 }
