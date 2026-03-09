@@ -359,3 +359,393 @@ class TestBlockMessageCustomization:
         assert result["decision"] == "block"
         assert "違反=フォーマット不一致" in result["reason"]
         assert r"パターン=^issue_\d+ \[.+\]$" in result["reason"]
+
+
+# === _validate_p2p テスト ===
+
+class TestValidateP2P:
+    """_validate_p2p のP2P通信許可検証テスト"""
+
+    def _make_hook(self, guard_config):
+        """P2P設定付きフックインスタンスを生成"""
+        with patch(
+            "src.domain.hooks.sendmessage_guard_hook.ConfigManager"
+        ) as mock_cm:
+            mock_cm.return_value.config = {"sendmessage_guard": guard_config}
+            h = SendMessageGuardHook(debug=False)
+        return h
+
+    def _base_p2p_config(self, matrix=None, default_policy="deny"):
+        """P2Pテスト用の基本設定を返す"""
+        return {
+            "exempt_types": ["shutdown_request", "shutdown_response"],
+            "p2p_rules": {
+                "enabled": True,
+                "broadcast_allowed_roles": ["leader"],
+                "matrix": {"coder": ["team-lead"], "tester": ["team-lead", "coder"]} if matrix is None else matrix,
+                "default_policy": default_policy,
+            },
+        }
+
+    # --- recipient正規化テスト ---
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_recipient_raw_normalized_to_match_matrix(
+        self, mock_known, mock_normalize, mock_roles
+    ):
+        """raw recipient（例: team-lead-123）が正規化されmatrixと照合される"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder", "tester"}
+        mock_normalize.return_value = "team-lead"
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "team-lead-123"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_recipient_suffix_removed(self, mock_known, mock_normalize, mock_roles):
+        """数値サフィックス付きrecipientが正規化される"""
+        mock_roles.return_value = {"tester"}
+        mock_known.return_value = {"team-lead", "coder", "tester"}
+        mock_normalize.return_value = "coder"
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "coder-7097"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_recipient_prefix_removed(self, mock_known, mock_normalize, mock_roles):
+        """プレフィックス付きrecipient（例: claude-coder）が正規化される"""
+        mock_roles.return_value = {"tester"}
+        mock_known.return_value = {"team-lead", "coder", "tester"}
+        mock_normalize.return_value = "coder"
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "claude-coder"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_unknown_recipient_denied(self, mock_known, mock_normalize, mock_roles):
+        """未知ロールのrecipientは正規化後もmatrixに一致せずdeny"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder", "tester"}
+        mock_normalize.return_value = "unknown-agent"
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "unknown-agent-999"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "P2P制御" in result["violation"]
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_empty_recipient_not_matched(self, mock_known, mock_normalize, mock_roles):
+        """空文字列recipientはmatrixに一致しない"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder"}
+        mock_normalize.return_value = ""
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": ""}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_exact_match_recipient_passes(self, mock_known, mock_normalize, mock_roles):
+        """完全一致recipientはそのままmatrix照合される"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder"}
+        mock_normalize.return_value = "team-lead"
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "team-lead"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    # --- caller/recipient両方正規化テスト ---
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_both_caller_and_recipient_normalized(
+        self, mock_known, mock_normalize, mock_roles
+    ):
+        """caller（get_caller_rolesで正規化済み）とrecipient両方が正規化される"""
+        # callerはget_caller_rolesが正規化済みsetを返す
+        mock_roles.return_value = {"tester"}
+        mock_known.return_value = {"team-lead", "coder", "tester"}
+        mock_normalize.return_value = "team-lead"
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "team-lead-456"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_caller_coder_recipient_tester_denied(
+        self, mock_known, mock_normalize, mock_roles
+    ):
+        """coder→tester はmatrixに未定義なのでdeny"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder", "tester"}
+        mock_normalize.return_value = "tester"
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "tester-100"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_tester_to_coder_allowed(self, mock_known, mock_normalize, mock_roles):
+        """tester→coder はmatrixで許可"""
+        mock_roles.return_value = {"tester"}
+        mock_known.return_value = {"team-lead", "coder", "tester"}
+        mock_normalize.return_value = "coder"
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "coder-7097"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    # --- エッジケーステスト ---
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_matrix_undefined_deny(self, mock_known, mock_normalize, mock_roles):
+        """matrixが空の場合、default_policy=denyでブロック"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder"}
+        mock_normalize.return_value = "team-lead"
+
+        config = self._base_p2p_config(matrix={}, default_policy="deny")
+        h = self._make_hook(config)
+        input_data = {"tool_input": {"type": "message", "recipient": "team-lead"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_matrix_undefined_allow(self, mock_known, mock_normalize, mock_roles):
+        """matrixが空でもdefault_policy=allowなら許可"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder"}
+        mock_normalize.return_value = "team-lead"
+
+        config = self._base_p2p_config(matrix={}, default_policy="allow")
+        h = self._make_hook(config)
+        input_data = {"tool_input": {"type": "message", "recipient": "team-lead"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_p2p_disabled_skips(self, mock_roles):
+        """P2P無効時はvalidation自体をスキップ"""
+        mock_roles.return_value = {"coder"}
+        config = {
+            "exempt_types": [],
+            "p2p_rules": {"enabled": False},
+        }
+        h = self._make_hook(config)
+        input_data = {"tool_input": {"type": "message", "recipient": "anyone"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_known_roles_empty_uses_raw(self, mock_known, mock_roles):
+        """known_rolesが空の場合、recipientはraw値のまま照合"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = set()
+
+        # matrixにraw値そのものが入っていれば一致する
+        config = self._base_p2p_config(matrix={"coder": ["team-lead-123"]})
+        h = self._make_hook(config)
+        input_data = {"tool_input": {"type": "message", "recipient": "team-lead-123"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_recipient_none_treated_as_empty(self, mock_known, mock_normalize, mock_roles):
+        """recipientがNoneの場合、空文字列として扱われる"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder"}
+        mock_normalize.return_value = ""
+
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": None}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        # Noneは空文字列化されmatrixに一致しないためdeny
+        assert result["valid"] is False
+        assert "P2P制御" in result["violation"]
+
+
+# === P2P E2Eテスト ===
+
+class TestP2PE2E:
+    """P2P通信制御のE2Eテスト
+
+    モック最小限（get_caller_roles, _get_known_roles_from_config のみ）で
+    実際の_normalize_roleロジックとhookチェーンを通すテスト。
+    """
+
+    # 共通matrix: coder→team-lead, tester→team-lead/coder
+    _MATRIX = {
+        "coder": ["team-lead"],
+        "tester": ["team-lead", "coder"],
+    }
+    _KNOWN_ROLES = {"team-lead", "coder", "tester", "leader", "pmo"}
+
+    def _make_p2p_hook(self, matrix=None, default_policy="deny"):
+        """P2P有効のhookインスタンスを生成"""
+        config = {
+            "exempt_types": ["shutdown_request", "shutdown_response"],
+            "p2p_rules": {
+                "enabled": True,
+                "broadcast_allowed_roles": ["leader"],
+                "matrix": matrix if matrix is not None else self._MATRIX,
+                "default_policy": default_policy,
+            },
+        }
+        with patch(
+            "src.domain.hooks.sendmessage_guard_hook.ConfigManager"
+        ) as mock_cm:
+            mock_cm.return_value.config = {"sendmessage_guard": config}
+            h = SendMessageGuardHook(debug=False)
+        return h
+
+    def _run_p2p(self, hook, caller_role, recipient):
+        """P2P検証を実行して結果を返す"""
+        input_data = {"tool_input": {"type": "message", "recipient": recipient}}
+        with patch(
+            "src.domain.hooks.sendmessage_guard_hook.get_caller_roles"
+        ) as mock_roles, patch(
+            "infrastructure.db.subagent_repository._get_known_roles_from_config"
+        ) as mock_known:
+            mock_roles.return_value = {caller_role}
+            mock_known.return_value = self._KNOWN_ROLES
+            return hook._validate_p2p(input_data, input_data["tool_input"])
+
+    # --- 正常系: 通信許可（7件） ---
+
+    def test_coder_to_team_lead_raw_suffix_allowed(self):
+        """coder→team-lead-456: サフィックス除去で正規化→許可"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "team-lead-456")
+        assert result["valid"] is True
+
+    def test_coder_to_team_lead_exact_allowed(self):
+        """coder→team-lead: 完全一致→許可"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "team-lead")
+        assert result["valid"] is True
+
+    def test_tester_to_coder_raw_suffix_allowed(self):
+        """tester→coder-7097: サフィックス除去で正規化→許可"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "tester", "coder-7097")
+        assert result["valid"] is True
+
+    def test_tester_to_team_lead_allowed(self):
+        """tester→team-lead: matrix定義通り許可"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "tester", "team-lead")
+        assert result["valid"] is True
+
+    def test_tester_to_coder_prefix_allowed(self):
+        """tester→claude-coder: プレフィックス除去で正規化→許可"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "tester", "claude-coder")
+        assert result["valid"] is True
+
+    def test_leader_to_anyone_allowed(self):
+        """leader→任意recipient: leaderは全許可"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "leader", "anyone-999")
+        assert result["valid"] is True
+
+    def test_coder_to_team_lead_with_long_suffix_allowed(self):
+        """coder→team-lead-12345: 長い数値サフィックスでも正規化→許可"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "team-lead-12345")
+        assert result["valid"] is True
+
+    # --- 異常系: 通信拒否（7件） ---
+
+    def test_coder_to_pmo_denied(self):
+        """coder→pmo-001: matrixにcoder→pmo未定義→拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "pmo-001")
+        assert result["valid"] is False
+        assert "P2P制御" in result["violation"]
+
+    def test_coder_to_tester_denied(self):
+        """coder→tester-200: matrixにcoder→tester未定義→拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "tester-200")
+        assert result["valid"] is False
+
+    def test_coder_to_coder_denied(self):
+        """coder→coder-999: 自分自身のロールへの通信→matrixに未定義→拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "coder-999")
+        assert result["valid"] is False
+
+    def test_tester_to_pmo_denied(self):
+        """tester→pmo: matrixにtester→pmo未定義→拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "tester", "pmo")
+        assert result["valid"] is False
+
+    def test_coder_to_unknown_agent_denied(self):
+        """coder→unknown-agent-777: 未知ロール→拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "unknown-agent-777")
+        assert result["valid"] is False
+
+    def test_pmo_to_coder_denied(self):
+        """pmo→coder: matrixにpmo未定義→拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "pmo", "coder")
+        assert result["valid"] is False
+
+    def test_coder_to_leader_denied(self):
+        """coder→leader: matrixにcoder→leader未定義→拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "leader")
+        assert result["valid"] is False
+
+    # --- エッジケース（2件） ---
+
+    def test_recipient_none_denied(self):
+        """recipient=None→空文字列化→matrixに一致せず拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", None)
+        assert result["valid"] is False
+
+    def test_recipient_empty_string_denied(self):
+        """recipient=""→matrixに一致せず拒否"""
+        h = self._make_p2p_hook()
+        result = self._run_p2p(h, "coder", "")
+        assert result["valid"] is False

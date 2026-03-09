@@ -1151,3 +1151,60 @@ class TestMergeHookEntries:
 
         assert "SubagentStart" in settings["hooks"]
         assert "SubagentStop" in settings["hooks"]
+
+
+# === SendMessageGuard パターンテスト ===
+
+class TestSendmessageGuardPattern:
+    """CONFIG_TEMPLATEのsendmessage_guardパターンが正しい正規表現であること"""
+
+    def _extract_pattern(self):
+        """CONFIG_TEMPLATEからsendmessage_guard.patternを抽出"""
+        import yaml
+        config = yaml.safe_load(InstallHooksCommand.CONFIG_TEMPLATE)
+        return config["sendmessage_guard"]["pattern"]
+
+    def test_pattern_is_valid_regex(self):
+        """テンプレートのpatternがコンパイル可能な正規表現である"""
+        import re
+        pattern = self._extract_pattern()
+        # コンパイルエラーが発生しないこと
+        compiled = re.compile(pattern)
+        assert compiled is not None
+
+    def test_pattern_not_double_escaped(self):
+        """patternが二重エスケープされていない"""
+        pattern = self._extract_pattern()
+        # 二重エスケープ \\\\d, \\\\[ 等が含まれないこと
+        assert "\\\\" not in pattern
+
+    def test_pattern_matches_valid_message(self):
+        """生成されたpatternでissue_1234 [coder]がマッチする"""
+        import re
+        pattern = self._extract_pattern()
+        assert re.match(pattern, "issue_1234 [coder]") is not None
+
+    def test_pattern_matches_various_formats(self):
+        """各種有効フォーマットにマッチする"""
+        import re
+        pattern = self._extract_pattern()
+        valid_messages = [
+            "issue_1 [完了]",
+            "issue_99999 [tech-lead]",
+            "issue_42 [状態報告: 進捗50%]",
+        ]
+        for msg in valid_messages:
+            assert re.match(pattern, msg) is not None, f"パターン不一致: {msg}"
+
+    def test_pattern_rejects_invalid_messages(self):
+        """無効なメッセージフォーマットにマッチしない"""
+        import re
+        pattern = self._extract_pattern()
+        invalid_messages = [
+            "hello",
+            "issue_ [coder]",
+            "issue_abc [coder]",
+            "[coder] issue_123",
+        ]
+        for msg in invalid_messages:
+            assert re.match(pattern, msg) is None, f"不正にマッチ: {msg}"

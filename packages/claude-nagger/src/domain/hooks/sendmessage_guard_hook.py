@@ -131,6 +131,7 @@ class SendMessageGuardHook(BaseHook):
         """P2P通信許可を検証
 
         P2Pマトリクスに基づき、callerのroleからrecipientへの通信可否を判定。
+        caller/recipient両方を正規化してmatrix照合する。
 
         Returns:
             {"valid": True} or {"valid": False, "violation": "..."}
@@ -170,7 +171,11 @@ class SendMessageGuardHook(BaseHook):
 
         # message 判定
         if message_type == "message":
-            recipient = tool_input.get("recipient", "")
+            recipient_raw = tool_input.get("recipient", "") or ""
+            # recipientを正規化してmatrix照合（issue: raw値のまま照合されるバグ修正）
+            from infrastructure.db.subagent_repository import _normalize_role, _get_known_roles_from_config
+            known_roles = _get_known_roles_from_config()
+            recipient = _normalize_role(recipient_raw, known_roles) if known_roles else recipient_raw
             matrix = p2p_rules.get("matrix", {})
             default_policy = p2p_rules.get("default_policy", "deny")
             for role in roles:
