@@ -44,7 +44,9 @@
       "Bash(docker exec:*)",
       "WebFetch(domain:docs.docker.com)",
       "WebFetch(domain:zenn.dev)",
-      "Bash(gh issue:*)"
+      "Bash(gh issue:*)",
+      "Agent",
+      "Bash(python3:*)"
     ]
   },
   "enableAllProjectMcpServers": true,
