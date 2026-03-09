@@ -284,3 +284,90 @@ class TestEdgeCases:
         assert rc == 0
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+
+class TestAdditionalScenarios:
+    """追加受入テストシナリオ (issue_7947)"""
+
+    def test_empty_string_team_name_deny(self):
+        """team_name空文字はdeny"""
+        data = _make_agent_input(subagent_type="general-purpose")
+        data["tool_input"]["team_name"] = ""
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_tech_lead_without_team_name_deny(self):
+        """tech-leadロール単独（team_nameなし）はdeny"""
+        data = _make_agent_input(subagent_type="tech-lead")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_tester_without_team_name_deny(self):
+        """testerロール単独（team_nameなし）はdeny"""
+        data = _make_agent_input(subagent_type="tester")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_pmo_without_team_name_deny(self):
+        """pmoロール単独（team_nameなし）はdeny"""
+        data = _make_agent_input(subagent_type="pmo")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_no_subagent_type_key_in_tool_input(self):
+        """tool_inputにsubagent_typeキーなしはdeny"""
+        data = {
+            "hook_event_name": "PreToolUse",
+            "tool_name": "Agent",
+            "tool_input": {},
+        }
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_subagent_context_without_team_name(self):
+        """subagentコンテキスト+team_nameなしはバイパス（許可）"""
+        data = _make_agent_input(
+            subagent_type="general-purpose",
+            agent_context="subagent",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_tab_only_team_name_deny(self):
+        """team_nameタブ文字のみはstrip()で空扱い→deny"""
+        data = _make_agent_input(subagent_type="general-purpose")
+        data["tool_input"]["team_name"] = "\t"
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_team_name_with_surrounding_whitespace_allow(self):
+        """team_name前後空白ありはstrip()後有効→許可"""
+        data = _make_agent_input(
+            subagent_type="general-purpose",
+            prompt="issue_7947 test scenario",
+        )
+        data["tool_input"]["team_name"] = "  my-team  "
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
