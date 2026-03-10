@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [3.0.1] - 2026-03-09
+
+### agent_spawn_guard改善
+- agent_spawn_guardテスト: config.jsonチェック廃止対応・issue_id追加 (issue_7947)
+- 受入テスト追加: 8シナリオ（境界値・網羅性強化） (issue_7947)
+
 ## [3.0.0] - 2026-03-07
 
 ### leader判定のagent_id方式への完全移行
