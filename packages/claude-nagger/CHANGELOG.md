@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [3.0.2] - 2026-03-10
+
+### ConfigManager設定読み込みバグ修正
+config_manager.py:150の`"system" not in config`バリデーションが、プラグイン用config.yaml（systemキーを持たない）を「不完全」と誤判定し、デフォルト設定にフォールバックしていた。結果、sendmessage_guard等のユーザ定義設定が消失しDEFAULT_PATTERN(`^.+$`)が適用され、ticket_id強制が無効化されていた。
+→ systemキー必須チェックを削除し、dictであれば設定として受け入れるよう修正。
+- config_manager.py: `"system" not in config`条件削除 (issue_8002)
+
 ## [3.0.1] - 2026-03-09
 
 ### agent_spawn_guard改善
