@@ -146,8 +146,8 @@ class ConfigManager:
                 else:
                     config = json.loads(content)
                 
-                # 空または不完全な設定の場合はデフォルトにフォールバック
-                if not config or not isinstance(config, dict) or "system" not in config:
+                # 空またはdict以外の場合はデフォルトにフォールバック
+                if not config or not isinstance(config, dict):
                     return self._get_default_config()
                 
                 return config
