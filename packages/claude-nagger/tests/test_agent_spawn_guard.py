@@ -2,7 +2,7 @@
 
 Agent tool経由のsub-agent直接起動ガードの動作を検証する。
 - ビルトインホワイトリスト（Explore, Plan, statusline-setup, claude-code-guide）は許可
-- team_name指定あり → 許可
+- team_name指定あり + promptパターン合致 → override注入(allow+updatedInput)
 - team_name空白のみ → deny（strip()で空扱い）
 - subagent（agent_context="subagent"）は制約対象外
 - それ以外 → deny
@@ -46,6 +46,18 @@ def _run_guard(input_data: dict, env: dict | None = None) -> tuple[int, dict | N
         except json.JSONDecodeError:
             pass
     return proc.returncode, stdout_json
+
+
+def _assert_override_output(out: dict, original_prompt: str) -> None:
+    """override注入出力の構造を検証するヘルパー"""
+    assert out is not None
+    hook_output = out["hookSpecificOutput"]
+    assert hook_output["permissionDecision"] == "allow"
+    assert "updatedInput" in hook_output
+    updated_prompt = hook_output["updatedInput"]["prompt"]
+    assert updated_prompt.startswith(original_prompt + "\n\n")
+    # override指示が付加されていることを確認
+    assert len(updated_prompt) > len(original_prompt) + 2
 
 
 def _make_agent_input(
@@ -112,7 +124,7 @@ class TestTeamNameHandling:
     """team_name指定による許可・拒否テスト"""
 
     def test_allow_with_team_name(self):
-        """team_name指定ありは許可（config.json不要）"""
+        """team_name指定あり+promptパターン合致→override注入(allow+updatedInput)"""
         data = _make_agent_input(
             subagent_type="general-purpose",
             team_name="my-team",
@@ -121,24 +133,23 @@ class TestTeamNameHandling:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        _assert_override_output(out, "issue_7579")
 
     def test_allow_with_team_name_no_config(self):
-        """team_name指定あり＋config.json不在でも許可"""
-        env = {**os.environ, "HOME": tempfile.mkdtemp()}
+        """team_name指定あり＋config不在でもデフォルトoverride指示で許可"""
         data = _make_agent_input(
             subagent_type="general-purpose",
             team_name="any-team",
             prompt="issue_7947",
         )
-        rc, out = _run_guard(data, env=env)
+        rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        _assert_override_output(out, "issue_7947")
 
     @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "pmo"])
     def test_allow_all_ticket_tasuki_roles_with_team_name(self, role):
-        """team_name指定時に全ticket-tasukiロールが許可される（promptパターン準拠）"""
+        """team_name指定時に全ticket-tasukiロールがoverride注入付きで許可（promptパターン準拠）"""
         data = _make_agent_input(
             subagent_type=role,
             team_name="my-team",
@@ -147,7 +158,7 @@ class TestTeamNameHandling:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        _assert_override_output(out, "issue_7947")
 
     def test_block_without_team_name(self):
         """team_name未指定はdeny"""
@@ -361,7 +372,7 @@ class TestAdditionalScenarios:
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_team_name_with_surrounding_whitespace_allow(self):
-        """team_name前後空白ありはstrip()後有効→許可"""
+        """team_name前後空白ありはstrip()後有効→override注入付き許可"""
         data = _make_agent_input(
             subagent_type="general-purpose",
             prompt="issue_7947",
@@ -370,14 +381,14 @@ class TestAdditionalScenarios:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        _assert_override_output(out, "issue_7947")
 
 
 class TestPromptPatternRestriction:
     """promptパターン制限のテスト（issue_8132）"""
 
     def test_valid_prompt_pattern_allowed(self):
-        """issue_1234形式のpromptは許可"""
+        """issue_1234形式のpromptはoverride注入付き許可"""
         data = _make_agent_input(
             subagent_type="coder",
             team_name="my-team",
@@ -386,10 +397,10 @@ class TestPromptPatternRestriction:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        _assert_override_output(out, "issue_1234")
 
     def test_valid_prompt_pattern_6digits(self):
-        """6桁のissue_idも許可"""
+        """6桁のissue_idもoverride注入付き許可"""
         data = _make_agent_input(
             subagent_type="coder",
             team_name="my-team",
@@ -398,10 +409,10 @@ class TestPromptPatternRestriction:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        _assert_override_output(out, "issue_123456")
 
     def test_valid_prompt_pattern_1digit(self):
-        """1桁のissue_idも許可"""
+        """1桁のissue_idもoverride注入付き許可"""
         data = _make_agent_input(
             subagent_type="coder",
             team_name="my-team",
@@ -410,7 +421,7 @@ class TestPromptPatternRestriction:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        assert out is None
+        _assert_override_output(out, "issue_1")
 
     def test_deny_prompt_with_extra_text(self):
         """issue_1234に追加テキストがある場合はdeny"""
@@ -505,7 +516,7 @@ class TestPromptPatternRestriction:
 
     @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "pmo", "researcher"])
     def test_all_roles_allow_valid_prompt(self, role):
-        """全ロールで正しいpromptパターンなら許可"""
+        """全ロールで正しいpromptパターンならoverride注入付き許可"""
         data = _make_agent_input(
             subagent_type=role,
             team_name="my-team",
@@ -514,4 +525,129 @@ class TestPromptPatternRestriction:
         rc, out = _run_guard(data)
 
         assert rc == 0
+        _assert_override_output(out, "issue_8132")
+
+
+class TestOverrideInjection:
+    """override注入（updatedInput）のテスト（issue_8133）"""
+
+    def test_override_output_structure(self):
+        """override出力がupdatedInput構造を持つことを検証"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1234",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        hook_out = out["hookSpecificOutput"]
+        assert hook_out["hookEventName"] == "PreToolUse"
+        assert hook_out["permissionDecision"] == "allow"
+        assert "updatedInput" in hook_out
+        assert "prompt" in hook_out["updatedInput"]
+
+    def test_override_prompt_contains_original(self):
+        """注入後のpromptが元のpromptを含むことを検証"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_5678",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        updated_prompt = out["hookSpecificOutput"]["updatedInput"]["prompt"]
+        assert updated_prompt.startswith("issue_5678\n\n")
+
+    def test_override_prompt_contains_instruction(self):
+        """注入後のpromptにRedmine読み込み指示が含まれることを検証"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_9999",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        updated_prompt = out["hookSpecificOutput"]["updatedInput"]["prompt"]
+        # デフォルトまたはconfig設定のoverride指示が含まれること
+        assert "Redmine" in updated_prompt or "get_issue_detail_tool" in updated_prompt
+
+    def test_builtin_no_override(self):
+        """ビルトインsubagent_typeにはoverride注入されない"""
+        data = _make_agent_input(
+            subagent_type="Explore",
+            team_name="my-team",
+            prompt="issue_1234 explore something",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        # ビルトインは直接許可（updatedInputなし）
         assert out is None
+
+    def test_override_not_applied_on_deny(self):
+        """deny時にはoverride注入されない"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="free text prompt",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+        assert "updatedInput" not in out["hookSpecificOutput"]
+
+
+class TestConfigYamlMessages:
+    """config.yamlからのブロックメッセージ読み込みテスト（issue_8137）"""
+
+    def test_block_message_from_config(self):
+        """config.yamlのblock_message_templateが使用される"""
+        data = _make_agent_input(subagent_type="coder", prompt="issue_1234")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "sub-agent直接起動の制限" in reason
+        assert 'subagent_type="coder"' in reason
+
+    def test_prompt_pattern_block_message_from_config(self):
+        """config.yamlのprompt_pattern_block_messageが使用される"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="invalid prompt",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "promptパターン制限" in reason
+        assert '"invalid prompt"' in reason
+
+    def test_issue_id_warn_message_from_config(self):
+        """config.yamlのissue_id_warn_messageが使用される"""
+        data = _make_agent_input(subagent_type="Explore", prompt="no issue id")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "issue_{id}" in reason
+
+    def test_fallback_default_messages(self):
+        """デフォルトメッセージの内容が正しく出力される"""
+        data = _make_agent_input(subagent_type="unknown-role", prompt="issue_999")
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "sub-agent直接起動の制限" in reason

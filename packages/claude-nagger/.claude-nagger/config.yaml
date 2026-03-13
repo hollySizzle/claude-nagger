@@ -174,6 +174,28 @@ session_startup:
               [ ] 指摘は[事実]/[仮説]に分類すること
               [ ] 報告=チケットコメント（[tech-lead]プレフィックス付き）
 
+# Agent Spawnガード設定
+agent_spawn_guard:
+  # subagent起動時にpromptへ注入するoverride指示テンプレート
+  override_instruction: "Redmine get_issue_detail_toolでチケットコメントから最新の指示を取得し、指示に従って作業を実行せよ"
+  block_message_template: |
+    Agent tool規約: sub-agent直接起動の制限
+    ━━━━━━━━━━━━━━━━━
+    検出: subagent_type="{subagent_type}"
+    対処:
+    1. TeamCreate でチームを作成し、Agent tool に team_name を指定して起動してください
+    2. sub-agent（Agent tool単独）でのticket-tasukiロール起動は禁止です
+    3. 軽量エージェント（Explore, Plan）はsub-agentで利用可能です
+  issue_id_warn_message: |
+    ⚠ Agent promptにissue_{id}が含まれていません。
+    トレーサビリティのため、promptにissue_{id}（例: issue_1234）を含めてください。
+  prompt_pattern_block_message: |
+    Agent tool規約: promptパターン制限
+    ━━━━━━━━━━━━━━━━━
+    検出prompt: "{prompt}"
+    要件: promptは "issue_{{数字1-6桁}}" の形式（例: issue_1234）でなければなりません。
+    対処: promptを issue_{{id}} 形式に変更してください。
+
 # SendMessageガード設定
 sendmessage_guard:
   pattern: "^issue_\\d+ \\[.{1,80}\\]$"
