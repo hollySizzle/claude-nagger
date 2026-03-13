@@ -46,7 +46,9 @@
       "WebFetch(domain:zenn.dev)",
       "Bash(gh issue:*)",
       "Agent",
-      "Bash(python3:*)"
+      "Bash(python3:*)",
+      "Bash(/tmp/summary.txt:*)",
+      "Read(//tmp/**)"
     ]
   },
   "enableAllProjectMcpServers": true,
