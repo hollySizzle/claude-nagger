@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-03-13
+
+### Redmine経由強制: Agent prompt制限+override注入によるTiDD徹底
+subagentのpromptを`^issue_\d{1,6}$`パターンに制限し、パターン合致時にRedmineチケット読み込み指示をupdatedInputで自動注入する仕組みを導入。これによりsubagentは必ずRedmineチケット起点で作業を開始するようになった。
+- agent_spawn_guard: promptパターン制限実装・テスト追加 (issue_8132)
+- agent_spawn_guard: override注入テスト追加・既存テストをupdatedInput対応に更新 (issue_8133)
+- config.yamlにagent_spawn_guardセクション追加 — メッセージテンプレート・override_instruction外部化 (issue_8137)
+- subagent規約にRedmine読み込みフロー（get_issue_detail_tool）追記 (issue_8135)
+
+### SendMessage guard強化
+- sendmessage_guardパターンのブラケット内文字数制限を10→80に変更 (issue_8134)
+- sendmessage_guard P2P違反メッセージ（broadcast禁止・直接通信禁止）をconfig.yaml管理化 — `p2p_broadcast_block_message`/`p2p_message_block_message`テンプレート追加 (issue_8139)
+
+### P2P通信制御バグ修正
+get_caller_roles()がagent_id不在時にset()を返し、P2Pマトリクス判定で「空roleからのbroadcast」と誤検出していた。agent_id不在時は`{"leader"}`を返すよう修正。
+- get_caller_roles()のagent_id不在時フォールバック修正 (issue_8118)
+- trusted_prefixesの`team-lead`→`leader`修正・デッドコード削除 (issue_8118)
+
+### テスト
+- E2Eテスト追加: subagent規約Redmineフロー検証(6件)・configメッセージ反映検証(4件)・P2Pメッセージカスタマイズ検証(4件) (issue_8139)
+
 ## [3.0.2] - 2026-03-10
 
 ### ConfigManager設定読み込みバグ修正
