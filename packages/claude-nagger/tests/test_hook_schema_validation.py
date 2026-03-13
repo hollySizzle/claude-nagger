@@ -35,6 +35,12 @@ class HookSchemaValidator:
         'PreCompact',       # コンパクト前
         'SessionStart',     # セッション開始
         'SessionEnd',       # セッション終了
+        'InstructionsLoaded',  # CLAUDE.md/rules読み込み時 (2.1.69)
+        'ConfigChange',        # 設定ファイル変更時 (2.1.49)
+        'WorktreeCreate',      # worktree作成時 (2.1.50)
+        'WorktreeRemove',      # worktree削除時 (2.1.50)
+        'TeammateIdle',        # teammate idle時 (2.1.69)
+        'TaskCompleted',       # task完了時 (2.1.69)
     ]
 
     def validate(self, output: str) -> Dict[str, Any]:
@@ -722,6 +728,12 @@ class TestAllHookEventNames:
         'PreCompact',
         'SessionStart',
         'SessionEnd',
+        'InstructionsLoaded',
+        'ConfigChange',
+        'WorktreeCreate',
+        'WorktreeRemove',
+        'TeammateIdle',
+        'TaskCompleted',
     ])
     def test_valid_event_names(self, validator, event_name):
         """各イベント名が有効として認識される"""
@@ -742,7 +754,9 @@ class TestAllHookEventNames:
         expected_events = [
             'PreToolUse', 'PostToolUse', 'PermissionRequest',
             'Notification', 'Stop', 'SubagentStop',
-            'UserPromptSubmit', 'PreCompact', 'SessionStart', 'SessionEnd'
+            'UserPromptSubmit', 'PreCompact', 'SessionStart', 'SessionEnd',
+            'InstructionsLoaded', 'ConfigChange', 'WorktreeCreate',
+            'WorktreeRemove', 'TeammateIdle', 'TaskCompleted',
         ]
 
         for event in expected_events:

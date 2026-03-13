@@ -23,6 +23,12 @@ HookEventName = Literal[
     "PreCompact",
     "SessionStart",
     "SessionEnd",
+    "InstructionsLoaded",
+    "ConfigChange",
+    "WorktreeCreate",
+    "WorktreeRemove",
+    "TeammateIdle",
+    "TaskCompleted",
 ]
 
 
