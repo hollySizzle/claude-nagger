@@ -14,7 +14,7 @@ Claude Code本体もhooksシステムやagent frontmatter（`disallowedTools`, `
 
 | 課題 | Claude Code公式 | claude-nagger |
 |------|----------------|---------------|
-| **PreToolUseでのcaller agent判定** | agent_id/agent_typeはSubagentStart/Stop時のみ提供。PreToolUse発火時にどのagentが呼び出したか判定不可 | agent_idフィールドを活用し、全PreToolUseイベントでleader/subagentを即座に判定 |
+| **PreToolUseでのcaller agent判定** | agent_id/agent_typeはv2.1.45でSubagentStart/Stopに公式追加、v2.1.69で全hookイベントに拡大 | agent_idフィールドを活用し、全PreToolUseイベントでleader/subagentを即座に判定 |
 | **role別の動的ツール制御** | `disallowedTools`による静的制限のみ。実行時の文脈に応じた制御不可 | conventions YAMLのdeny/scope体系で、role×ツール×条件の動的制御が可能 |
 | **セッション開始時の規約通知・宣言強制** | なし | session_startup hookでrole別の規約をブロッキング通知し、宣言を強制 |
 | **宣言的な規約管理** | agent frontmatterはagent単位の定義のみ | file/command/mcp_conventionsをYAMLで宣言的に定義し、プロジェクト全体に横断適用 |
