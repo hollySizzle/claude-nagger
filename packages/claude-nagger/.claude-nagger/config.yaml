@@ -214,6 +214,8 @@ sendmessage_guard:
     enabled: true
     default_policy: "deny"
     broadcast_allowed_roles: ["leader"]
+    broadcast_block_message: "P2P制御: role={roles} はbroadcast禁止。team-leadへ個別送信してください"
+    message_block_message: "P2P制御: role={roles} から {recipient} への直接通信は禁止。team-leadを経由してください"
     matrix:
       pmo: ["team-lead"]
       tech-lead: ["team-lead", "tester", "coder"]

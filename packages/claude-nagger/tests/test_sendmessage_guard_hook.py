@@ -15,6 +15,8 @@ from src.domain.hooks.sendmessage_guard_hook import (
     DEFAULT_PATTERN,
     DEFAULT_EXEMPT_TYPES,
     DEFAULT_BLOCK_REASON_TEMPLATE,
+    DEFAULT_P2P_BROADCAST_BLOCK_MESSAGE,
+    DEFAULT_P2P_MESSAGE_BLOCK_MESSAGE,
 )
 
 
@@ -768,3 +770,88 @@ class TestP2PE2E:
         h = self._make_p2p_hook()
         result = self._run_p2p(h, "coder", "")
         assert result["valid"] is False
+
+
+class TestP2PMessageCustomization:
+    """P2P違反メッセージのconfig.yaml管理化テスト"""
+
+    def _make_hook(self, guard_config):
+        """P2P設定付きフックインスタンスを生成"""
+        with patch(
+            "src.domain.hooks.sendmessage_guard_hook.ConfigManager"
+        ) as mock_cm:
+            mock_cm.return_value.config = {"sendmessage_guard": guard_config}
+            h = SendMessageGuardHook(debug=False)
+        return h
+
+    def _base_p2p_config(self, **overrides):
+        """P2P設定ベース（overridesでp2p_rulesキーを上書き可能）"""
+        p2p_rules = {
+            "enabled": True,
+            "default_policy": "deny",
+            "broadcast_allowed_roles": ["leader"],
+            "matrix": {"coder": ["team-lead"]},
+        }
+        p2p_rules.update(overrides)
+        return {"p2p_rules": p2p_rules}
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_custom_broadcast_block_message(self, mock_roles):
+        """config.yamlのbroadcast_block_message設定時、カスタムメッセージが使用される"""
+        mock_roles.return_value = {"coder"}
+        custom_msg = "【カスタム】broadcast禁止: role={roles}"
+        h = self._make_hook(self._base_p2p_config(
+            broadcast_block_message=custom_msg,
+        ))
+        input_data = {"tool_input": {"type": "broadcast"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "【カスタム】broadcast禁止:" in result["violation"]
+        # デフォルトメッセージが含まれないことを確認
+        assert "team-leadへ個別送信してください" not in result["violation"]
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_default_broadcast_block_message_fallback(self, mock_roles):
+        """broadcast_block_message未設定時にデフォルトメッセージが使用される"""
+        mock_roles.return_value = {"coder"}
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "broadcast"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "P2P制御:" in result["violation"]
+        assert "team-leadへ個別送信してください" in result["violation"]
+
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_custom_message_block_message(self, mock_roles, mock_normalize, mock_known):
+        """config.yamlのmessage_block_message設定時、カスタムメッセージが使用される"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder", "pmo"}
+        mock_normalize.return_value = "pmo"
+        custom_msg = "【カスタム】直接通信禁止: {roles}→{recipient}"
+        h = self._make_hook(self._base_p2p_config(
+            message_block_message=custom_msg,
+        ))
+        input_data = {"tool_input": {"type": "message", "recipient": "pmo"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "【カスタム】直接通信禁止:" in result["violation"]
+        assert "pmo" in result["violation"]
+        # デフォルトメッセージが含まれないことを確認
+        assert "team-leadを経由してください" not in result["violation"]
+
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_default_message_block_message_fallback(self, mock_roles, mock_normalize, mock_known):
+        """message_block_message未設定時にデフォルトメッセージが使用される"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder", "pmo"}
+        mock_normalize.return_value = "pmo"
+        h = self._make_hook(self._base_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "pmo"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "P2P制御:" in result["violation"]
+        assert "team-leadを経由してください" in result["violation"]

@@ -33,6 +33,10 @@ SendMessage規約違反
 対処: 設定されたフォーマットに従ってSendMessageを再送してください\
 """
 
+# P2P違反メッセージデフォルト
+DEFAULT_P2P_BROADCAST_BLOCK_MESSAGE = "P2P制御: role={roles} はbroadcast禁止。team-leadへ個別送信してください"
+DEFAULT_P2P_MESSAGE_BLOCK_MESSAGE = "P2P制御: role={roles} から {recipient} への直接通信は禁止。team-leadを経由してください"
+
 
 class SendMessageGuardHook(BaseHook):
     """SendMessage ツール使用時のメッセージ内容検査フック
@@ -76,6 +80,12 @@ class SendMessageGuardHook(BaseHook):
             "default_policy": p2p_raw.get("default_policy", "deny"),
             "broadcast_allowed_roles": p2p_raw.get("broadcast_allowed_roles", []),
             "matrix": p2p_raw.get("matrix", {}),
+            "broadcast_block_message": p2p_raw.get(
+                "broadcast_block_message", DEFAULT_P2P_BROADCAST_BLOCK_MESSAGE
+            ),
+            "message_block_message": p2p_raw.get(
+                "message_block_message", DEFAULT_P2P_MESSAGE_BLOCK_MESSAGE
+            ),
         }
         return config
 
@@ -163,9 +173,13 @@ class SendMessageGuardHook(BaseHook):
         if message_type == "broadcast":
             broadcast_allowed = p2p_rules.get("broadcast_allowed_roles", [])
             if not any(role in broadcast_allowed for role in roles):
+                # config管理化テンプレート使用
+                msg_template = p2p_rules.get(
+                    "broadcast_block_message", DEFAULT_P2P_BROADCAST_BLOCK_MESSAGE
+                )
                 return {
                     "valid": False,
-                    "violation": f"P2P制御: role={roles} はbroadcast禁止。team-leadへ個別送信してください",
+                    "violation": msg_template.format(roles=roles),
                 }
             return {"valid": True}
 
@@ -185,9 +199,13 @@ class SendMessageGuardHook(BaseHook):
             # matrixに該当なし → default_policyで判定
             if default_policy == "allow":
                 return {"valid": True}
+            # config管理化テンプレート使用
+            msg_template = p2p_rules.get(
+                "message_block_message", DEFAULT_P2P_MESSAGE_BLOCK_MESSAGE
+            )
             return {
                 "valid": False,
-                "violation": f"P2P制御: role={roles} から {recipient} への直接通信は禁止。team-leadを経由してください",
+                "violation": msg_template.format(roles=roles, recipient=recipient),
             }
 
         # その他のtype → allow
