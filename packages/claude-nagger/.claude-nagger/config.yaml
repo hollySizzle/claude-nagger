@@ -187,7 +187,7 @@ session_startup:
 # Agent Spawnガード設定
 agent_spawn_guard:
   # subagent起動時にpromptへ注入するoverride指示テンプレート
-  override_instruction: "Redmine get_issue_detail_toolでチケットコメントから最新の指示を取得し、指示に従って作業を実行せよ"
+  override_instruction: "promptに指定されたチケット番号を使い、Redmine get_issue_detail_toolでチケットコメントから最新の指示を取得し、指示に従って作業を実行せよ"
   block_message_template: |
     Agent tool規約: sub-agent直接起動の制限
     ━━━━━━━━━━━━━━━━━
@@ -204,12 +204,24 @@ agent_spawn_guard:
     ━━━━━━━━━━━━━━━━━
     検出prompt: "{prompt}"
     要件: promptは "issue_{{数字1-6桁}}" の形式（例: issue_1234）でなければなりません。
+    理由: Redmine連携によるチケット追跡のため、issue_{{id}}形式が必須です。
     対処: promptを issue_{{id}} 形式に変更してください。
 
 # SendMessageガード設定
 sendmessage_guard:
-  pattern: "^issue_\\d+ \\[.{1,80}\\]$"
+  pattern: "^issue_\\d+ \\[.{1,5}\\]$"
   enabled: true
+  block_message: |
+    SendMessage規約違反
+    ━━━━━━━━━━━━━━━━━
+    違反: {violation}
+    許可フォーマット: issue_{{数字}} [ステータス]
+    許可ステータス: 完了, 指示, 相談, 確認, 要判断, ブロッカー
+    対処: 設定されたフォーマットに従ってSendMessageを再送してください
+  exempt_types:
+    - "shutdown_request"
+    - "shutdown_response"
+    - "plan_approval_response"
   p2p_rules:
     enabled: true
     default_policy: "deny"

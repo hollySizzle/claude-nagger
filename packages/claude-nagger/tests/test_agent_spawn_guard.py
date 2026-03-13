@@ -826,3 +826,49 @@ class TestConfigYamlMessageOverride:
         updated_prompt = out["hookSpecificOutput"]["updatedInput"]["prompt"]
         assert "カスタムoverride指示文" in updated_prompt
         assert "issue_1234" in updated_prompt
+
+
+class TestConfigYamlContentValidation:
+    """config.yaml内容の妥当性検証テスト（issue_8139チューニング）
+
+    config.yaml変更後の内容が期待通りであることを直接検証する。
+    """
+
+    @pytest.fixture(autouse=True)
+    def _load_config(self):
+        """config.yamlを読み込む"""
+        import yaml
+
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", ".claude-nagger", "config.yaml"
+        )
+        config_path = os.path.normpath(config_path)
+        with open(config_path, encoding="utf-8") as f:
+            self.config = yaml.safe_load(f)
+
+    def test_prompt_pattern_block_message_contains_reason(self):
+        """prompt_pattern_block_messageに理由行が含まれる"""
+        guard = self.config.get("agent_spawn_guard", {})
+        msg = guard.get("prompt_pattern_block_message", "")
+        assert "理由:" in msg, "prompt_pattern_block_messageに理由行が含まれていない"
+        assert "Redmine連携" in msg
+
+    def test_override_instruction_contains_ticket_reference(self):
+        """override_instructionにチケット番号参照の指示が含まれる"""
+        guard = self.config.get("agent_spawn_guard", {})
+        instruction = guard.get("override_instruction", "")
+        assert "promptに指定されたチケット番号" in instruction
+
+    def test_override_instruction_in_updated_input(self):
+        """override_instructionが実際のupdatedInputに反映される"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1234",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        updated_prompt = out["hookSpecificOutput"]["updatedInput"]["prompt"]
+        assert "promptに指定されたチケット番号" in updated_prompt

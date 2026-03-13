@@ -171,22 +171,22 @@ class TestValidateContent:
         assert result["valid"] is False
         assert "フォーマット不一致" in result["violation"]
 
-    def test_bracket_content_80chars_passes(self, hook_with_config):
-        """正常: ブラケット内80文字ちょうどで通過"""
+    def test_bracket_content_5chars_passes(self, hook_with_config):
+        """正常: ブラケット内5文字ちょうどで通過"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[.{1,80}\]$"
+            "pattern": r"^issue_\d+ \[.{1,5}\]$"
         })
-        content_80 = "a" * 80
-        result = h.validate_content(f"issue_1234 [{content_80}]")
+        content_5 = "a" * 5
+        result = h.validate_content(f"issue_1234 [{content_5}]")
         assert result["valid"] is True
 
-    def test_bracket_content_81chars_rejected(self, hook_with_config):
-        """異常: ブラケット内81文字で拒否"""
+    def test_bracket_content_6chars_rejected(self, hook_with_config):
+        """異常: ブラケット内6文字で拒否"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[.{1,80}\]$"
+            "pattern": r"^issue_\d+ \[.{1,5}\]$"
         })
-        content_81 = "a" * 81
-        result = h.validate_content(f"issue_1234 [{content_81}]")
+        content_6 = "a" * 6
+        result = h.validate_content(f"issue_1234 [{content_6}]")
         assert result["valid"] is False
         assert "フォーマット不一致" in result["violation"]
 
@@ -896,7 +896,7 @@ class TestP2PConfigYamlIntegration:
         }
         p2p_rules.update(p2p_overrides)
         return {
-            "pattern": "^issue_\\d+ \\[.{1,80}\\]$",
+            "pattern": "^issue_\\d+ \\[.{1,5}\\]$",
             "enabled": True,
             "p2p_rules": p2p_rules,
         }
@@ -992,16 +992,86 @@ class TestP2PConfigYamlIntegration:
 
     # --- R2: content validation リグレッション ---
 
-    def test_r2_content_80chars_passes(self):
-        """R2: 80文字以内のissue_NNNN [...]が通過（content validation リグレッション確認）"""
+    def test_r2_content_5chars_passes(self):
+        """R2: 5文字以内のissue_NNNN [...]が通過（content validation リグレッション確認）"""
         h = self._make_hook_with_config(self._full_p2p_config())
-        content_80 = "a" * 80
-        result = h.validate_content(f"issue_1234 [{content_80}]")
+        content_5 = "a" * 5
+        result = h.validate_content(f"issue_1234 [{content_5}]")
         assert result["valid"] is True
 
-    def test_r2_content_81chars_rejected(self):
-        """R2: 81文字以上のブラケット内容が拒否される（content validation リグレッション確認）"""
+    def test_r2_content_6chars_rejected(self):
+        """R2: 6文字以上のブラケット内容が拒否される（content validation リグレッション確認）"""
         h = self._make_hook_with_config(self._full_p2p_config())
-        content_81 = "a" * 81
-        result = h.validate_content(f"issue_1234 [{content_81}]")
+        content_6 = "a" * 6
+        result = h.validate_content(f"issue_1234 [{content_6}]")
         assert result["valid"] is False
+
+
+class TestConfigYamlSendmessageGuard:
+    """config.yaml sendmessage_guardセクションの内容検証テスト（issue_8139チューニング）"""
+
+    @pytest.fixture(autouse=True)
+    def _load_config(self):
+        """config.yamlのsendmessage_guardセクションを読み込む"""
+        import os
+        import yaml
+
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", ".claude-nagger", "config.yaml"
+        )
+        config_path = os.path.normpath(config_path)
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        self.guard_config = data.get("sendmessage_guard", {})
+
+    def test_pattern_is_5char_limit(self):
+        """パターンが5文字制限であること"""
+        pattern = self.guard_config.get("pattern", "")
+        assert ".{1,5}" in pattern, f"パターンが5文字制限でない: {pattern}"
+        assert ".{1,80}" not in pattern, "旧80文字制限パターンが残っている"
+
+    def test_block_message_exists(self):
+        """block_messageキーが存在する"""
+        assert "block_message" in self.guard_config, "block_messageキーがconfig.yamlに存在しない"
+
+    def test_block_message_contains_status_format(self):
+        """block_messageに[ステータス]フォーマット例示が含まれる"""
+        msg = self.guard_config.get("block_message", "")
+        assert "ステータス" in msg, "block_messageにステータス例示が含まれていない"
+
+    def test_exempt_types_exists(self):
+        """exempt_typesキーが存在する"""
+        assert "exempt_types" in self.guard_config, "exempt_typesキーがconfig.yamlに存在しない"
+
+    def test_exempt_types_contains_defaults(self):
+        """exempt_typesにデフォルト3種が含まれる"""
+        exempt = self.guard_config.get("exempt_types", [])
+        assert "shutdown_request" in exempt
+        assert "shutdown_response" in exempt
+        assert "plan_approval_response" in exempt
+
+    def test_exempt_types_config_loaded_by_hook(self):
+        """config.yamlのexempt_typesがhookインスタンスに正しく読み込まれる"""
+        h = hook_with_config_factory({"exempt_types": ["custom_a", "custom_b"]})
+        assert h.is_exempt_type("custom_a") is True
+        assert h.is_exempt_type("custom_b") is True
+        assert h.is_exempt_type("shutdown_request") is False
+
+    def test_block_message_config_loaded_by_hook(self):
+        """config.yamlのblock_messageがhookインスタンスに正しく読み込まれる"""
+        custom_msg = "カスタム: {violation} パターン: {pattern}"
+        h = hook_with_config_factory({"block_message": custom_msg})
+        input_data = {"tool_input": {"content": ""}}
+        result = h.process(input_data)
+        assert result["decision"] == "block"
+        assert "カスタム:" in result["reason"]
+
+
+def hook_with_config_factory(guard_config: dict):
+    """テスト用ヘルパー: カスタム設定付きフックインスタンスを生成"""
+    with patch(
+        "src.domain.hooks.sendmessage_guard_hook.ConfigManager"
+    ) as mock_cm:
+        mock_cm.return_value.config = {"sendmessage_guard": guard_config}
+        h = SendMessageGuardHook(debug=False)
+    return h
