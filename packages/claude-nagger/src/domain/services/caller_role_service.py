@@ -18,7 +18,7 @@ def get_caller_roles(
     """現在のcaller（subagent）のroleセットを取得
 
     agent_idベース: input_data['agent_id']からDB検索し、roleを返す。
-    agent_id不在時はsession_idベースのフォールバック。
+    agent_id不在時はleader判定（is_leader_tool_use()と一貫）。
 
     Args:
         input_data: 入力データ（agent_id, session_id等を含む）
@@ -63,7 +63,13 @@ def get_caller_roles(
             logger.warning(f"Failed to get caller roles via agent_id: {e}")
             return set()
 
-    # フォールバック: agent_idが無い場合はsession_idベース
+    # agent_id不在 = leader（is_leader_tool_use()と一貫した判定: issue_8118）
+    # session_idフォールバックに落ちると全active subagent rolesが返り、
+    # leaderがsubagentと誤判定されP2Pブロックされる問題を修正
+    logger.info("CALLER ROLES: agent_id不在 → leader")
+    return {"leader"}
+
+    # session_idベースフォールバック（将来のagent_id無しsubagent対応用に保持）
     session_id = input_data.get('session_id', '')
     if not session_id:
         return set()

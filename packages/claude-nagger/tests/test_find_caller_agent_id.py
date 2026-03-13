@@ -84,42 +84,65 @@ class TestGetCallerRolesToolUseId:
 
         assert result == {'coder'}
 
-    def test_agent_id不在_空set(self, hook):
-        """agent_idがない → 空set（leader扱いでrole取得不要）"""
+    def test_agent_id不在_leader返却(self, hook):
+        """agent_idがない → {"leader"}（is_leader_tool_use()と一貫: issue_8118）"""
         input_data = {'session_id': 'test-session'}
 
         with patch('domain.services.leader_detection.find_caller_agent_id', return_value=None):
             result = hook._get_caller_roles(input_data)
 
-        assert result == set()
+        assert result == {"leader"}
 
-    def test_後方互換_session_idベースフォールバック(self, hook):
-        """agent_idなし、session_idあり → session_idベース既存ロジック"""
+    def test_agent_id不在_session_idあり_leader返却(self, hook):
+        """agent_idなし、session_idあり → leader判定（session_idフォールバックに落ちない: issue_8118）"""
         input_data = {'session_id': 'test-session'}
-        mock_record = SubagentRecord(
-            agent_id='agent-456',
-            session_id='test-session',
-            agent_type='tester',
-            role='tester',
-            role_source='task_match',
-            created_at='2026-01-01T00:00:00Z',
-            startup_processed=True,
-            startup_processed_at='2026-01-01T00:00:01Z',
-            task_match_index=1,
-        )
 
-        with patch('infrastructure.db.SubagentRepository') as MockRepo:
-            mock_repo_instance = MagicMock()
-            mock_repo_instance.get_active.return_value = [mock_record]
-            MockRepo.return_value = mock_repo_instance
-            with patch('infrastructure.db.NaggerStateDB') as MockDB:
-                mock_db_instance = MagicMock()
-                MockDB.return_value = mock_db_instance
-                MockDB.resolve_db_path.return_value = '/tmp/test.db'
+        result = hook._get_caller_roles(input_data)
 
-                result = hook._get_caller_roles(input_data)
+        # session_idフォールバックではなくleaderが返る
+        assert result == {"leader"}
 
-        assert result == {'tester'}
+
+# === 2.5. issue_8118: P2P誤検出修正テスト ===
+
+class TestLeaderP2PBypass:
+    """agent_id不在時にleader判定されP2Pバイパスされることを検証（issue_8118）"""
+
+    @pytest.fixture
+    def hook(self):
+        return ImplementationDesignHook()
+
+    def test_agent_id不在でleader返却(self, hook):
+        """agent_idなし → {"leader"}（session_idフォールバックに落ちない）"""
+        input_data = {'session_id': 'test-session', 'tool_name': 'SendMessage'}
+
+        result = hook._get_caller_roles(input_data)
+
+        assert result == {"leader"}
+
+    def test_leader_roleでP2P検証バイパス(self):
+        """leader roleはP2P検証でallow（誤ブロック回避: issue_8118）"""
+        from src.domain.hooks.sendmessage_guard_hook import SendMessageGuardHook
+
+        hook = SendMessageGuardHook()
+        # P2P有効な設定を注入
+        hook._guard_config = {
+            "p2p_rules": {
+                "enabled": True,
+                "matrix": {"coder": ["team-lead"]},
+                "default_policy": "deny",
+                "broadcast_allowed_roles": ["leader"],
+            },
+            "exempt_types": [],
+        }
+        input_data = {'session_id': 'test-session', 'tool_name': 'SendMessage'}
+        tool_input = {'type': 'message', 'recipient': 'coder-123'}
+
+        # get_caller_rolesがleaderを返すことでP2P許可される
+        with patch('src.domain.hooks.sendmessage_guard_hook.get_caller_roles', return_value={"leader"}):
+            result = hook._validate_p2p(input_data, tool_input)
+
+        assert result["valid"] is True
 
 
 # === 3. 回帰テスト ===

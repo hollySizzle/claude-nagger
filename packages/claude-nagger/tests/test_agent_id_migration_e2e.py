@@ -66,11 +66,11 @@ class TestAgentIdE2E:
         # leader判定
         assert is_leader_tool_use(input_data) is True
 
-        # _get_caller_rolesはagent_id不在→空set（DB検索なし）
+        # _get_caller_rolesはagent_id不在→{"leader"}（issue_8118: session_idフォールバック回避）
         hook = ImplementationDesignHook()
         with patch('domain.services.leader_detection.find_caller_agent_id', return_value=None):
             roles = hook._get_caller_roles(input_data)
-        assert roles == set()
+        assert roles == {"leader"}
 
     def test_unknown_agent_id_returns_empty(self, tmp_path):
         """E2E-3: 不正agent_id（DB未登録）→None返却→フォールバック動作確認"""
@@ -200,7 +200,7 @@ class TestCategoryD_SignatureChange:
         with patch('domain.services.leader_detection.find_caller_agent_id', return_value=None):
             result = hook._get_caller_roles(input_data)
 
-        assert result == set()
+        assert result == {"leader"}
 
     def test_find_caller_agent_id_new_signature(self):
         """find_caller_agent_id(input_data)がdict引数で動作"""
