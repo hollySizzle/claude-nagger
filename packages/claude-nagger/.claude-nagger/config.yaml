@@ -128,6 +128,7 @@ session_startup:
           first_time:
             title: "tester subagent規約"
             main_text: |
+              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
               [ ] 仕様からテストを設計すること（実装詳細に依存しない）
               [ ] テスト結果・失敗箇所・再現手順を報告すること
               [ ] プロダクションコードを編集しないこと（テストコード・manual_specのみ編集可）
@@ -144,6 +145,7 @@ session_startup:
           first_time:
             title: "researcher subagent規約"
             main_text: |
+              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
               [ ] 調査結果を報告すること
               [ ] スコープ外のファイルを編集しないこと
       coder:
@@ -151,6 +153,7 @@ session_startup:
           first_time:
             title: "coder subagent規約"
             main_text: |
+              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
               [ ] チケット番号(issue_{id})をコミットメッセージに含めること
               [ ] 指示されたスコープ外のファイルを編集しないこと
               [ ] 判断が必要な場合は実装せず報告すること
@@ -169,10 +172,17 @@ session_startup:
           first_time:
             title: "tech-lead subagent規約"
             main_text: |
+              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
               [ ] 設計書を確認してからレビューすること
               [ ] コードを編集・作成しないこと（読み取り専用）
               [ ] 指摘は[事実]/[仮説]に分類すること
               [ ] 報告=チケットコメント（[tech-lead]プレフィックス付き）
+      pmo:
+        messages:
+          first_time:
+            title: "pmo subagent規約"
+            main_text: |
+              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
 
 # Agent Spawnガード設定
 agent_spawn_guard:
