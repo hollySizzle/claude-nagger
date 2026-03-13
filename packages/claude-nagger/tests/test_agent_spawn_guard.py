@@ -651,3 +651,178 @@ class TestConfigYamlMessages:
         assert out is not None
         reason = out["hookSpecificOutput"]["permissionDecisionReason"]
         assert "sub-agent直接起動の制限" in reason
+
+
+class TestSubagentRedmineFlowConfig:
+    """検証項目(d): subagent規約にget_issue_detail_toolフローが含まれること（issue_8139）
+
+    config.yamlの各subagent_type override設定に
+    get_issue_detail_tool規約文言が含まれることを検証する。
+    """
+
+    @pytest.fixture(autouse=True)
+    def _load_config(self):
+        """config.yamlのsession_startup.overridesセクションを読み込む"""
+        import yaml
+
+        # プロジェクトルートのconfig.yamlを使用
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", ".claude-nagger", "config.yaml"
+        )
+        config_path = os.path.normpath(config_path)
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        self.overrides = data.get("session_startup", {}).get("overrides", {})
+        self.subagent_types = self.overrides.get("subagent_types", {})
+
+    @pytest.mark.parametrize("role", ["coder", "tester", "tech-lead", "pmo"])
+    def test_role_contains_get_issue_detail_tool(self, role):
+        """各ロールのoverride設定にget_issue_detail_tool規約文言が含まれる"""
+        role_config = self.subagent_types.get(role, {})
+        main_text = (
+            role_config.get("messages", {})
+            .get("first_time", {})
+            .get("main_text", "")
+        )
+        assert "get_issue_detail_tool" in main_text, (
+            f"{role}のoverride設定にget_issue_detail_tool文言が含まれていない"
+        )
+
+    def test_researcher_has_get_issue_detail_tool(self):
+        """researcherのoverride設定にget_issue_detail_tool規約文言が含まれる
+
+        researcherはsubagent_defaultフォールバックの可能性があるため個別検証。
+        """
+        researcher_config = self.subagent_types.get("researcher", {})
+        main_text = (
+            researcher_config.get("messages", {})
+            .get("first_time", {})
+            .get("main_text", "")
+        )
+        assert "get_issue_detail_tool" in main_text, (
+            "researcherのoverride設定にget_issue_detail_tool文言が含まれていない。"
+            "subagent_defaultフォールバックではget_issue_detail_tool規約が欠落する"
+        )
+
+    def test_override_instruction_contains_get_issue_detail_tool(self):
+        """agent_spawn_guardのoverride_instructionにget_issue_detail_tool文言が含まれる"""
+        import yaml
+
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", ".claude-nagger", "config.yaml"
+        )
+        config_path = os.path.normpath(config_path)
+        with open(config_path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        guard_config = data.get("agent_spawn_guard", {})
+        instruction = guard_config.get("override_instruction", "")
+        assert "get_issue_detail_tool" in instruction, (
+            "override_instructionにget_issue_detail_tool文言が含まれていない"
+        )
+
+
+class TestConfigYamlMessageOverride:
+    """検証項目(e): config.yamlメッセージテンプレート書き換えの反映確認（issue_8139）
+
+    config.yamlのメッセージテンプレートを書き換えた状態でguardスクリプトを実行し、
+    変更がdeny/warn時のメッセージに正しく反映されることを検証する。
+    """
+
+    @pytest.fixture
+    def custom_config_dir(self, tmp_path):
+        """カスタムメッセージを持つconfig.yamlを含む一時ディレクトリを作成"""
+        import shutil
+        import yaml
+
+        # guardスクリプトの親ディレクトリ構造を再現
+        # agent_spawn_guard.py は script_dir/../.claude-nagger/config.yaml を参照
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+
+        # カスタムメッセージのconfig.yaml
+        custom_config = {
+            "agent_spawn_guard": {
+                "block_message_template": 'カスタムブロック: type="{subagent_type}"',
+                "prompt_pattern_block_message": 'カスタムパターン拒否: prompt="{prompt}"',
+                "issue_id_warn_message": "カスタム警告: issue_idが必要です",
+                "override_instruction": "カスタムoverride指示文",
+            }
+        }
+        config_file = config_dir / "config.yaml"
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(custom_config, f, allow_unicode=True)
+
+        # guardスクリプトをコピー
+        shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+
+        return hooks_dir / "agent_spawn_guard.py"
+
+    def _run_custom_guard(self, script_path, input_data):
+        """カスタムconfig環境でguardスクリプトを実行"""
+        proc = subprocess.run(
+            [sys.executable, str(script_path)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        stdout_json = None
+        if proc.stdout.strip():
+            try:
+                stdout_json = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                pass
+        return proc.returncode, stdout_json
+
+    def test_custom_block_message_reflected(self, custom_config_dir):
+        """書き換えたblock_message_templateがdeny時に反映される"""
+        data = _make_agent_input(subagent_type="coder", prompt="issue_1234")
+        rc, out = self._run_custom_guard(custom_config_dir, data)
+
+        assert rc == 0
+        assert out is not None
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "カスタムブロック" in reason
+        assert 'type="coder"' in reason
+
+    def test_custom_prompt_pattern_block_reflected(self, custom_config_dir):
+        """書き換えたprompt_pattern_block_messageがpromptパターン拒否時に反映される"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="invalid prompt",
+        )
+        rc, out = self._run_custom_guard(custom_config_dir, data)
+
+        assert rc == 0
+        assert out is not None
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "カスタムパターン拒否" in reason
+        assert '"invalid prompt"' in reason
+
+    def test_custom_issue_id_warn_reflected(self, custom_config_dir):
+        """書き換えたissue_id_warn_messageが警告時に反映される"""
+        data = _make_agent_input(subagent_type="Explore", prompt="no issue id")
+        rc, out = self._run_custom_guard(custom_config_dir, data)
+
+        assert rc == 0
+        assert out is not None
+        reason = out["hookSpecificOutput"]["permissionDecisionReason"]
+        assert "カスタム警告" in reason
+
+    def test_custom_override_instruction_in_updated_input(self, custom_config_dir):
+        """書き換えたoverride_instructionがupdatedInputに反映される"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1234",
+        )
+        rc, out = self._run_custom_guard(custom_config_dir, data)
+
+        assert rc == 0
+        assert out is not None
+        updated_prompt = out["hookSpecificOutput"]["updatedInput"]["prompt"]
+        assert "カスタムoverride指示文" in updated_prompt
+        assert "issue_1234" in updated_prompt
