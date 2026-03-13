@@ -116,7 +116,7 @@ class TestTeamNameHandling:
         data = _make_agent_input(
             subagent_type="general-purpose",
             team_name="my-team",
-            prompt="issue_7579 implement feature",
+            prompt="issue_7579",
         )
         rc, out = _run_guard(data)
 
@@ -129,7 +129,7 @@ class TestTeamNameHandling:
         data = _make_agent_input(
             subagent_type="general-purpose",
             team_name="any-team",
-            prompt="issue_7947 test",
+            prompt="issue_7947",
         )
         rc, out = _run_guard(data, env=env)
 
@@ -138,11 +138,11 @@ class TestTeamNameHandling:
 
     @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "pmo"])
     def test_allow_all_ticket_tasuki_roles_with_team_name(self, role):
-        """team_name指定時に全ticket-tasukiロールが許可される"""
+        """team_name指定時に全ticket-tasukiロールが許可される（promptパターン準拠）"""
         data = _make_agent_input(
             subagent_type=role,
             team_name="my-team",
-            prompt="issue_7947 do work",
+            prompt="issue_7947",
         )
         rc, out = _run_guard(data)
 
@@ -210,8 +210,8 @@ class TestIssueIdCheck:
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
 
-    def test_warn_when_issue_id_missing_team_name(self):
-        """team_name許可時にissue_id欠落でask警告"""
+    def test_deny_when_issue_id_missing_team_name(self):
+        """team_name指定+非ビルトインでpromptパターン不一致→deny（promptパターン制限優先）"""
         data = _make_agent_input(
             subagent_type="general-purpose",
             team_name="my-team",
@@ -221,7 +221,7 @@ class TestIssueIdCheck:
 
         assert rc == 0
         assert out is not None
-        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
     def test_no_warn_when_issue_id_present(self):
         """issue_id含む場合は警告なしで許可"""
@@ -364,9 +364,153 @@ class TestAdditionalScenarios:
         """team_name前後空白ありはstrip()後有効→許可"""
         data = _make_agent_input(
             subagent_type="general-purpose",
-            prompt="issue_7947 test scenario",
+            prompt="issue_7947",
         )
         data["tool_input"]["team_name"] = "  my-team  "
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+
+class TestPromptPatternRestriction:
+    """promptパターン制限のテスト（issue_8132）"""
+
+    def test_valid_prompt_pattern_allowed(self):
+        """issue_1234形式のpromptは許可"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1234",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_valid_prompt_pattern_6digits(self):
+        """6桁のissue_idも許可"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_123456",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_valid_prompt_pattern_1digit(self):
+        """1桁のissue_idも許可"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_deny_prompt_with_extra_text(self):
+        """issue_1234に追加テキストがある場合はdeny"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1234 implement feature",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_deny_prompt_freeform(self):
+        """自由文promptはdeny"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="implement the login feature",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_deny_prompt_empty(self):
+        """空promptはdeny"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_deny_prompt_7digits(self):
+        """7桁のissue_idはdeny（上限6桁）"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1234567",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_builtin_exempt_from_prompt_pattern(self):
+        """ビルトインsubagent_typeはpromptパターン制限対象外"""
+        data = _make_agent_input(
+            subagent_type="Explore",
+            team_name="my-team",
+            prompt="explore the codebase for auth patterns",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        # ビルトインはprompt自由文OK（issue_id欠落のask警告のみ）
+        if out is not None:
+            assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+    def test_builtin_plan_exempt_from_prompt_pattern(self):
+        """Plan subagent_typeもpromptパターン制限対象外"""
+        data = _make_agent_input(
+            subagent_type="Plan",
+            team_name="my-team",
+            prompt="issue_1234 plan the implementation",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
+
+    @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "pmo", "researcher"])
+    def test_all_roles_require_prompt_pattern(self, role):
+        """全ticket-tasukiロールにpromptパターン制限が適用される"""
+        data = _make_agent_input(
+            subagent_type=role,
+            team_name="my-team",
+            prompt="issue_8132 do work",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "pmo", "researcher"])
+    def test_all_roles_allow_valid_prompt(self, role):
+        """全ロールで正しいpromptパターンなら許可"""
+        data = _make_agent_input(
+            subagent_type=role,
+            team_name="my-team",
+            prompt="issue_8132",
+        )
         rc, out = _run_guard(data)
 
         assert rc == 0
