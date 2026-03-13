@@ -64,34 +64,5 @@ def get_caller_roles(
             return set()
 
     # agent_id不在 = leader（is_leader_tool_use()と一貫した判定: issue_8118）
-    # session_idフォールバックに落ちると全active subagent rolesが返り、
-    # leaderがsubagentと誤判定されP2Pブロックされる問題を修正
     logger.info("CALLER ROLES: agent_id不在 → leader")
     return {"leader"}
-
-    # session_idベースフォールバック（将来のagent_id無しsubagent対応用に保持）
-    session_id = input_data.get('session_id', '')
-    if not session_id:
-        return set()
-
-    try:
-        from infrastructure.db import NaggerStateDB, SubagentRepository
-        db = NaggerStateDB(NaggerStateDB.resolve_db_path())
-        subagent_repo = SubagentRepository(db)
-        records = subagent_repo.get_active(session_id)
-        db.close()
-
-        # 処理済みsubagentのroleを収集（issue_7130: role正規化）
-        from infrastructure.db.subagent_repository import _normalize_role, _get_known_roles_from_config
-        known_roles = _get_known_roles_from_config()
-        roles = set()
-        for record in records:
-            if record.role and record.startup_processed:
-                roles.add(_normalize_role(record.role, known_roles))
-
-        if roles:
-            logger.info(f"CALLER ROLES: session={session_id}, roles={roles}")
-        return roles
-    except Exception as e:
-        logger.warning(f"Failed to get caller roles: {e}")
-        return set()

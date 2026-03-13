@@ -8,6 +8,7 @@ role_resolution:
     # suffix多様性を吸収（coder-fix-bug → coder, pmo-2 → pmo）
     "coder": "coder"
     "pmo": "pmo"
+    "team-lead": "leader"
     "tech-lead": "tech-lead"
     "tester": "tester"
     "researcher": "researcher"
