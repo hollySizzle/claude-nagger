@@ -176,7 +176,7 @@ session_startup:
 
 # SendMessageガード設定
 sendmessage_guard:
-  pattern: "^issue_\\d+ \\[.+\\]$"
+  pattern: "^issue_\\d+ \\[.{1,80}\\]$"
   enabled: true
   p2p_rules:
     enabled: true

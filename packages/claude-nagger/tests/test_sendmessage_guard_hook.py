@@ -169,6 +169,25 @@ class TestValidateContent:
         assert result["valid"] is False
         assert "フォーマット不一致" in result["violation"]
 
+    def test_bracket_content_80chars_passes(self, hook_with_config):
+        """正常: ブラケット内80文字ちょうどで通過"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[.{1,80}\]$"
+        })
+        content_80 = "a" * 80
+        result = h.validate_content(f"issue_1234 [{content_80}]")
+        assert result["valid"] is True
+
+    def test_bracket_content_81chars_rejected(self, hook_with_config):
+        """異常: ブラケット内81文字で拒否"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[.{1,80}\]$"
+        })
+        content_81 = "a" * 81
+        result = h.validate_content(f"issue_1234 [{content_81}]")
+        assert result["valid"] is False
+        assert "フォーマット不一致" in result["violation"]
+
 
 # === should_process テスト ===
 
