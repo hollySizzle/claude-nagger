@@ -855,3 +855,153 @@ class TestP2PMessageCustomization:
         assert result["valid"] is False
         assert "P2P制御:" in result["violation"]
         assert "team-leadを経由してください" in result["violation"]
+
+
+class TestP2PConfigYamlIntegration:
+    """P2P違反メッセージconfig.yaml実機検証（issue_8139リリース前最終テスト）
+
+    tech-leadシナリオ準拠:
+    - シナリオA: カスタムbroadcast_block_message反映
+    - シナリオB: カスタムmessage_block_message反映
+    - シナリオC: デフォルトフォールバック（キー削除時）
+    - R1: P2P matrix正常系（tech-lead→team-lead通過）
+    - R2: content validation（80文字以内通過）
+    - R3: agent_spawn_guard連携（別テストファイルで検証済み、ここではP2Pリグレッション確認）
+    """
+
+    def _make_hook_with_config(self, sendmessage_guard_config):
+        """指定config辞書でhookインスタンス生成"""
+        with patch(
+            "src.domain.hooks.sendmessage_guard_hook.ConfigManager"
+        ) as mock_cm:
+            mock_cm.return_value.config = {"sendmessage_guard": sendmessage_guard_config}
+            h = SendMessageGuardHook(debug=False)
+        return h
+
+    def _full_p2p_config(self, **p2p_overrides):
+        """実configに近いフル設定を生成（p2p_rulesのみオーバーライド可）"""
+        p2p_rules = {
+            "enabled": True,
+            "default_policy": "deny",
+            "broadcast_allowed_roles": ["leader"],
+            "matrix": {
+                "pmo": ["team-lead"],
+                "tech-lead": ["team-lead", "tester", "coder"],
+                "coder": ["team-lead", "tester", "tech-lead"],
+                "tester": ["team-lead", "coder", "tech-lead"],
+                "researcher": ["team-lead"],
+            },
+            "broadcast_block_message": "P2P制御: role={roles} はbroadcast禁止。team-leadへ個別送信してください",
+            "message_block_message": "P2P制御: role={roles} から {recipient} への直接通信は禁止。team-leadを経由してください",
+        }
+        p2p_rules.update(p2p_overrides)
+        return {
+            "pattern": "^issue_\\d+ \\[.{1,80}\\]$",
+            "enabled": True,
+            "p2p_rules": p2p_rules,
+        }
+
+    # --- シナリオA: カスタムbroadcast_block_message反映 ---
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_scenario_a_custom_broadcast_message_reflected(self, mock_roles):
+        """シナリオA: config.yamlのbroadcast_block_message書き換え→カスタム文言+変数展開確認"""
+        mock_roles.return_value = {"coder"}
+        custom_msg = "【実機検証】broadcast禁止: role={roles}"
+        h = self._make_hook_with_config(self._full_p2p_config(
+            broadcast_block_message=custom_msg,
+        ))
+        input_data = {"tool_input": {"type": "broadcast"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "【実機検証】broadcast禁止:" in result["violation"]
+        assert "coder" in result["violation"]
+        # デフォルトメッセージが混入していないこと
+        assert "team-leadへ個別送信してください" not in result["violation"]
+
+    # --- シナリオB: カスタムmessage_block_message反映 ---
+
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_scenario_b_custom_message_block_reflected(self, mock_roles, mock_normalize, mock_known):
+        """シナリオB: config.yamlのmessage_block_message書き換え→カスタム文言+変数展開確認"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder", "pmo", "tester", "tech-lead"}
+        mock_normalize.return_value = "pmo"
+        custom_msg = "【実機検証】直接通信禁止: {roles}→{recipient}"
+        h = self._make_hook_with_config(self._full_p2p_config(
+            message_block_message=custom_msg,
+        ))
+        input_data = {"tool_input": {"type": "message", "recipient": "pmo"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "【実機検証】直接通信禁止:" in result["violation"]
+        assert "coder" in result["violation"]
+        assert "pmo" in result["violation"]
+        # デフォルトメッセージが混入していないこと
+        assert "team-leadを経由してください" not in result["violation"]
+
+    # --- シナリオC: デフォルトフォールバック（キー削除時） ---
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_scenario_c_broadcast_fallback_on_key_removal(self, mock_roles):
+        """シナリオC-1: broadcast_block_message未定義→DEFAULT_P2P_BROADCAST_BLOCK_MESSAGEにフォールバック"""
+        mock_roles.return_value = {"tester"}
+        # broadcast_block_messageキーなしのconfig
+        config = self._full_p2p_config()
+        del config["p2p_rules"]["broadcast_block_message"]
+        h = self._make_hook_with_config(config)
+        input_data = {"tool_input": {"type": "broadcast"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "P2P制御:" in result["violation"]
+        assert "team-leadへ個別送信してください" in result["violation"]
+
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_scenario_c_message_fallback_on_key_removal(self, mock_roles, mock_normalize, mock_known):
+        """シナリオC-2: message_block_message未定義→DEFAULT_P2P_MESSAGE_BLOCK_MESSAGEにフォールバック"""
+        mock_roles.return_value = {"coder"}
+        mock_known.return_value = {"team-lead", "coder", "pmo"}
+        mock_normalize.return_value = "pmo"
+        config = self._full_p2p_config()
+        del config["p2p_rules"]["message_block_message"]
+        h = self._make_hook_with_config(config)
+        input_data = {"tool_input": {"type": "message", "recipient": "pmo"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is False
+        assert "P2P制御:" in result["violation"]
+        assert "team-leadを経由してください" in result["violation"]
+
+    # --- R1: P2P matrix正常系リグレッション ---
+
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    def test_r1_tech_lead_to_team_lead_allowed(self, mock_roles, mock_normalize, mock_known):
+        """R1: tech-lead→team-lead message通過（matrix正常系リグレッション確認）"""
+        mock_roles.return_value = {"tech-lead"}
+        mock_known.return_value = {"team-lead", "coder", "pmo", "tester", "tech-lead"}
+        mock_normalize.return_value = "team-lead"
+        h = self._make_hook_with_config(self._full_p2p_config())
+        input_data = {"tool_input": {"type": "message", "recipient": "team-lead"}}
+        result = h._validate_p2p(input_data, input_data["tool_input"])
+        assert result["valid"] is True
+
+    # --- R2: content validation リグレッション ---
+
+    def test_r2_content_80chars_passes(self):
+        """R2: 80文字以内のissue_NNNN [...]が通過（content validation リグレッション確認）"""
+        h = self._make_hook_with_config(self._full_p2p_config())
+        content_80 = "a" * 80
+        result = h.validate_content(f"issue_1234 [{content_80}]")
+        assert result["valid"] is True
+
+    def test_r2_content_81chars_rejected(self):
+        """R2: 81文字以上のブラケット内容が拒否される（content validation リグレッション確認）"""
+        h = self._make_hook_with_config(self._full_p2p_config())
+        content_81 = "a" * 81
+        result = h.validate_content(f"issue_1234 [{content_81}]")
+        assert result["valid"] is False
