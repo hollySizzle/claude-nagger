@@ -29,6 +29,9 @@ HookEventName = Literal[
     "WorktreeRemove",
     "TeammateIdle",
     "TaskCompleted",
+    "Elicitation",
+    "ElicitationResult",
+    "PostCompact",
 ]
 
 

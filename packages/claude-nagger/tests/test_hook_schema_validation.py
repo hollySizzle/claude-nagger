@@ -41,6 +41,9 @@ class HookSchemaValidator:
         'WorktreeRemove',      # worktree削除時 (2.1.50)
         'TeammateIdle',        # teammate idle時 (2.1.69)
         'TaskCompleted',       # task完了時 (2.1.69)
+        'Elicitation',         # MCP elicitation要求時 (2.1.75)
+        'ElicitationResult',   # elicitation応答送信時 (2.1.75)
+        'PostCompact',         # compaction完了後 (2.1.76)
     ]
 
     def validate(self, output: str) -> Dict[str, Any]:
@@ -734,6 +737,9 @@ class TestAllHookEventNames:
         'WorktreeRemove',
         'TeammateIdle',
         'TaskCompleted',
+        'Elicitation',
+        'ElicitationResult',
+        'PostCompact',
     ])
     def test_valid_event_names(self, validator, event_name):
         """各イベント名が有効として認識される"""
@@ -757,6 +763,7 @@ class TestAllHookEventNames:
             'UserPromptSubmit', 'PreCompact', 'SessionStart', 'SessionEnd',
             'InstructionsLoaded', 'ConfigChange', 'WorktreeCreate',
             'WorktreeRemove', 'TeammateIdle', 'TaskCompleted',
+            'Elicitation', 'ElicitationResult', 'PostCompact',
         ]
 
         for event in expected_events:
