@@ -19,7 +19,7 @@ class ConventionRule:
     message: str
     token_threshold: Optional[int] = None
     scope: Optional[str] = None
-    exclude_patterns: List[str] = field(default_factory=list)  # 'leader' or None（全agent対象）
+    exclude_patterns: List[str] = field(default_factory=list)  # 除外パターンリスト
 
 
 class FileConventionMatcher:
