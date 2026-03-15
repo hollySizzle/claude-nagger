@@ -506,3 +506,97 @@ class TestExcludePatterns:
             assert len(rules) == 1
         finally:
             temp_path.unlink()
+
+
+class TestAcceptanceExcludePatterns:
+    """受入テスト: exclude_patternsによるvibes/docs配下の除外動作確認
+    
+    #8187 コミット ed238e5 で導入されたexclude_patterns機能の受入テスト。
+    scope=tech-lead/pmoのdenyルールがvibes/docs配下を正しく除外するか検証。
+    """
+
+    @pytest.fixture
+    def deny_matcher(self):
+        """tech-lead/pmoスコープのdenyルール（vibes/docs除外）を持つマッチャー"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {
+                'rules': [
+                    {
+                        'name': 'vibes/docs外ファイル編集禁止',
+                        'patterns': ['**/*'],
+                        'severity': 'deny',
+                        'scope': 'tech-lead',
+                        'exclude_patterns': ['vibes/docs/**'],
+                        'message': 'vibes/docs配下以外のファイル編集は禁止です'
+                    },
+                    {
+                        'name': 'PMO: vibes/docs外ファイル編集禁止',
+                        'patterns': ['**/*'],
+                        'severity': 'deny',
+                        'scope': 'pmo',
+                        'exclude_patterns': ['vibes/docs/**'],
+                        'message': 'PMO: vibes/docs配下以外のファイル編集は禁止です'
+                    }
+                ]
+            }
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        matcher = FileConventionMatcher(temp_path)
+        yield matcher
+        temp_path.unlink()
+
+    def test_tc1_deny_outside_vibes_docs(self, deny_matcher):
+        """TC1: vibes/docs外ファイル編集がdenyされること
+        
+        scope=tech-lead/pmoのdenyルールがvibes/docs外ファイルに適用される。
+        """
+        # src配下のファイル → denyルール適用
+        rules = deny_matcher.check_file('src/domain/services/file_convention_matcher.py')
+        assert len(rules) == 2, f"vibes/docs外ファイルにdenyルールが適用されるべき: got {len(rules)}"
+        for rule in rules:
+            assert rule.severity == 'deny'
+
+    def test_tc2_allow_vibes_docs(self, deny_matcher):
+        """TC2: vibes/docs配下ファイル編集がallowされること
+        
+        vibes/docs配下パスはexclude_patternsにより除外され、ルール非適用。
+        """
+        # vibes/docs配下 → ルール非適用（除外）
+        rules = deny_matcher.check_file('vibes/docs/rules/documentation_standards.md')
+        assert len(rules) == 0, f"vibes/docs配下はルール非適用のはず: got {len(rules)}"
+
+        rules = deny_matcher.check_file('vibes/docs/README.md')
+        assert len(rules) == 0, f"vibes/docs/README.mdはルール非適用のはず: got {len(rules)}"
+
+    def test_tc3_deep_path_exclude(self, deny_matcher):
+        """TC3: 深いパスのexclude_patterns動作確認
+        
+        vibes/docs/rules/nested/deep/test.md のような深い階層でも除外が有効。
+        """
+        rules = deny_matcher.check_file('vibes/docs/rules/nested/deep/test.md')
+        assert len(rules) == 0, f"深いパスでも除外が有効のはず: got {len(rules)}"
+
+        rules = deny_matcher.check_file('vibes/docs/specs/sub/another/file.yaml')
+        assert len(rules) == 0, f"深いパスでも除外が有効のはず: got {len(rules)}"
+
+    def test_tc4_deny_outside_vibes_docs_various(self, deny_matcher):
+        """TC4: vibes/docs外の引き続きdeny確認
+        
+        README.md, tests/配下等、vibes/docs外のファイルは引き続きdeny適用。
+        """
+        # README.md → deny適用
+        rules = deny_matcher.check_file('README.md')
+        assert len(rules) == 2, f"README.mdにdenyルール適用されるべき: got {len(rules)}"
+        for rule in rules:
+            assert rule.severity == 'deny'
+
+        # tests/配下 → deny適用
+        rules = deny_matcher.check_file('tests/test_file_convention_matcher.py')
+        assert len(rules) == 2, f"tests/配下にdenyルール適用されるべき: got {len(rules)}"
+        for rule in rules:
+            assert rule.severity == 'deny'
+
+        # vibes/だがdocs/ではないパス → deny適用
+        rules = deny_matcher.check_file('vibes/other/file.md')
+        assert len(rules) == 2, f"vibes/docs外のvibes/配下にもdeny適用されるべき: got {len(rules)}"
