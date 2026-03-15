@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-03-15
+
+### HookEventName型拡張 — Claude Code v2.1.47-2.1.76対応
+Claude Code本体の新バージョンで追加されたhookイベントに対応。HookEventName型に計9種の新イベントを追加し、型安全性を維持。
+- HookEventName型に新hookイベント6種追加（CC 2.1.47-2.1.69対応） (issue_8160)
+- HookEventName型に新hookイベント3種追加（CC 2.1.75-2.1.76対応） (issue_8165)
+
+### agent_id/agent_type公式化対応
+Claude Code v2.1.45で公式化されたagent_id/agent_typeフィールドのundocumented注記を更新し、バージョン情報を修正。
+- agent_id/agent_type undocumented注記更新・バージョン情報修正 (issue_8154)
+
+### file_conventions exclude_patterns実装
+`file_conventions.yaml`のdenyルールに`exclude_patterns`サポートを追加。特定パスを除外対象に指定可能にし、tech-lead/pmoの`vibes/docs/**`配下編集を許可。
+- `file_convention_matcher.py`: ConventionRule/load/match/checkにexclude_patterns対応追加 (issue_8187)
+- `.claude-nagger/file_conventions.yaml`: pmo/tech-lead denyルールに`vibes/docs/**`除外追加 (issue_8187)
+- 受入テスト実装: exclude_patternsによるvibes/docs除外検証（TC1-TC4） (issue_8188)
+
+### 規約・設定変更
+- session_startup規約からパーソナリティセクション削除 (issue_7600)
+- leaderのRead/Serena読み取り系ツール許可 (issue_7599)
+- 暫定対応の除去（問題修正確認済み）
+- config設定変更
+
 ## [3.1.0] - 2026-03-13
 
 ### Redmine経由強制: Agent prompt制限+override注入によるTiDD徹底
