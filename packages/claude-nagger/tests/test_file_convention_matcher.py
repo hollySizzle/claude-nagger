@@ -399,3 +399,110 @@ class TestErrorHandling:
             assert result is False
         finally:
             temp_path.unlink()
+
+
+class TestExcludePatterns:
+    """exclude_patterns（除外パターン）のテスト"""
+
+    @pytest.fixture
+    def matcher(self):
+        """テスト用マッチャーを作成"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump({'rules': []}, f)
+            temp_path = Path(f.name)
+        m = FileConventionMatcher(temp_path)
+        temp_path.unlink()
+        return m
+
+    def test_exclude_pattern_prevents_match(self, matcher):
+        """除外パターンにマッチする場合、ルールが非適用になる"""
+        patterns = ["**/*"]
+        exclude_patterns = ["vibes/docs/**"]
+
+        # 除外パターンにマッチ → False
+        assert not matcher.matches_pattern('vibes/docs/rules/test.md', patterns, exclude_patterns)
+        assert not matcher.matches_pattern('vibes/docs/README.md', patterns, exclude_patterns)
+        assert not matcher.matches_pattern('vibes/docs/specs/arch.md', patterns, exclude_patterns)
+
+    def test_exclude_pattern_non_match_allows_rule(self, matcher):
+        """除外パターンにマッチしない場合、ルールが適用される"""
+        patterns = ["**/*"]
+        exclude_patterns = ["vibes/docs/**"]
+
+        # 除外パターンにマッチしない → True（ルール適用）
+        assert matcher.matches_pattern('src/main.py', patterns, exclude_patterns)
+        assert matcher.matches_pattern('tests/test_main.py', patterns, exclude_patterns)
+        assert matcher.matches_pattern('README.md', patterns, exclude_patterns)
+
+    def test_exclude_patterns_empty_preserves_behavior(self, matcher):
+        """exclude_patternsが空リストの場合、既存動作を維持"""
+        patterns = ["**/*"]
+
+        assert matcher.matches_pattern('any/file.txt', patterns, [])
+        assert matcher.matches_pattern('src/main.py', patterns, [])
+
+    def test_exclude_patterns_none_preserves_behavior(self, matcher):
+        """exclude_patternsがNoneの場合、既存動作を維持"""
+        patterns = ["**/*"]
+
+        assert matcher.matches_pattern('any/file.txt', patterns, None)
+        assert matcher.matches_pattern('src/main.py', patterns, None)
+
+    def test_exclude_patterns_loaded_from_yaml(self):
+        """YAMLからexclude_patternsが正しく読み込まれる"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {
+                'rules': [
+                    {
+                        'name': '全ファイル禁止（例外あり）',
+                        'patterns': ['**/*'],
+                        'severity': 'deny',
+                        'scope': 'pmo',
+                        'exclude_patterns': ['vibes/docs/**'],
+                        'message': 'ファイル編集禁止（vibes/docs除く）'
+                    }
+                ]
+            }
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            matcher = FileConventionMatcher(temp_path)
+            assert len(matcher.rules) == 1
+            assert matcher.rules[0].exclude_patterns == ['vibes/docs/**']
+
+            # 除外パスはルールに非該当
+            rules = matcher.check_file('vibes/docs/rules/test.md')
+            assert len(rules) == 0
+
+            # 除外外パスはルールに該当
+            rules = matcher.check_file('src/main.py')
+            assert len(rules) == 1
+            assert rules[0].name == '全ファイル禁止（例外あり）'
+        finally:
+            temp_path.unlink()
+
+    def test_exclude_patterns_default_empty(self):
+        """exclude_patterns未指定時はデフォルト空リスト"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            rules_data = {
+                'rules': [
+                    {
+                        'name': 'ルール（exclude未指定）',
+                        'patterns': ['**/*.py'],
+                        'severity': 'warn',
+                        'message': 'テスト'
+                    }
+                ]
+            }
+            yaml.dump(rules_data, f)
+            temp_path = Path(f.name)
+
+        try:
+            matcher = FileConventionMatcher(temp_path)
+            assert matcher.rules[0].exclude_patterns == []
+            # 既存動作に影響なし
+            rules = matcher.check_file('src/main.py')
+            assert len(rules) == 1
+        finally:
+            temp_path.unlink()

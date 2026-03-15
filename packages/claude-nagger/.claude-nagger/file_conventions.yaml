@@ -131,9 +131,11 @@ rules:
       - "**/*"
     severity: "deny"
     scope: "pmo"
+    exclude_patterns:
+      - "vibes/docs/**"
     message: |
       pmoはファイル編集が禁止されています。
-      コード操作はsubagentに委譲してください
+      ただしvibes/docs配下は編集可能です
 
   # 制約#8: tech-lead全ファイル編集禁止
   - name: "tech-lead全ファイル編集禁止"
@@ -141,6 +143,8 @@ rules:
       - "**/*"
     severity: "deny"
     scope: "tech-lead"
+    exclude_patterns:
+      - "vibes/docs/**"
     message: |
       tech-leadはファイル編集が禁止されています。
-      コード操作はsubagentに委譲してください
+      ただしvibes/docs配下は編集可能です

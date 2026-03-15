@@ -4,7 +4,7 @@ import os
 import yaml
 from pathlib import Path
 from typing import Dict, List, Optional, Any
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from wcmatch import glob as wc_glob
 
 from shared.structured_logging import get_logger
@@ -18,7 +18,8 @@ class ConventionRule:
     severity: str  # 'block', 'warn', 'deny'
     message: str
     token_threshold: Optional[int] = None
-    scope: Optional[str] = None  # 'leader' or None（全agent対象）
+    scope: Optional[str] = None
+    exclude_patterns: List[str] = field(default_factory=list)  # 'leader' or None（全agent対象）
 
 
 class FileConventionMatcher:
@@ -64,7 +65,8 @@ class FileConventionMatcher:
                     severity=rule_data.get('severity', 'warn'),
                     message=rule_data['message'],
                     token_threshold=rule_data.get('token_threshold'),
-                    scope=rule_data.get('scope')
+                    scope=rule_data.get('scope'),
+                    exclude_patterns=rule_data.get('exclude_patterns', [])
                 )
                 rules.append(rule)
                 self.logger.debug(f"Loaded rule: {rule.name} with patterns: {rule.patterns}")
@@ -87,7 +89,7 @@ class FileConventionMatcher:
             print(error_msg)
             return []
 
-    def matches_pattern(self, file_path: str, patterns: List[str]) -> bool:
+    def matches_pattern(self, file_path: str, patterns: List[str], exclude_patterns: List[str] = None) -> bool:
         """
         ファイルパスがパターンにマッチするか確認
         wcmatch.globを使用して**パターンを正しくサポート
@@ -95,6 +97,7 @@ class FileConventionMatcher:
         Args:
             file_path: チェック対象のファイルパス
             patterns: パターンリスト
+            exclude_patterns: 除外パターンリスト（マッチすればFalse返却）
 
         Returns:
             マッチする場合True
@@ -120,6 +123,12 @@ class FileConventionMatcher:
                 # wcmatch.globmatchで**パターンを完全サポート
                 if wc_glob.globmatch(normalized_path, pattern, flags=wc_glob.GLOBSTAR):
                     self.logger.info(f"  ✅ Pattern matched: {pattern}")
+                    # 除外パターンチェック
+                    if exclude_patterns:
+                        for exc_pattern in exclude_patterns:
+                            if wc_glob.globmatch(normalized_path, exc_pattern, flags=wc_glob.GLOBSTAR):
+                                self.logger.info(f"  🚫 Excluded by pattern: {exc_pattern}")
+                                return False
                     return True
 
                 self.logger.info(f"  ❌ Pattern not matched: {pattern}")
@@ -148,7 +157,7 @@ class FileConventionMatcher:
         matched_rules: List[ConventionRule] = []
         for rule in self.rules:
             self.logger.info(f"🔎 Testing rule: {rule.name}")
-            if self.matches_pattern(file_path, rule.patterns):
+            if self.matches_pattern(file_path, rule.patterns, rule.exclude_patterns):
                 self.logger.info(f"✅ FILE MATCHED RULE: {rule.name} (severity: {rule.severity})")
                 matched_rules.append(rule)
         
