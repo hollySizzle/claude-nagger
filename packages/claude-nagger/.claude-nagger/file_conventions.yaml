@@ -106,11 +106,14 @@ rules:
   - name: "leader全ファイル編集禁止"
     patterns:
       - "**/*"
+    exclude_patterns:
+      - "vibes/docs/**"
     severity: "deny"
     scope: "leader"
     message: |
       leaderはファイル編集が禁止されています。
       コード操作はsubagentに委譲してください（実装→coder、テスト→tester）
+      ただしvibes/docs配下は編集可能です
 
   # 制約#5: tester プロダクションコード編集deny
   - name: "testerプロダクションコード編集禁止"
