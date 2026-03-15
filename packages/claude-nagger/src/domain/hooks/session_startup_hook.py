@@ -16,6 +16,20 @@ from infrastructure.db import NaggerStateDB, SubagentRepository, SessionReposito
 from shared.constants import SUGGESTED_RULES_FILENAME, SUGGESTED_RULES_DIRNAME
 from shared.trusted_prefixes import resolve_trusted_prefix
 
+# leaderが読み取り目的で使用可能なツール（session_startup通知でブロックしない）
+LEADER_READABLE_TOOLS = frozenset({
+    'Read',
+    'mcp__serena__find_symbol',
+    'mcp__serena__get_symbols_overview',
+    'mcp__serena__read_memory',
+    'mcp__serena__list_memories',
+    'mcp__serena__list_dir',
+    'mcp__serena__find_file',
+    'mcp__serena__search_for_pattern',
+    'mcp__serena__find_referencing_symbols',
+    'mcp__serena__check_onboarding_performed',
+})
+
 
 def _deep_copy_dict(d: Dict[str, Any]) -> Dict[str, Any]:
     """辞書の深いコピー（ネスト・リスト対応）"""
@@ -305,6 +319,12 @@ class SessionStartupHook(BaseHook):
         tool_name = input_data.get('tool_name', '')
         if tool_name in SUBAGENT_TOOL_NAMES:
             self.log_debug("Skipping subagent tool (subagent spawn)")
+            return False
+
+        # leaderのRead/Serena読み取り系ツールはスキップ（issue_7599）
+        # leader規約で「読む」は許可済み。session_startup通知でブロックしない
+        if not input_data.get('agent_id') and tool_name in LEADER_READABLE_TOOLS:
+            self.log_debug(f"Skipping leader readable tool: {tool_name}")
             return False
 
         # 設定で無効化されている場合はスキップ（base設定）

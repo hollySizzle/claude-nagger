@@ -47,6 +47,7 @@ session_startup:
         [ ] tech-leadにはUS概要・設計意図を共有すること
         leaderの役割:
         [ ] 読む・判断する・指示する・レビューする。コードは書かない
+        [ ] Readは判断・レビュー目的のみ使用。コード探索の深追い禁止
         規約:
         [ ] UserStoryをTask粒度に分解してからcoder subagentに渡す
         [ ] coder subagentに渡す情報: チケット番号（issue_{id}）、実装意図、対象ファイル、具体的な実装指示
