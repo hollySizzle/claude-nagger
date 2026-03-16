@@ -7,4 +7,4 @@ try:
     from importlib.metadata import version
     __version__ = version("claude-nagger")
 except Exception:
-    __version__ = "3.2.0"  # 未インストール時のフォールバック
+    __version__ = "3.2.1"  # 未インストール時のフォールバック

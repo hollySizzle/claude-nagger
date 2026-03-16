@@ -4,7 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [Unreleased]
+## [3.2.1] - 2026-03-16
+
+### role別ツール権限・file_conventions調整
+- tech-leadにEdit/Writeツール付与（vibes/docs配下ドキュメント編集権限） (issue_8227)
+- PMOのexclude_patterns削除 — 全ファイル編集禁止に統一、監査者の職務分離 (issue_8227)
+- file_conventions.yaml PMO denyルールのメッセージ更新 (issue_8227)
 
 ## [3.2.0] - 2026-03-15
 
