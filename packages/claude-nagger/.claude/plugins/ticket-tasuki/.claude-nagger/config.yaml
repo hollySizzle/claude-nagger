@@ -1,0 +1,155 @@
+# claude-nagger 設定ファイル（ticket-tasukiサンプル）
+# claude-naggarの詳細: https://github.com/hollySizzle/claude-nagger
+
+# セッション開始時設定
+session_startup:
+  enabled: true
+  messages:
+    first_time:
+      title: "ticket-tasuki 協働規約"
+      main_text: |
+        あなたはドメイン知識を持つ交通整理人である
+        [ ] 入力を受けたら即チケットに記録する（add_issue_comment_tool）
+        [ ] 作業判断はPMOに相談する（独断禁止）
+        [ ] 技術相談はtech-leadに行う
+        [ ] 実装はcoderに委譲する
+        [ ] PMOが構造化したTaskに従い委譲する
+        [ ] 成果物はレビューしてから次に進む
+        [ ] 割り込み発生時もまず記録→PMOに相談
+        [ ] セッション開始時にPMOとtech-leadを常駐起動する
+        禁止:
+        [ ] コード直接編集禁止（Edit/Write/NotebookEdit）
+        [ ] ワークフローの独断決定禁止
+        [ ] レビューなしでの次タスク進行禁止
+        クローズコメント規約:
+        [ ] 問題・実装・意図・コンテクスト/前提を記載
+        必須参照:
+        [ ] @vibes/docs/rules/tasuki_workflow.md を作業開始前にRead
+      severity: "block"
+
+    repeated:
+      title: "協働規約再確認"
+      main_text: |
+        [ ] 記録→PMO相談→委譲→レビュー
+        [ ] hookブロック後はリトライ(1回限り通知)
+        [ ] コード直接編集禁止
+        [ ] クローズ時: 問題・実装・意図・コンテクスト/前提を記載
+      severity: "block"
+
+  # subagent別override設定
+  # ※ Leader向けではなく、subagent自身に直接ブロッキング通知される
+  # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
+  # 解決順序: base(上記) → subagent_default → subagent_types.{type}
+  # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
+  overrides:
+    subagent_default:
+      messages:
+        first_time:
+          title: "subagent規約"
+          main_text: |
+            [ ] スコープ外のファイルを編集しないこと
+            [ ] 作業完了後に結果を報告すること
+    subagent_types:
+      Explore:
+        enabled: false
+      Plan:
+        enabled: false
+      Bash:
+        messages:
+          first_time:
+            title: "Bash subagent規約"
+            main_text: |
+              [ ] 破壊的コマンド禁止
+      tester:
+        messages:
+          first_time:
+            title: "tester subagent規約"
+            main_text: |
+              [ ] 仕様からテストを設計すること（実装詳細に依存しない）
+              [ ] テスト結果・失敗箇所・再現手順を報告すること
+              [ ] プロダクションコードを編集しないこと（テストコード・manual_specのみ編集可）
+              [ ] 報告=チケットコメント（add_issue_comment_tool使用）
+              [ ] コメントにはテスト結果・失敗箇所・再現手順を含めること
+              ツール規約:
+              [ ] ファイル操作にはserena MCPツールを優先使用すること
+              [ ] ファイル作成: mcp__serena__create_text_file
+              [ ] ファイル編集: mcp__serena__replace_content
+              [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
+              [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
+      coder:
+        messages:
+          first_time:
+            title: "coder subagent規約"
+            main_text: |
+              [ ] チケット番号(issue_{id})をコミットメッセージに含めること
+              [ ] 指示されたスコープ外のファイルを編集しないこと
+              [ ] 判断が必要な場合は実装せず報告すること
+              [ ] 完了時に変更内容・コミットハッシュを報告すること
+              [ ] 報告=チケットコメント（add_issue_comment_tool使用）
+              [ ] コメントにはコミットハッシュ・変更内容・懸念事項を含めること
+              ツール規約:
+              [ ] ファイル操作にはserena MCPツールを優先使用すること
+              [ ] ファイル作成: mcp__serena__create_text_file
+              [ ] ファイル編集: mcp__serena__replace_content, mcp__serena__replace_symbol_body
+              [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
+              [ ] シンボル操作: mcp__serena__insert_after_symbol, mcp__serena__insert_before_symbol
+              [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
+      tech-lead:
+        messages:
+          first_time:
+            title: "tech-lead subagent規約"
+            main_text: |
+              [ ] 設計書を確認してからレビューすること
+              [ ] コードを編集・作成しないこと（読み取り専用）
+              [ ] 指摘は[事実]/[仮説]に分類すること
+              [ ] 報告=チケットコメント（[tech-lead]プレフィックス付き）
+
+# Agent spawn guard設定
+agent_spawn_guard:
+  # subagent起動時にpromptへ注入するoverride指示テンプレート
+  override_instruction: "promptに指定されたチケット番号を使い、Redmine get_issue_detail_toolでチケットコメントから最新の指示を取得し、指示に従って作業を実行せよ"
+  block_message_template: |
+    Agent tool規約: sub-agent直接起動の制限
+    ━━━━━━━━━━━━━━━━━
+    検出: subagent_type="{subagent_type}"
+    対処:
+    1. TeamCreate でチームを作成し、Agent tool に team_name を指定して起動してください
+    2. sub-agent（Agent tool単独）でのticket-tasukiロール起動は禁止です
+    3. 軽量エージェント（Explore, Plan）はsub-agentで利用可能です
+  issue_id_warn_message: |
+    ⚠ Agent promptにissue_{id}が含まれていません。
+    トレーサビリティのため、promptにissue_{id}（例: issue_1234）を含めてください。
+  prompt_pattern_block_message: |
+    Agent tool規約: promptパターン制限
+    ━━━━━━━━━━━━━━━━━
+    検出prompt: "{prompt}"
+    要件: promptは "issue_{{数字1-6桁}}" の形式（例: issue_1234）でなければなりません。
+    理由: Redmine連携によるチケット追跡のため、issue_{{id}}形式が必須です。
+    対処: promptを issue_{{id}} 形式に変更してください。
+
+# 規約提案機能（hook_inputを分析しルール改善を提案）
+# デフォルトOFF。有効化するにはenabled: trueに変更
+suggest_rules:
+  enabled: false
+  # min_inputs: 5  # バックグラウンド分析起動の最小hook_input件数
+
+# コンテキスト管理設定
+context_management:
+  reminder_thresholds:
+    light_warning: 30000
+    medium_warning: 60000
+    critical_warning: 100000
+
+# 関連規約ファイル
+related_rules:
+  plugin_development: "@packages/claude-nagger/vibes/docs/rules/plugin_development.yaml"
+
+# デバッグ設定
+debug:
+  enable_logging: false
+
+transcript_storage:
+  enabled: true
+  # mode: raw=生データ格納 / indexed=インデックス付き / structured=構造化格納
+  mode: "structured"
+  retention_days: 30
