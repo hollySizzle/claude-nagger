@@ -154,6 +154,17 @@ rules:
     message: |
       tech-leadはgitコマンド以外のBash実行が禁止されています
 
+  # --- リリース操作 ---
+
+  # coder: gh releaseコマンド許可
+  - name: "GitHubリリース操作"
+    patterns:
+      - "gh release*"
+    severity: "info"
+    scope: "coder"
+    message: |
+      GitHubリリース操作を実行します
+
   # --- role別制約 (#7169) ---
 
   # 制約#17: coder git commit/push禁止
