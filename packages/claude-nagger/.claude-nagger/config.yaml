@@ -1,6 +1,19 @@
 # claude-nagger 設定ファイル（ticket-tasukiサンプル）
 # claude-naggarの詳細: https://github.com/hollySizzle/claude-nagger
 
+# role解決設定
+role_resolution:
+  trusted_prefixes:
+    # agent_typeの前方一致でroleを確定
+    # suffix多様性を吸収（coder-fix-bug → coder, pmo-2 → pmo）
+    "coder": "coder"
+    "pmo": "pmo"
+    "team-lead": "leader"
+    "tech-lead": "tech-lead"
+    "tester": "tester"
+    "researcher": "researcher"
+    "auditor": "auditor"
+
 # セッション開始時設定
 session_startup:
   enabled: true

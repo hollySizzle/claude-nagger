@@ -79,9 +79,10 @@ class TestResolveTrustedPrefix:
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(config_dir))
         assert resolve_trusted_prefix("unknown-plugin") is None
 
-    def test_trusted_prefixes未定義_None返却(self, empty_config_dir, monkeypatch):
+    def test_trusted_prefixes未定義_デフォルトフォールバック(self, empty_config_dir, monkeypatch):
+        """config.yamlにrole_resolution未定義時はデフォルト値で解決される"""
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(empty_config_dir))
-        assert resolve_trusted_prefix("coder") is None
+        assert resolve_trusted_prefix("coder") == "coder"
 
     def test_最長一致(self, tmp_path, monkeypatch):
         """複数のprefixがマッチする場合、最長のものが優先される"""
@@ -132,10 +133,11 @@ class TestLoadTrustedPrefixes:
         result2 = _load_trusted_prefixes()
         assert result1 is result2  # 同一オブジェクト（キャッシュ）
 
-    def test_config未存在_空dict(self, tmp_path, monkeypatch):
-        """config.yamlが存在しない場合は空dictを返す"""
+    def test_config未存在_デフォルトフォールバック(self, tmp_path, monkeypatch):
+        """config.yamlが存在しない場合はデフォルトtrusted_prefixesを返す"""
         monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
-        assert _load_trusted_prefixes() == {}
+        from shared.trusted_prefixes import DEFAULT_TRUSTED_PREFIXES
+        assert _load_trusted_prefixes() == DEFAULT_TRUSTED_PREFIXES
 
 
 # === 統合テスト: trusted_prefix DB書込 (issue_7440) ===

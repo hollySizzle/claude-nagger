@@ -11,12 +11,26 @@ from typing import Optional
 
 import yaml
 
+# デフォルトtrusted_prefixes（config.yaml未設定時のフェイルセーフ）
+DEFAULT_TRUSTED_PREFIXES = {
+    "coder": "coder",
+    "pmo": "pmo",
+    "team-lead": "leader",
+    "tech-lead": "tech-lead",
+    "tester": "tester",
+    "researcher": "researcher",
+    "auditor": "auditor",
+}
+
 # モジュールレベルキャッシュ（プロセス内で1回のみファイルI/O）
 _trusted_prefixes_cache: Optional[dict] = None
 
 
 def _load_trusted_prefixes(logger: Optional[logging.Logger] = None) -> dict:
-    """config.yamlからrole_resolution.trusted_prefixesを読み込む（キャッシュ付き）"""
+    """config.yamlからrole_resolution.trusted_prefixesを読み込む（キャッシュ付き）
+
+    config.yaml未設定時はDEFAULT_TRUSTED_PREFIXESをフェイルセーフとして使用。
+    """
     global _trusted_prefixes_cache
     if _trusted_prefixes_cache is not None:
         return _trusted_prefixes_cache
@@ -31,13 +45,17 @@ def _load_trusted_prefixes(logger: Optional[logging.Logger] = None) -> dict:
         if config_file.exists():
             with open(config_file, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
-            _trusted_prefixes_cache = (data or {}).get(
+            loaded = (data or {}).get(
                 'role_resolution', {}
             ).get('trusted_prefixes', {})
-            return _trusted_prefixes_cache
+            if loaded:
+                _trusted_prefixes_cache = loaded
+                return _trusted_prefixes_cache
+            # config.yamlにrole_resolutionが未定義 → デフォルトで補完
+            logger.warning("role_resolution.trusted_prefixes未定義 — デフォルト値を使用")
     except Exception as e:
         logger.warning(f"Failed to load trusted_prefixes: {e}")
-    _trusted_prefixes_cache = {}
+    _trusted_prefixes_cache = dict(DEFAULT_TRUSTED_PREFIXES)
     return _trusted_prefixes_cache
 
 
