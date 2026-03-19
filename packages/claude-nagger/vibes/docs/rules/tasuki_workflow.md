@@ -50,14 +50,13 @@ flowchart TD
 
 | role | git commit | git push | 備考 |
 |------|-----------|----------|------|
-| leader | 許可 | 許可 | 最終検収者。必要に応じてコミット・push実行 |
-| tech-lead | 許可 | 許可 | レビュー承認後のコミット担当。coderの変更をレビュー→コミット |
+| leader | 許可 | 許可 | エスカレーション時のみ介入。通常フローではtech-leadが完結 |
+| tech-lead | 許可 | 許可 | レビュー承認後のコミット・push担当。coderの変更をレビュー→コミット→push |
 | coder | **禁止** | **禁止** | 実装のみ。コミットはtech-leadまたはleaderが実行 |
 
 ### コミットフロー
 1. coder: コード変更を実施（コミットしない）
-2. tech-lead: レビュー承認後、変更をコミット
-3. leader: 必要に応じて最終確認・push
+2. tech-lead: レビュー承認後、変更をコミット・push
 
 ## OK/NG例
 
