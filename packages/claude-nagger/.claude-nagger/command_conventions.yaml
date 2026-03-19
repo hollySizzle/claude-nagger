@@ -8,6 +8,7 @@ rules:
       - "git push*"
       - "git commit*"
     severity: "warn"
+    scope: "coder"
     token_threshold: 25000
     message: |
       Gitにpush/commitする前に以下を確認してください:
@@ -19,6 +20,7 @@ rules:
     patterns:
       - "git diff*"
     severity: "info"
+    scope: "coder"
     token_threshold: 25000
     message: |
       git diffで変更内容を確認する際のヒント:
@@ -29,6 +31,7 @@ rules:
     patterns:
       - "git commit*"
     severity: "warn"
+    scope: "coder"
     token_threshold: 25000
     message: |
       コミット規約を遵守してください:
@@ -52,6 +55,7 @@ rules:
       - "git add*"
       - "git commit*"
     severity: "info"
+    scope: "coder"
     token_threshold: 25000
     message: |
       コミット前にテストを実行することを推奨します:
