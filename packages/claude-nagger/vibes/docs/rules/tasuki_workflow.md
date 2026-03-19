@@ -58,6 +58,26 @@ flowchart TD
 1. coder: コード変更を実施（コミットしない）
 2. tech-lead: レビュー承認後、変更をコミット・push
 
+## バグ起票エスカレーションフロー (#8194)
+
+全エージェントが問題発見時にcreate_bug_toolで即時起票する。leader/PMOによる握りつぶし防止が目的。
+
+```mermaid
+flowchart TD
+    A[任意agent: 問題発見] --> B[create_bug_toolで即時起票]
+    B --> C["leaderに SendMessage: issue_id 通知"]
+    C --> D[PMO: 定期棚卸し確認]
+
+    style B fill:#c33,color:#fff
+    style C fill:#c90,color:#fff
+    style D fill:#36a,color:#fff
+```
+
+### ルール
+- 全エージェント（leader/tech-lead/coder/tester/auditor/pmo）がcreate_bug_toolを使用可能
+- 問題発見時は判断を仰がず即時起票する（起票後にleaderへ通知）
+- 起票内容: 問題の再現手順・影響範囲・発見経緯を記載
+
 ## OK/NG例
 
 ### OK: 正しいワークフロー
@@ -65,6 +85,7 @@ flowchart TD
 - ドキュメント更新必要 → tech-leadに振る（tech-leadがvibes/docs編集・コミット）
 - 設計判断が必要 → tech-leadがleaderにエスカレーション
 - coder実装完了 → tech-leadレビュー承認 → tech-leadがgit commit実行
+- coderがテスト中にバグ発見 → create_bug_toolで即時起票 → leaderに通知
 
 ### NG: 禁止パターン
 - **NG**: PMOがcoderにドキュメント修正を指示する（ドキュメント更新はtech-leadの責務）
@@ -72,3 +93,4 @@ flowchart TD
 - **NG**: coderがleaderを介さずtech-leadにレビュー依頼をスキップする
 - **NG**: tech-leadがleaderを介さずPMO/researcherに直接送信する
 - **NG**: coderがgit commit/pushを実行する（コミットはtech-lead/leaderの責務）
+- **NG**: 問題発見時にleaderに報告のみで起票しない（握りつぶしリスク）
