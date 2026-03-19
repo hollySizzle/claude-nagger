@@ -14,11 +14,11 @@ rules:
 
   # 制約#3: leader Redmine非許可リストMCP deny
   # 許可リスト: get_issue_detail, add_issue_comment, update_issue_status,
-  #            list_epics, list_versions, list_user_stories, list_statuses,
-  #            list_project_members, get_project_structure
+  #            create_inquiry, list_epics, list_versions, list_user_stories,
+  #            list_statuses, list_project_members, get_project_structure
   # tool_patternはre.match: 否定先読みで許可リスト以外をマッチ
   - name: "leaderRedmine非許可MCP禁止"
-    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment|update_issue_status|list_epics|list_versions|list_user_stories|list_statuses|list_project_members|get_project_structure)_?tool)"
+    tool_pattern: "mcp__redmine_epic_grid__(?!(get_issue_detail|add_issue_comment|update_issue_status|create_inquiry|list_epics|list_versions|list_user_stories|list_statuses|list_project_members|get_project_structure)_?tool)"
     severity: "deny"
     scope: "leader"
     message: |
