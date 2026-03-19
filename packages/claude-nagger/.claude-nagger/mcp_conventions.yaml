@@ -23,7 +23,7 @@ rules:
     scope: "leader"
     message: |
       leaderはこのRedmineツールの使用が禁止されています。
-      許可: 参照系(get/list)・コメント追加・ステータス更新のみ
+      許可: 参照系(get/list)・コメント追加・ステータス更新・問合せ起票(create_inquiry)のみ
 
   # --- role別制約 (#7145) ---
 
