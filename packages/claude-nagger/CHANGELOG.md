@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - tasuki_workflow.mdにコミット責務セクション追加 — leader備考・tech-lead push権限・フロー簡素化 (issue_8510)
 - leader config.yaml session_startupメッセージ圧縮 (issue_8277)
 
+### バグ修正
+- role_resolution設定消失によるsubagentロール誤識別を修正+フェイルセーフ実装 (issue_8512)
+
 ## [3.2.1] - 2026-03-16
 
 ### role別ツール権限・file_conventions調整
