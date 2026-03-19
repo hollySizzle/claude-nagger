@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.3.0] - 2026-03-19
+
+### エスカレーション機構・ツール権限拡張
+全エージェントによるバグ起票を制度化し、問題の握りつぶしリスクを排除。create_bug/create_inquiryの許可範囲を拡大し、エスカレーション起票フローを明文化した。
+- 全4ロール（leader/tech-lead/coder/tester）のmcp_conventions許可リストにcreate_bug追加 (issue_8194)
+- tasuki_workflow.mdにバグ起票エスカレーションフロー追記 — 即時起票・握りつぶし禁止ルール (issue_8194)
+- leader mcp_conventionsにcreate_inquiry許可追加・PMO問合せフロー定義 (issue_8274)
+- mcp_conventionsブロックメッセージにcreate_inquiry許可文言追加 (issue_8274)
+
+### 規約・ワークフロー整備
+- config.yaml/CLAUDE.md/ticket_comment_templates.mdにauditorエントリ追加 (issue_8506)
+- command_conventions.yamlのgit warnルールにscope:coder追加 (issue_8509)
+- tasuki_workflow.mdにコミット責務セクション追加 — leader備考・tech-lead push権限・フロー簡素化 (issue_8510)
+- leader config.yaml session_startupメッセージ圧縮 (issue_8277)
+
 ## [3.2.1] - 2026-03-16
 
 ### role別ツール権限・file_conventions調整
