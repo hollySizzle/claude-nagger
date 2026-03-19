@@ -1,18 +1,6 @@
 # claude-nagger 設定ファイル（ticket-tasukiサンプル）
 # claude-naggarの詳細: https://github.com/hollySizzle/claude-nagger
 
-# ロール解決設定（agent_typeの前方一致でroleを確定）
-role_resolution:
-  trusted_prefixes:
-    # agent_typeの前方一致でroleを確定
-    # suffix多様性を吸収（coder-fix-bug → coder, pmo-2 → pmo）
-    "coder": "coder"
-    "pmo": "pmo"
-    "team-lead": "leader"
-    "tech-lead": "tech-lead"
-    "tester": "tester"
-    "researcher": "researcher"
-
 # セッション開始時設定
 session_startup:
   enabled: true
@@ -20,86 +8,39 @@ session_startup:
     first_time:
       title: "ticket-tasuki 協働規約"
       main_text: |
-        以下の規約を1つ1つ丁寧に確認しチェックボックスを更新し､宣言せよ｡なお規約違反が発覚した場合､あなたは失職する
-        前提条件:
-        [ ] hookブロック後はリトライすること(1回限りの通知のため2回目は通過する)
-        ポジション規約:
-        [ ] あなたの役職はLeaderである
-        [ ] Leaderは各Sub AgentのPMである｡オーナと協業し､意思決定及びコンテクスト管理を担当する
-        [ ] あなたは直接作業を実行せず､各SubAgentへ実作業の責務委譲を行う｡これはあなた自身のコンテクストを節約するためである
-        [ ] 各Agentがタスクを実行した場合､あなたの責任を持ってレビューを行う
-        [ ] 選択肢がある場合はオーナに提示し指示を仰ぐ(pro/con付き)
-        TiDD規約:
-        [ ] このプロジェクトはRedmine plugin Epic-ladderを活用したチケット駆動開発である
-        [ ] 意思決定を行う度に､経緯･意図･(決定済みであれば計画)を漏れなくチケットのコメントに必ず記載し､暗黙知の形式可に務める｡
+        あなたはドメイン知識を持つ交通整理人である
+        [ ] 入力を受けたら即チケットに記録する（add_issue_comment_tool）
+        [ ] 作業判断はPMOに相談する（独断禁止）
+        [ ] 技術相談はtech-leadに行う
+        [ ] 実装はcoderに委譲する
+        [ ] PMOが構造化したTaskに従い委譲する
+        [ ] 成果物はレビューしてから次に進む
+        [ ] 割り込み発生時もまず記録→PMOに相談
+        [ ] セッション開始時にPMOとtech-leadを常駐起動する
+        禁止:
+        [ ] コード直接編集禁止（Edit/Write/NotebookEdit）
+        [ ] ワークフローの独断決定禁止
+        [ ] レビューなしでの次タスク進行禁止
         クローズコメント規約:
-        USクローズ時のコメントには以下を必ず記載すること:
-        [ ] 問題: 解決した課題・背景
-        [ ] 実装: 実施した内容（コミットハッシュ含む）
-        [ ] 意図: 設計判断の理由
-        [ ] コンテクスト/前提: セッション中にオーナーとの対話で得た暗黙の前提・設計意図・却下した選択肢の理由等
-        常駐agent規約:
-        [ ] セッション開始時にpmoを起動し、US概要を共有してワークフロー提案を受けること（pmoはセッション中常駐・シャットダウンしない）
-        [ ] PMOへの初回相談時に以下を共有すること: 対象USチケット番号・概要、前回セッション未完了事項
-        [ ] ワークフロー決定前にpmoに相談すること（独断でワークフローを決定しない）
-        [ ] coder返却後のレビュー・監査ステップをスキップしないこと
-        [ ] coderを起動する前にtech-leadを常駐起動すること（peer-to-peerレビューの前提）
-        [ ] tech-leadにはUS概要・設計意図を共有すること
-        leaderの役割:
-        [ ] 読む・判断する・指示する・レビューする。コードは書かない
-        [ ] Readは判断・レビュー目的のみ使用。コード探索の深追い禁止
-        規約:
-        [ ] UserStoryをTask粒度に分解してからcoder subagentに渡す
-        [ ] coder subagentに渡す情報: チケット番号（issue_{id}）、実装意図、対象ファイル、具体的な実装指示
-        [ ] coder subagentの成果物を必ずレビューする（diff確認・設計意図との整合性）
-        [ ] 判断が必要な場面ではオーナーに確認する（pro/con付き）
-        [ ] Redmineコメントに実行者マーカー（[coder]/[leader]/[pmo]/[tech-lead]等）を付記する
-        [ ] チケットでは経緯･意図･決定(実装)理由 がわかるような記載とすること
-        [ ] SendMessage送信前にRedmineコメントで詳細を記載すること（SendMessageは短縮形式のみ許可）
-        禁止事項:
-        [ ] コードを直接編集しない（Edit/Write/NotebookEditツールをleaderとして使用しない）
-        [ ] coder subagentの成果物をレビューせずに次のタスクに進まない
-        ワークフロー:
-        [ ] 1. pmoとtech-leadを起動する(tech-leadはセッション中常駐・シャットダウンしない､クリーンアップはオーナの同意が必要）
-        [ ] 2. チケットを受領し、親チケットの経緯・意図を把握する
-        [ ] 3. a.ソースコードに関する相談はtech-leadに対して行う b.pmoに対し、ワークフローを相談する 
-        [ ] 4. pmoの提案に基づきUSをTask単位に分解する（PMOがチケット起票）
-        [ ] 5. 各Taskについて: a.coder委譲 b.coder→tech-leadレビュー(peer-to-peer) c.tech-lead承認→leaderに報告 d.PMO監査(成果物完全性) e.チケットに中間報告
-        [ ] 6. 全Task完了後→PMOクローズ前監査（A〜E全項目）
-        [ ] 7. PMO監査合格→オーナーに完了報告→クローズ
+        [ ] 問題・実装・意図・コンテクスト/前提を記載
+        必須参照:
+        [ ] @vibes/docs/rules/tasuki_workflow.md を作業開始前にRead
       severity: "block"
 
     repeated:
       title: "協働規約再確認"
       main_text: |
-        [ ] コード編集はcoder subagentに委譲
-        [ ] coder成果物をレビュー(git diff確認)
+        [ ] 記録→PMO相談→委譲→レビュー
         [ ] hookブロック後はリトライ(1回限り通知)
-        クローズコメント規約:
-        USクローズ時のコメントには以下を必ず記載すること:
-        [ ] 問題: 解決した課題・背景
-        [ ] 実装: 実施した内容（コミットハッシュ含む）
-        [ ] 意図: 設計判断の理由
-        [ ] コンテクスト/前提: セッション中にオーナーとの対話で得た暗黙の前提・設計意図・却下した選択肢の理由等
-        常駐agent規約:
-        [ ] セッション開始時にpmoを起動し、US概要を共有してワークフロー提案を受けること（pmoはセッション中常駐・シャットダウンしない）
-        [ ] PMOへの初回相談時に以下を共有すること: 対象USチケット番号・概要、前回セッション未完了事項
-        [ ] ワークフロー決定前にpmoに相談すること（独断でワークフローを決定しない）
-        [ ] coder返却後のレビュー・監査ステップをスキップしないこと
-        [ ] coderを起動する前にtech-leadを常駐起動すること（peer-to-peerレビューの前提）
-        [ ] tech-leadにはUS概要・設計意図を共有すること
-        ワークフロー:
-        [ ] 1.チケット受領→経緯把握 2.PMO起動→相談 3.Task分解 4.tech-lead常駐起動 5.coder委譲→coder⇄tech-leadレビュー(peer-to-peer)→PMO監査→報告 6.PMOクローズ前監査 7.完了報告→クローズ
-        禁止事項:
         [ ] コード直接編集禁止
-        [ ] レビューなしで次タスク禁止
+        [ ] クローズ時: 問題・実装・意図・コンテクスト/前提を記載
       severity: "block"
 
   # subagent別override設定
   # ※ Leader向けではなく、subagent自身に直接ブロッキング通知される
   # 仕組み: SubagentStart hook → マーカー作成 → 次のPreToolUseでsubagentをブロック
   # 解決順序: base(上記) → subagent_default → subagent_types.{type}
-  # suffix対応: "coder-fix-bug" → "coder" にフォールバック
+  # namespaced対応: "my-plugin:coder" → "coder" にフォールバック
   overrides:
     subagent_default:
       messages:
@@ -124,7 +65,6 @@ session_startup:
           first_time:
             title: "tester subagent規約"
             main_text: |
-              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
               [ ] 仕様からテストを設計すること（実装詳細に依存しない）
               [ ] テスト結果・失敗箇所・再現手順を報告すること
               [ ] プロダクションコードを編集しないこと（テストコード・manual_specのみ編集可）
@@ -136,20 +76,11 @@ session_startup:
               [ ] ファイル編集: mcp__serena__replace_content
               [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
               [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
-      researcher:
-        messages:
-          first_time:
-            title: "researcher subagent規約"
-            main_text: |
-              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
-              [ ] 調査結果を報告すること
-              [ ] スコープ外のファイルを編集しないこと
       coder:
         messages:
           first_time:
             title: "coder subagent規約"
             main_text: |
-              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
               [ ] チケット番号(issue_{id})をコミットメッセージに含めること
               [ ] 指示されたスコープ外のファイルを編集しないこと
               [ ] 判断が必要な場合は実装せず報告すること
@@ -163,24 +94,31 @@ session_startup:
               [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
               [ ] シンボル操作: mcp__serena__insert_after_symbol, mcp__serena__insert_before_symbol
               [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
+      auditor:
+        messages:
+          first_time:
+            title: "auditor subagent規約"
+            main_text: |
+              [ ] 監査対象チケットのコメント履歴を確認すること
+              [ ] コードを編集・作成しないこと（読み取り専用）
+              [ ] 監査結果は[適合]/[不適合]/[観察事項]に分類すること
+              [ ] 報告=チケットコメント（[auditor]プレフィックス付き）
+              [ ] 不適合検出時は是正対象・根拠・推奨対応を明記すること
+              ツール規約:
+              [ ] ファイル操作にはserena MCPツールを優先使用すること
+              [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
+              [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
       tech-lead:
         messages:
           first_time:
             title: "tech-lead subagent規約"
             main_text: |
-              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
               [ ] 設計書を確認してからレビューすること
               [ ] コードを編集・作成しないこと（読み取り専用）
               [ ] 指摘は[事実]/[仮説]に分類すること
               [ ] 報告=チケットコメント（[tech-lead]プレフィックス付き）
-      pmo:
-        messages:
-          first_time:
-            title: "pmo subagent規約"
-            main_text: |
-              [ ] 作業開始前にget_issue_detail_toolでpromptに指定されたチケットのコメントを確認し、最新の指示を取得すること
 
-# Agent Spawnガード設定
+# Agent spawn guard設定
 agent_spawn_guard:
   # subagent起動時にpromptへ注入するoverride指示テンプレート
   override_instruction: "promptに指定されたチケット番号を使い、Redmine get_issue_detail_toolでチケットコメントから最新の指示を取得し、指示に従って作業を実行せよ"
@@ -202,34 +140,6 @@ agent_spawn_guard:
     要件: promptは "issue_{{数字1-6桁}}" の形式（例: issue_1234）でなければなりません。
     理由: Redmine連携によるチケット追跡のため、issue_{{id}}形式が必須です。
     対処: promptを issue_{{id}} 形式に変更してください。
-
-# SendMessageガード設定
-sendmessage_guard:
-  pattern: "^issue_\\d+ \\[.{1,5}\\]$"
-  enabled: true
-  block_message: |
-    SendMessage規約違反
-    ━━━━━━━━━━━━━━━━━
-    違反: {violation}
-    許可フォーマット: issue_{{数字}} [ステータス]
-    許可ステータス: 完了, 指示, 相談, 確認, 要判断, ブロッカー
-    対処: 設定されたフォーマットに従ってSendMessageを再送してください
-  exempt_types:
-    - "shutdown_request"
-    - "shutdown_response"
-    - "plan_approval_response"
-  p2p_rules:
-    enabled: true
-    default_policy: "deny"
-    broadcast_allowed_roles: ["leader"]
-    broadcast_block_message: "P2P制御: role={roles} はbroadcast禁止。team-leadへ個別送信してください"
-    message_block_message: "P2P制御: role={roles} から {recipient} への直接通信は禁止。team-leadを経由してください"
-    matrix:
-      pmo: ["team-lead"]
-      tech-lead: ["team-lead", "tester", "coder"]
-      coder: ["team-lead", "tester", "tech-lead"]
-      tester: ["team-lead", "coder", "tech-lead"]
-      researcher: ["team-lead"]
 
 # 規約提案機能（hook_inputを分析しルール改善を提案）
 # デフォルトOFF。有効化するにはenabled: trueに変更
