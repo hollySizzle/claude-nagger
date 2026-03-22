@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.3.3] - 2026-03-22
+
+### sendmessage_guard強化
+- sendmessage_guardセクションをconfig.yamlに追加、leaderへのフォーマット強制を有効化 (issue_8562)
+- exempt_routes実装: leader→PMOのみissue_id任意、他全経路は必須 (issue_8562)
+
+### コマンド規約拡張
+- command_conventions: gh releaseをleader/tech-leadにも許可 (issue_8562)
+
 ## [3.3.2] - 2026-03-22
 
 ### session_startup subagent規約修正
