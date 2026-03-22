@@ -196,6 +196,23 @@ context_management:
 related_rules:
   plugin_development: "@packages/claude-nagger/vibes/docs/rules/plugin_development.yaml"
 
+# SendMessageガード設定（Redmine基盤通信強制）
+# 毎回検査。違反時のみblock、合格時は無通知通過
+sendmessage_guard:
+  enabled: true
+  pattern: "^issue_\\d+ \\[.{1,5}\\]$"
+  block_message: |
+    SendMessage規約違反
+    ━━━━━━━━━━━━━━━━━
+    違反: {violation}
+    許可フォーマット: issue_{{数字}} [ステータス]
+    許可ステータス: 完了, 指示, 相談, 確認, 要判断, ブロッカー
+    対処: 設定されたフォーマットに従ってSendMessageを再送してください
+  exempt_types:
+    - shutdown_request
+    - shutdown_response
+    - plan_approval_response
+
 # デバッグ設定
 debug:
   enable_logging: false
