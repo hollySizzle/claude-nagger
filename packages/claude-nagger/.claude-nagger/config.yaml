@@ -150,6 +150,7 @@ session_startup:
               [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
 
 # Agent spawn guard設定
+# 注: task_spawn_guardもこのセクションのissue_id_pattern・issue_id_warn_messageを共有参照する（設計意図: issue_8512）
 agent_spawn_guard:
   # 正規表現パターン設定（config化: issue_8512）
   # issue_{id}トレーサビリティチェック用パターン（部分一致）
