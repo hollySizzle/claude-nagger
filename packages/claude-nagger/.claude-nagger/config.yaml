@@ -83,6 +83,7 @@ session_startup:
               [ ] プロダクションコードを編集しないこと（テストコード・manual_specのみ編集可）
               [ ] 報告=チケットコメント（add_issue_comment_tool使用）
               [ ] コメントにはテスト結果・失敗箇所・再現手順を含めること
+              [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
               ツール規約:
               [ ] ファイル操作にはserena MCPツールを優先使用すること
               [ ] ファイル作成: mcp__serena__create_text_file
@@ -100,6 +101,7 @@ session_startup:
               [ ] 完了時に変更内容・コミットハッシュを報告すること
               [ ] 報告=チケットコメント（add_issue_comment_tool使用）
               [ ] コメントにはコミットハッシュ・変更内容・懸念事項を含めること
+              [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
               ツール規約:
               [ ] ファイル操作にはserena MCPツールを優先使用すること
               [ ] ファイル作成: mcp__serena__create_text_file
@@ -130,9 +132,31 @@ session_startup:
               [ ] コードを編集・作成しないこと（読み取り専用）
               [ ] 指摘は[事実]/[仮説]に分類すること
               [ ] 報告=チケットコメント（[tech-lead]プレフィックス付き）
+              [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
+      pmo:
+        messages:
+          first_time:
+            title: "pmo subagent規約"
+            main_text: |
+              [ ] タスク構造化・優先度判断を行うこと
+              [ ] 報告=チケットコメント（add_issue_comment_tool使用）
+              [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
+      researcher:
+        messages:
+          first_time:
+            title: "researcher subagent規約"
+            main_text: |
+              [ ] 調査結果をチケットコメントに報告すること（add_issue_comment_tool使用）
+              [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
 
 # Agent spawn guard設定
 agent_spawn_guard:
+  # 正規表現パターン設定（config化: issue_8512）
+  # issue_{id}トレーサビリティチェック用パターン（部分一致）
+  issue_id_pattern: "issue_\\d+"
+  # team agent経由subagent起動時のpromptパターン制限（完全一致）
+  # ビルトインsubagent_typeは対象外
+  prompt_only_pattern: "^issue_\\d{1,6}$"
   # subagent起動時にpromptへ注入するoverride指示テンプレート
   override_instruction: "promptに指定されたチケット番号を使い、Redmine get_issue_detail_toolでチケットコメントから最新の指示を取得し、指示に従って作業を実行せよ"
   block_message_template: |
