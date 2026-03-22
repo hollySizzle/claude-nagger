@@ -76,9 +76,9 @@ class SendMessageGuardHook(BaseHook):
         # content検証免除経路（特定caller→recipient間でissue_id任意化）
         config["exempt_routes"] = raw.get("exempt_routes", [])
 
-        # 発火方向制御（デフォルト: 全方向で発火）
+        # 発火方向制御（デフォルト: leader→subagent方向のみ）
         config["apply_directions"] = raw.get("apply_directions", [
-            "leader_to_subagent", "subagent_to_leader",
+            "leader_to_subagent",
         ])
 
         # P2P通信制御ルール

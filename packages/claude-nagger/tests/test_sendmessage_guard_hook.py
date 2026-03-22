@@ -1258,11 +1258,11 @@ class TestApplyDirections:
         h = self._make_hook(self._base_config())
         assert h._detect_direction({"agent_context": "unknown"}) == ""
 
-    def test_default_both_directions(self):
-        """デフォルトは全方向で発火"""
+    def test_default_leader_direction_only(self):
+        """デフォルトはleader→subagent方向のみ発火"""
         h = self._make_hook(self._base_config())
         assert "leader_to_subagent" in h._guard_config["apply_directions"]
-        assert "subagent_to_leader" in h._guard_config["apply_directions"]
+        assert "subagent_to_leader" not in h._guard_config["apply_directions"]
 
     def test_leader_only_skips_subagent(self):
         """leader_to_subagentのみ設定時、subagent方向はスキップ"""

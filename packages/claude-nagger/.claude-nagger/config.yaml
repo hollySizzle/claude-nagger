@@ -178,6 +178,10 @@ agent_spawn_guard:
     要件: promptは "issue_{{数字1-6桁}}" の形式（例: issue_1234）でなければなりません。
     理由: Redmine連携によるチケット追跡のため、issue_{{id}}形式が必須です。
     対処: promptを issue_{{id}} 形式に変更してください。
+  # issue_idチェック免除経路（agent_spawn_guard独自管理）
+  exempt_routes:
+    - from: leader
+      to: pmo
 
 # 規約提案機能（hook_inputを分析しルール改善を提案）
 # デフォルトOFF。有効化するにはenabled: trueに変更

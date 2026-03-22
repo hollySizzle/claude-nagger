@@ -1254,8 +1254,8 @@ class TestExemptSpawnRoutes:
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
 
-    def test_leader_to_coder_no_issue_id_warns(self):
-        """leader→coder: exempt_routesに無い経路はissue_id警告あり"""
+    def test_leader_to_explore_no_issue_id_warns(self):
+        """leader→Explore（非exempt経路）: issue_id無しはask警告"""
         data = _make_agent_input(
             subagent_type="Explore",
             prompt="no issue id",
@@ -1268,6 +1268,19 @@ class TestExemptSpawnRoutes:
         assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
         assert "issue_{id}" in out["hookSpecificOutput"]["permissionDecisionReason"]
 
+    def test_leader_to_coder_no_issue_id_denied(self):
+        """leader→coder（非exempt経路、team_nameなし）: deny"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            prompt="no issue id",
+            agent_context="",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
     def test_exempt_route_with_custom_config(self, tmp_path):
         """カスタムconfig環境でexempt_routesが正しく動作する"""
         import shutil
@@ -1278,12 +1291,11 @@ class TestExemptSpawnRoutes:
         config_dir = tmp_path / ".claude-nagger"
         config_dir.mkdir()
 
-        # exempt_routes: leader→pmoを設定
+        # exempt_routes: leader→pmoを設定（agent_spawn_guard独自管理）
         custom_config = {
-            "sendmessage_guard": {
+            "agent_spawn_guard": {
                 "exempt_routes": [{"from": "leader", "to": "pmo"}],
             },
-            "agent_spawn_guard": {},
         }
         config_file = config_dir / "config.yaml"
         with open(config_file, "w", encoding="utf-8") as f:
@@ -1292,7 +1304,7 @@ class TestExemptSpawnRoutes:
         shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
         script = hooks_dir / "agent_spawn_guard.py"
 
-        # leader(agent_context="")→pmo: issue_idなしでもビルトインでask警告なし
+        # leader(agent_context="")→pmo: exempt経路なのでissue_id警告なし
         data = _make_agent_input(
             subagent_type="pmo",
             team_name="my-team",
@@ -1323,10 +1335,9 @@ class TestExemptSpawnRoutes:
         config_dir.mkdir()
 
         custom_config = {
-            "sendmessage_guard": {
+            "agent_spawn_guard": {
                 "exempt_routes": [{"from": "leader", "to": "pmo"}],
             },
-            "agent_spawn_guard": {},
         }
         config_file = config_dir / "config.yaml"
         with open(config_file, "w", encoding="utf-8") as f:
@@ -1366,10 +1377,9 @@ class TestExemptSpawnRoutes:
         config_dir.mkdir()
 
         custom_config = {
-            "sendmessage_guard": {
+            "agent_spawn_guard": {
                 "exempt_routes": [],
             },
-            "agent_spawn_guard": {},
         }
         config_file = config_dir / "config.yaml"
         with open(config_file, "w", encoding="utf-8") as f:
