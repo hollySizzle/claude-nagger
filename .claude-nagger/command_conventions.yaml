@@ -93,6 +93,7 @@ rules:
     exclude_patterns:
       - "rm -rf */.claude/teams/*"
       - "rm -rf */.claude/tasks/*"
+      - "gh release*"
     severity: "deny"
     scope: "leader"
     message: |
