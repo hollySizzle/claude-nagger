@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.3.2] - 2026-03-22
+
+### session_startup subagent規約修正
+config.yamlの全ロールにget_issue_detail_tool規約を追加し、チケット詳細確認の義務化を徹底。
+- coder/tester/tech-leadのmain_textにget_issue_detail_tool規約1行追記 (issue_8561)
+- pmo/researcherのsession_startupエントリ新規追加（get_issue_detail_tool含む） (issue_8561)
+
 ## [3.3.1] - 2026-03-22
 
 ### 正規表現パターンのconfig.yaml定義化・堅牢化
