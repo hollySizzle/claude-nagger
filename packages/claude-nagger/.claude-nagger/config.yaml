@@ -212,6 +212,10 @@ sendmessage_guard:
     - shutdown_request
     - shutdown_response
     - plan_approval_response
+  # 特定経路でのcontent検証スキップ（issue_id任意化）
+  exempt_routes:
+    - from: leader
+      to: pmo
 
 # デバッグ設定
 debug:

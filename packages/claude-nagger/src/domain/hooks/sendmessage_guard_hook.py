@@ -73,6 +73,9 @@ class SendMessageGuardHook(BaseHook):
         if "block_message" in raw:
             config["block_message"] = raw["block_message"]
 
+        # content検証免除経路（特定caller→recipient間でissue_id任意化）
+        config["exempt_routes"] = raw.get("exempt_routes", [])
+
         # P2P通信制御ルール
         p2p_raw = raw.get("p2p_rules", {})
         config["p2p_rules"] = {
@@ -211,6 +214,50 @@ class SendMessageGuardHook(BaseHook):
         # その他のtype → allow
         return {"valid": True}
 
+    def _is_exempt_route(self, input_data: Dict[str, Any], tool_input: Dict[str, Any]) -> bool:
+        """exempt_routesに該当するcaller→recipient経路かを判定
+
+        config.yamlのexempt_routesに定義された経路の場合、
+        content検証（issue_idパターン）をスキップする。
+
+        Args:
+            input_data: 入力データ（caller role解決用）
+            tool_input: ツール入力（recipient取得用）
+
+        Returns:
+            免除対象経路の場合 True
+        """
+        exempt_routes = self._guard_config.get("exempt_routes", [])
+        if not exempt_routes:
+            return False
+
+        # caller roles取得
+        logger = logging.getLogger(__name__)
+        caller_roles = get_caller_roles(input_data, logger=logger)
+        if not caller_roles:
+            return False
+
+        # recipient正規化
+        recipient_raw = tool_input.get("recipient", "") or ""
+        if not recipient_raw:
+            return False
+
+        from infrastructure.db.subagent_repository import _normalize_role, _get_known_roles_from_config
+        known_roles = _get_known_roles_from_config()
+        recipient = _normalize_role(recipient_raw, known_roles) if known_roles else recipient_raw
+
+        # exempt_routesマッチング
+        for route in exempt_routes:
+            route_from = route.get("from", "")
+            route_to = route.get("to", "")
+            if route_from in caller_roles and recipient == route_to:
+                self.log_info(
+                    f"EXEMPT_ROUTE: {route_from} → {route_to} (caller={caller_roles}, recipient={recipient})"
+                )
+                return True
+
+        return False
+
     # --- BaseHook 抽象メソッドの実装 ---
 
     def should_process(self, input_data: Dict[str, Any]) -> bool:
@@ -260,6 +307,11 @@ class SendMessageGuardHook(BaseHook):
                 "reason": p2p_result["violation"],
                 "skip_warn_only": True,  # P2Pはセキュリティ制約: WARN_ONLY迂回不可
             }
+
+        # exempt_routes判定: 免除経路はcontent検証スキップ
+        if self._is_exempt_route(input_data, tool_input):
+            self.log_debug("APPROVE: exempt route, skipping content validation")
+            return {"decision": "approve", "reason": ""}
 
         # 既存content検証
         content = tool_input.get("content", "")

@@ -1067,6 +1067,151 @@ class TestConfigYamlSendmessageGuard:
         assert "カスタム:" in result["reason"]
 
 
+# === exempt_routes テスト ===
+
+class TestExemptRoutes:
+    """exempt_routes によるcontent検証スキップのテスト"""
+
+    def _make_hook(self, guard_config):
+        return hook_with_config_factory(guard_config)
+
+    def _base_config(self, exempt_routes=None):
+        """exempt_routes付きの基本設定"""
+        config = {
+            "pattern": r"^issue_\d+ \[.{1,5}\]$",
+            "exempt_routes": exempt_routes or [{"from": "leader", "to": "pmo"}],
+        }
+        return config
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_leader_to_pmo_exempt_approves_without_issue_id(
+        self, mock_known, mock_normalize, mock_roles
+    ):
+        """leader→pmo: issue_id無しでもapprove"""
+        mock_roles.return_value = {"leader"}
+        mock_known.return_value = {"leader", "pmo", "coder", "team-lead"}
+        mock_normalize.return_value = "pmo"
+
+        h = self._make_hook(self._base_config())
+        input_data = {
+            "tool_input": {
+                "type": "message",
+                "recipient": "pmo",
+                "content": "タスク構造化をお願いします",
+            }
+        }
+        result = h.process(input_data)
+        assert result["decision"] == "approve"
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_leader_to_coder_not_exempt_blocks(
+        self, mock_known, mock_normalize, mock_roles
+    ):
+        """leader→coder: issue_id必須（exempt_routesに無い経路はblock）"""
+        mock_roles.return_value = {"leader"}
+        mock_known.return_value = {"leader", "pmo", "coder", "team-lead"}
+        mock_normalize.return_value = "coder"
+
+        h = self._make_hook(self._base_config())
+        input_data = {
+            "tool_input": {
+                "type": "message",
+                "recipient": "coder",
+                "content": "バグを修正してください",
+            }
+        }
+        result = h.process(input_data)
+        assert result["decision"] == "block"
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_pmo_to_leader_not_exempt_blocks(
+        self, mock_known, mock_normalize, mock_roles
+    ):
+        """pmo→leader: issue_id必須（逆方向は免除対象外）"""
+        mock_roles.return_value = {"pmo"}
+        mock_known.return_value = {"leader", "pmo", "coder", "team-lead"}
+        mock_normalize.return_value = "leader"
+
+        h = self._make_hook(self._base_config())
+        input_data = {
+            "tool_input": {
+                "type": "message",
+                "recipient": "team-lead",
+                "content": "報告します",
+            }
+        }
+        result = h.process(input_data)
+        assert result["decision"] == "block"
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_leader_to_tech_lead_not_exempt_blocks(
+        self, mock_known, mock_normalize, mock_roles
+    ):
+        """leader→tech-lead: issue_id必須（pmo以外は免除対象外）"""
+        mock_roles.return_value = {"leader"}
+        mock_known.return_value = {"leader", "pmo", "coder", "team-lead", "tech-lead"}
+        mock_normalize.return_value = "tech-lead"
+
+        h = self._make_hook(self._base_config())
+        input_data = {
+            "tool_input": {
+                "type": "message",
+                "recipient": "tech-lead",
+                "content": "レビューお願いします",
+            }
+        }
+        result = h.process(input_data)
+        assert result["decision"] == "block"
+
+    @patch("src.domain.hooks.sendmessage_guard_hook.get_caller_roles")
+    @patch("infrastructure.db.subagent_repository._normalize_role")
+    @patch("infrastructure.db.subagent_repository._get_known_roles_from_config")
+    def test_leader_to_pmo_with_issue_id_also_approves(
+        self, mock_known, mock_normalize, mock_roles
+    ):
+        """leader→pmo: issue_id付きでもapprove（免除経路で正規フォーマットも通過）"""
+        mock_roles.return_value = {"leader"}
+        mock_known.return_value = {"leader", "pmo", "coder", "team-lead"}
+        mock_normalize.return_value = "pmo"
+
+        h = self._make_hook(self._base_config())
+        input_data = {
+            "tool_input": {
+                "type": "message",
+                "recipient": "pmo",
+                "content": "issue_1234 [指示]",
+            }
+        }
+        result = h.process(input_data)
+        assert result["decision"] == "approve"
+
+    def test_empty_exempt_routes_no_skip(self):
+        """exempt_routes空の場合はcontent検証が通常通り実行される"""
+        h = self._make_hook({"pattern": r"^issue_\d+ \[.{1,5}\]$", "exempt_routes": []})
+        input_data = {"tool_input": {"content": "自由テキスト"}}
+        result = h.process(input_data)
+        assert result["decision"] == "block"
+
+    def test_exempt_routes_config_loaded(self):
+        """config.yamlのexempt_routesがhookインスタンスに正しく読み込まれる"""
+        routes = [{"from": "leader", "to": "pmo"}, {"from": "leader", "to": "tester"}]
+        h = self._make_hook({"exempt_routes": routes})
+        assert h._guard_config["exempt_routes"] == routes
+
+    def test_exempt_routes_default_empty(self):
+        """exempt_routes未設定時はデフォルト空リスト"""
+        h = self._make_hook({})
+        assert h._guard_config["exempt_routes"] == []
+
+
 def hook_with_config_factory(guard_config: dict):
     """テスト用ヘルパー: カスタム設定付きフックインスタンスを生成"""
     with patch(
