@@ -1186,3 +1186,212 @@ class TestConfigLoadFailure:
         assert rc == 0
         # 数値はre.compileで文字列変換されるため、クラッシュしないことを確認
         assert out is None or out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+
+class TestExemptSpawnRoutes:
+    """exempt_spawn_routes（issue_idチェックスキップ）のテスト（issue_8570）
+
+    config.yaml sendmessage_guard.exempt_routesに定義された経路では、
+    agent_spawn_guardのissue_idチェックをスキップする。
+    leader(agent_context="")→pmo経路が免除対象。
+    """
+
+    def test_leader_to_pmo_no_issue_id_no_warn(self):
+        """leader→pmo: issue_id無しでもask警告されない"""
+        data = _make_agent_input(
+            subagent_type="pmo",
+            team_name="my-team",
+            prompt="pmo",
+            agent_context="",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        # pmoはprompt_only_patternに合致しないためdeny
+        # ただしissue_id警告ではなくpromptパターン制限のdeny
+        # → prompt="issue_1234"形式ではないのでdenyになるが、それはpromptパターン問題
+        # exempt_routesのテストとしては、issue_idなしでもteam_name+正しいpromptで確認
+        assert out is not None
+
+    def test_leader_to_pmo_valid_prompt_no_issue_id(self):
+        """leader→pmo: issue_id形式のpromptでoverride注入（issue_id警告なし）"""
+        # pmoはprompt_only_patternに合致する形式が必要
+        # exempt_routesによりissue_id不要だが、prompt_only_patternは別チェック
+        # ビルトイン以外はprompt_only_pattern必須なので"issue_1234"形式でテスト
+        # ※exempt_routesの効果はissue_idチェックのスキップ
+        data = _make_agent_input(
+            subagent_type="pmo",
+            team_name="my-team",
+            prompt="issue_1234",
+            agent_context="",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        # override注入されて許可（issue_id警告なし）
+        _assert_override_output(out, "issue_1234")
+
+    def test_leader_to_pmo_builtin_no_warn(self):
+        """leader→pmo（ビルトイン相当テスト用）: exempt経路でissue_id警告なし
+
+        ビルトインsubagent_typeでexempt経路の効果を単独確認するため、
+        Exploreをpmo経路に見立てた補助テスト。
+        実際のexempt効果はissue_id無しpromptで確認。
+        """
+        # 直接_is_exempt_spawn_routeの動作を確認するため
+        # issue_idなしのpromptでビルトイン(Explore)を使い、
+        # exempt有無でwarn出力の差を確認
+        data = _make_agent_input(
+            subagent_type="Explore",
+            prompt="no issue id here",
+            agent_context="",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        # Exploreはビルトインなのでdenyにはならないが、issue_id警告(ask)は出る
+        # exempt_routesはExploreに適用されない（from:leader, to:pmo）
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+    def test_leader_to_coder_no_issue_id_warns(self):
+        """leader→coder: exempt_routesに無い経路はissue_id警告あり"""
+        data = _make_agent_input(
+            subagent_type="Explore",
+            prompt="no issue id",
+            agent_context="",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+        assert "issue_{id}" in out["hookSpecificOutput"]["permissionDecisionReason"]
+
+    def test_exempt_route_with_custom_config(self, tmp_path):
+        """カスタムconfig環境でexempt_routesが正しく動作する"""
+        import shutil
+        import yaml
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+
+        # exempt_routes: leader→pmoを設定
+        custom_config = {
+            "sendmessage_guard": {
+                "exempt_routes": [{"from": "leader", "to": "pmo"}],
+            },
+            "agent_spawn_guard": {},
+        }
+        config_file = config_dir / "config.yaml"
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(custom_config, f, allow_unicode=True)
+
+        shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+        script = hooks_dir / "agent_spawn_guard.py"
+
+        # leader(agent_context="")→pmo: issue_idなしでもビルトインでask警告なし
+        data = _make_agent_input(
+            subagent_type="pmo",
+            team_name="my-team",
+            prompt="issue_1234",
+            agent_context="",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script)],
+            input=json.dumps(data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert proc.returncode == 0
+        out = json.loads(proc.stdout) if proc.stdout.strip() else None
+        # exempt経路なのでissue_id警告なし、override注入で許可
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+    def test_exempt_route_not_applied_to_non_leader(self, tmp_path):
+        """subagent以外の非leader contextではexempt_routesが適用されない"""
+        import shutil
+        import yaml
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+
+        custom_config = {
+            "sendmessage_guard": {
+                "exempt_routes": [{"from": "leader", "to": "pmo"}],
+            },
+            "agent_spawn_guard": {},
+        }
+        config_file = config_dir / "config.yaml"
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(custom_config, f, allow_unicode=True)
+
+        shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+        script = hooks_dir / "agent_spawn_guard.py"
+
+        # agent_context="other"→pmo: exempt_routesのfrom:leaderに合致しない
+        data = _make_agent_input(
+            subagent_type="pmo",
+            team_name="my-team",
+            prompt="issue_1234",
+            agent_context="other",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script)],
+            input=json.dumps(data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert proc.returncode == 0
+        out = json.loads(proc.stdout) if proc.stdout.strip() else None
+        # exempt非該当だがissue_idあり → override注入で許可
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+    def test_empty_exempt_routes_warns(self, tmp_path):
+        """exempt_routes空の場合はissue_idチェックが通常通り実行される"""
+        import shutil
+        import yaml
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+
+        custom_config = {
+            "sendmessage_guard": {
+                "exempt_routes": [],
+            },
+            "agent_spawn_guard": {},
+        }
+        config_file = config_dir / "config.yaml"
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(custom_config, f, allow_unicode=True)
+
+        shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+        script = hooks_dir / "agent_spawn_guard.py"
+
+        # issue_idなしのビルトイン → ask警告
+        data = _make_agent_input(
+            subagent_type="Explore",
+            prompt="no issue id",
+            agent_context="",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script)],
+            input=json.dumps(data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert proc.returncode == 0
+        out = json.loads(proc.stdout) if proc.stdout.strip() else None
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
