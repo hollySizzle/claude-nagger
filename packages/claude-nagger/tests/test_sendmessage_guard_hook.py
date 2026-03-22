@@ -1220,3 +1220,131 @@ def hook_with_config_factory(guard_config: dict):
         mock_cm.return_value.config = {"sendmessage_guard": guard_config}
         h = SendMessageGuardHook(debug=False)
     return h
+
+
+class TestApplyDirections:
+    """apply_directions（発火方向制御）のテスト（issue_8572）
+
+    sendmessage_guardの発火方向をconfig.yamlで制御する。
+    - leader_to_subagent: leader→subagent方向
+    - subagent_to_leader: subagent→leader方向
+    """
+
+    def _make_hook(self, guard_config):
+        return hook_with_config_factory(guard_config)
+
+    def _base_config(self, apply_directions=None):
+        """apply_directions付きの基本設定"""
+        config = {
+            "pattern": r"^issue_\d+ \[.{1,5}\]$",
+        }
+        if apply_directions is not None:
+            config["apply_directions"] = apply_directions
+        return config
+
+    def test_detect_direction_leader(self):
+        """agent_context未設定はleader_to_subagent"""
+        h = self._make_hook(self._base_config())
+        assert h._detect_direction({}) == "leader_to_subagent"
+        assert h._detect_direction({"agent_context": ""}) == "leader_to_subagent"
+
+    def test_detect_direction_subagent(self):
+        """agent_context="subagent"はsubagent_to_leader"""
+        h = self._make_hook(self._base_config())
+        assert h._detect_direction({"agent_context": "subagent"}) == "subagent_to_leader"
+
+    def test_detect_direction_unknown(self):
+        """未知のagent_contextは空文字列"""
+        h = self._make_hook(self._base_config())
+        assert h._detect_direction({"agent_context": "unknown"}) == ""
+
+    def test_default_both_directions(self):
+        """デフォルトは全方向で発火"""
+        h = self._make_hook(self._base_config())
+        assert "leader_to_subagent" in h._guard_config["apply_directions"]
+        assert "subagent_to_leader" in h._guard_config["apply_directions"]
+
+    def test_leader_only_skips_subagent(self):
+        """leader_to_subagentのみ設定時、subagent方向はスキップ"""
+        h = self._make_hook(self._base_config(
+            apply_directions=["leader_to_subagent"]
+        ))
+        # leader方向: 処理対象
+        input_leader = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "invalid"},
+        }
+        assert h.should_process(input_leader) is True
+
+        # subagent方向: スキップ
+        input_subagent = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "invalid"},
+            "agent_context": "subagent",
+        }
+        assert h.should_process(input_subagent) is False
+
+    def test_subagent_only_skips_leader(self):
+        """subagent_to_leaderのみ設定時、leader方向はスキップ"""
+        h = self._make_hook(self._base_config(
+            apply_directions=["subagent_to_leader"]
+        ))
+        # leader方向: スキップ
+        input_leader = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "invalid"},
+        }
+        assert h.should_process(input_leader) is False
+
+        # subagent方向: 処理対象
+        input_subagent = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "invalid"},
+            "agent_context": "subagent",
+        }
+        assert h.should_process(input_subagent) is True
+
+    def test_both_directions_processes_all(self):
+        """両方向設定時は全て処理"""
+        h = self._make_hook(self._base_config(
+            apply_directions=["leader_to_subagent", "subagent_to_leader"]
+        ))
+        input_leader = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "test"},
+        }
+        input_subagent = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "test"},
+            "agent_context": "subagent",
+        }
+        assert h.should_process(input_leader) is True
+        assert h.should_process(input_subagent) is True
+
+    def test_empty_directions_processes_all(self):
+        """apply_directions空リスト時は全て処理（フィルタ無効）"""
+        h = self._make_hook(self._base_config(apply_directions=[]))
+        input_leader = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "test"},
+        }
+        input_subagent = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "test"},
+            "agent_context": "subagent",
+        }
+        assert h.should_process(input_leader) is True
+        assert h.should_process(input_subagent) is True
+
+    def test_config_yaml_has_apply_directions(self):
+        """config.yamlにapply_directionsが定義されている"""
+        import yaml
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", ".claude-nagger", "config.yaml"
+        )
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        guard = config.get("sendmessage_guard", {})
+        assert "apply_directions" in guard
+        assert "leader_to_subagent" in guard["apply_directions"]
+        assert "subagent_to_leader" in guard["apply_directions"]

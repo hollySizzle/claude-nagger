@@ -212,6 +212,12 @@ sendmessage_guard:
     - shutdown_request
     - shutdown_response
     - plan_approval_response
+  # 発火方向制御（デフォルト: 全方向）
+  # leader_to_subagent: leader→subagent方向のSendMessage
+  # subagent_to_leader: subagent→leader方向のSendMessage
+  apply_directions:
+    - leader_to_subagent
+    - subagent_to_leader
   # 特定経路でのcontent検証スキップ（issue_id任意化）
   exempt_routes:
     - from: leader

@@ -76,6 +76,11 @@ class SendMessageGuardHook(BaseHook):
         # content検証免除経路（特定caller→recipient間でissue_id任意化）
         config["exempt_routes"] = raw.get("exempt_routes", [])
 
+        # 発火方向制御（デフォルト: 全方向で発火）
+        config["apply_directions"] = raw.get("apply_directions", [
+            "leader_to_subagent", "subagent_to_leader",
+        ])
+
         # P2P通信制御ルール
         p2p_raw = raw.get("p2p_rules", {})
         config["p2p_rules"] = {
@@ -260,12 +265,33 @@ class SendMessageGuardHook(BaseHook):
 
     # --- BaseHook 抽象メソッドの実装 ---
 
+    def _detect_direction(self, input_data: Dict[str, Any]) -> str:
+        """通信方向を検出する
+
+        agent_contextからcallerを判定し方向を返す。
+        - agent_context未設定/空 → leader（leader_to_subagent）
+        - agent_context="subagent" → subagent（subagent_to_leader）
+
+        Args:
+            input_data: 入力データ
+
+        Returns:
+            "leader_to_subagent" または "subagent_to_leader"。判定不能時は空文字列
+        """
+        agent_context = input_data.get("agent_context", "")
+        if not agent_context:
+            return "leader_to_subagent"
+        if agent_context == "subagent":
+            return "subagent_to_leader"
+        return ""
+
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """処理対象かどうかを判定
 
         1. tool_name が SendMessage でなければ False
         2. tool_input.type が exempt_types に含まれれば False
-        3. それ以外 True
+        3. apply_directions による方向フィルタ
+        4. それ以外 True
 
         Args:
             input_data: 入力データ
@@ -282,6 +308,14 @@ class SendMessageGuardHook(BaseHook):
         if self.is_exempt_type(message_type):
             self.log_debug(f"Exempt type: {message_type}")
             return False
+
+        # apply_directions による方向フィルタ
+        apply_directions = self._guard_config.get("apply_directions", [])
+        if apply_directions:
+            direction = self._detect_direction(input_data)
+            if direction and direction not in apply_directions:
+                self.log_debug(f"Direction '{direction}' not in apply_directions, skipping")
+                return False
 
         return True
 
