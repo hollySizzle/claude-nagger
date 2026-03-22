@@ -90,6 +90,19 @@ rules:
       - リンク切れがないか確認
       - 特にCHANGELOG.md更新時はpyproject.tomlのバージョンと一貫性を保つこと
 
+  # リリース関連ファイル
+  - name: "リリース規約参照"
+    patterns:
+      - "**/CHANGELOG.md"
+      - "**/.claude-plugin/plugin.json"
+      - "**/scripts/release.sh"
+      - "**/pyproject.toml"
+      - "**/src/shared/version.py"
+    severity: "warn"
+    message: |
+      リリース関連ファイルを変更する場合は @vibes/docs/rules/release_procedure.yaml を確認し従うこと
+      特にticket-tasukiはplugin.jsonのバージョンバンプ必須（未更新だとキャッシュ再生成されない）
+
   # ticket-tasuki独立リポジトリ
   - name: "ticket-tasuki独立リポジトリ警告"
     patterns:
