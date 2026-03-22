@@ -1,0 +1,63 @@
+# リリース規約
+# 両リポジトリ(claude-nagger/ticket-tasuki)のリリース手順と注意事項
+
+repositories:
+  claude-nagger:
+    path: "/workspace/packages/claude-nagger"
+    release_method: "./scripts/release.sh <version>"
+    update_targets:
+      - "CHANGELOG.md"
+      - "pyproject.toml（release.shが自動更新）"
+      - "src/shared/version.py（release.shが自動更新）"
+
+  ticket-tasuki:
+    path: ".claude/plugins/ticket-tasuki/"
+    release_method: "手動（タグ+gh release）"
+    update_targets:
+      - "CHANGELOG.md"
+      - ".claude-plugin/plugin.json — version必須"
+
+rules:
+  must:
+    - リリース前に全テスト合格確認（python3 -m pytest tests/ -v）
+    - CHANGELOG.md更新（既存形式に従う）
+    - 未コミット変更なし（git status clean）
+    - tech-leadレビュー承認済み
+    - ticket-tasukiはplugin.jsonのversionバンプ必須
+
+  must_not:
+    - plugin.jsonバージョン未更新でのリリース（キャッシュ再生成されない）
+    - coderによるコミット・push（tech-lead/leaderの責務）
+
+procedures:
+  claude-nagger:
+    full: "./scripts/release.sh <version>"
+    release_only: "./scripts/release.sh <version> --release-only"
+
+  ticket-tasuki:
+    steps:
+      - "plugin.json version更新"
+      - "CHANGELOG.md更新"
+      - "コミット・push"
+      - "git tag v<version> && git push origin v<version>"
+      - "gh release create v<version> --title v<version> --generate-notes --repo hollySizzle/ticket-tasuki"
+
+cautions:
+  plugin_json_bump:
+    description: "未更新だとプラグインキャッシュ（~/.claude/plugins/cache/）が再生成されず新設定が反映されない"
+    severity: critical
+
+  gh_token_scope:
+    description: "fine-grained PATはリポジトリ単位権限。リリース対象リポジトリをRepository accessに追加しContents(Read and write)を付与すること"
+    config_location: "GitHub Settings → Fine-grained tokens"
+
+  commit_responsibility:
+    leader: "push実行（tech-leadブロック時）"
+    tech-lead: "レビュー承認後にコミット"
+    coder: "ファイル変更のみ（コミット禁止）"
+
+related_files:
+  release_script: "@packages/claude-nagger/scripts/release.sh"
+  plugin_json: "@packages/claude-nagger/.claude/plugins/ticket-tasuki/.claude-plugin/plugin.json"
+  changelog_nagger: "@packages/claude-nagger/CHANGELOG.md"
+  changelog_tasuki: "@packages/claude-nagger/.claude/plugins/ticket-tasuki/CHANGELOG.md"
