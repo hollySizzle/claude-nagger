@@ -11,6 +11,9 @@ config.yamlの全ロールにget_issue_detail_tool規約を追加し、チケッ
 - coder/tester/tech-leadのmain_textにget_issue_detail_tool規約1行追記 (issue_8561)
 - pmo/researcherのsession_startupエントリ新規追加（get_issue_detail_tool含む） (issue_8561)
 
+### 設計意図コメント追記
+- config.yaml agent_spawn_guardセクションにtask_spawn_guardからの共有参照コメント追記 (issue_8562)
+
 ## [3.3.1] - 2026-03-22
 
 ### 正規表現パターンのconfig.yaml定義化・堅牢化
