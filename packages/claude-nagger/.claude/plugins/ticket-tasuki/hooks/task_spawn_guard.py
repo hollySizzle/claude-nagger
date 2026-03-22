@@ -62,6 +62,10 @@ _DEFAULT_ISSUE_ID_WARN_MESSAGE = """\
 def _load_guard_config() -> dict:
     """config.yamlからagent_spawn_guardセクションを読み込む。
     読み込み失敗時は空dictを返す。
+
+    設計意図: task_spawn_guardはagent_spawn_guardセクションを意図的に共有する。
+    issue_id_pattern・issue_id_warn_messageは両guardで共通のため、
+    専用セクションを設けず設定の一元管理を優先した（issue_8512）。
     """
     try:
         script_dir = os.path.dirname(os.path.abspath(__file__))
