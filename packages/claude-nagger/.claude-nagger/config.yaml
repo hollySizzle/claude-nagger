@@ -222,6 +222,8 @@ sendmessage_guard:
   exempt_routes:
     - from: leader
       to: pmo
+    - from: pmo
+      to: leader
 
 # デバッグ設定
 debug:
