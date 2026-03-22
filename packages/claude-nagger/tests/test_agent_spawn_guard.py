@@ -1491,3 +1491,32 @@ class TestExemptSpawnRoutes:
         # exempt非適用だがissue_idあり → override注入で許可
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+    def test_namespaced_subagent_type_exempt(self):
+        """名前空間付きsubagent_type("ticket-tasuki:pmo")でexempt判定が機能する"""
+        data = _make_agent_input(
+            subagent_type="ticket-tasuki:pmo",
+            team_name="my-team",
+            prompt="issue_1234",
+            agent_context="",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        # exempt_routesにより"ticket-tasuki:pmo" → "pmo"に正規化されexempt有効
+        _assert_override_output(out, "issue_1234")
+
+    def test_namespaced_non_exempt(self):
+        """名前空間付き非exempt経路("ticket-tasuki:coder")はexempt非該当"""
+        data = _make_agent_input(
+            subagent_type="ticket-tasuki:coder",
+            team_name="my-team",
+            prompt="no issue id here",
+            agent_context="",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is not None
+        # coderはexempt_routesに無い → promptパターン制限のdeny
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
