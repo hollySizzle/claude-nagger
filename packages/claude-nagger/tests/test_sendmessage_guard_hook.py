@@ -1348,3 +1348,114 @@ class TestApplyDirections:
         assert "apply_directions" in guard
         assert "leader_to_subagent" in guard["apply_directions"]
         assert "subagent_to_leader" in guard["apply_directions"]
+
+    def test_apply_directions_not_set_uses_default(self):
+        """apply_directions未設定時はデフォルト（leader_to_subagentのみ）"""
+        h = self._make_hook({"pattern": r"^issue_\d+ \[.{1,5}\]$"})
+        assert h._guard_config["apply_directions"] == ["leader_to_subagent"]
+
+        # leader方向: 処理対象
+        input_leader = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "test"},
+        }
+        assert h.should_process(input_leader) is True
+
+        # subagent方向: デフォルトではスキップ
+        input_subagent = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "test"},
+            "agent_context": "subagent",
+        }
+        assert h.should_process(input_subagent) is False
+
+    def test_direction_unknown_not_filtered(self):
+        """direction判定不能（agent_context="unknown"）時はフィルタされない"""
+        h = self._make_hook(self._base_config(
+            apply_directions=["leader_to_subagent"]
+        ))
+        input_unknown = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "test"},
+            "agent_context": "unknown",
+        }
+        # _detect_directionが空文字列を返す → directionが空 → フィルタされずTrue
+        assert h.should_process(input_unknown) is True
+
+    def test_subagent_direction_passes_filter(self):
+        """subagent方向がapply_directionsフィルタを通過する検証"""
+        h = self._make_hook({
+            "pattern": r"^issue_\d+ \[.{1,5}\]$",
+            "apply_directions": ["leader_to_subagent", "subagent_to_leader"],
+            "exempt_routes": [{"from": "pmo", "to": "leader"}],
+        })
+        # subagent方向は処理対象
+        input_subagent = {
+            "tool_name": "SendMessage",
+            "tool_input": {"content": "自由テキスト"},
+            "agent_context": "subagent",
+        }
+        assert h.should_process(input_subagent) is True
+
+
+class TestCrossHookExemptConsistency:
+    """クロスhook統合テスト: agent_spawn_guardとsendmessage_guardのexempt一貫性（issue_8574）
+
+    同一経路（leader→pmo）で両hookが同一のexempt判定を返すことを検証する。
+    """
+
+    def test_leader_to_pmo_exempt_in_both_guards(self):
+        """leader→pmo: agent_spawn_guardとsendmessage_guardの両方でexempt"""
+        import yaml
+
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", ".claude-nagger", "config.yaml"
+        )
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+
+        # agent_spawn_guard.exempt_routesにleader→pmoが含まれる
+        agent_guard = config.get("agent_spawn_guard", {})
+        agent_exempt = agent_guard.get("exempt_routes", [])
+        agent_has_leader_pmo = any(
+            r.get("from") == "leader" and r.get("to") == "pmo"
+            for r in agent_exempt
+        )
+        assert agent_has_leader_pmo, "agent_spawn_guard.exempt_routesにleader→pmoが未定義"
+
+        # sendmessage_guard.exempt_routesにleader→pmoが含まれる
+        sm_guard = config.get("sendmessage_guard", {})
+        sm_exempt = sm_guard.get("exempt_routes", [])
+        sm_has_leader_pmo = any(
+            r.get("from") == "leader" and r.get("to") == "pmo"
+            for r in sm_exempt
+        )
+        assert sm_has_leader_pmo, "sendmessage_guard.exempt_routesにleader→pmoが未定義"
+
+    def test_independent_exempt_routes_divergence(self):
+        """独立管理後: agent_spawn_guardとsendmessage_guardで異なるexempt経路"""
+        import yaml
+
+        config_path = os.path.join(
+            os.path.dirname(__file__), "..", ".claude-nagger", "config.yaml"
+        )
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+
+        # agent_spawn_guard: leader→pmoのみ（agent起動向け）
+        agent_exempt = config.get("agent_spawn_guard", {}).get("exempt_routes", [])
+        # sendmessage_guard: leader→pmo + pmo→leader（メッセージ向け双方向）
+        sm_exempt = config.get("sendmessage_guard", {}).get("exempt_routes", [])
+
+        # sendmessage_guardの方がexempt経路が多い（pmo→leader含む）
+        sm_has_pmo_leader = any(
+            r.get("from") == "pmo" and r.get("to") == "leader"
+            for r in sm_exempt
+        )
+        agent_has_pmo_leader = any(
+            r.get("from") == "pmo" and r.get("to") == "leader"
+            for r in agent_exempt
+        )
+        # agent_spawn_guardにはpmo→leaderは不要（subagentからの起動は早期return）
+        assert sm_has_pmo_leader, "sendmessage_guard.exempt_routesにpmo→leaderが必要"
+        assert not agent_has_pmo_leader, "agent_spawn_guard.exempt_routesにpmo→leaderは不要"

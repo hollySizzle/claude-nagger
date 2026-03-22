@@ -1405,3 +1405,89 @@ class TestExemptSpawnRoutes:
         out = json.loads(proc.stdout) if proc.stdout.strip() else None
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+    def test_exempt_multiple_routes_second_match(self, tmp_path):
+        """exempt_routes複数経路設定時、2番目の経路もマッチする"""
+        import shutil
+        import yaml
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+
+        custom_config = {
+            "agent_spawn_guard": {
+                "exempt_routes": [
+                    {"from": "leader", "to": "pmo"},
+                    {"from": "leader", "to": "tester"},
+                ],
+            },
+        }
+        config_file = config_dir / "config.yaml"
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(custom_config, f, allow_unicode=True)
+
+        shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+        script = hooks_dir / "agent_spawn_guard.py"
+
+        # leader→tester（2番目の経路）: exempt有効でissue_id警告なし
+        data = _make_agent_input(
+            subagent_type="tester",
+            team_name="my-team",
+            prompt="issue_1234",
+            agent_context="",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script)],
+            input=json.dumps(data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert proc.returncode == 0
+        out = json.loads(proc.stdout) if proc.stdout.strip() else None
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+
+    def test_non_leader_non_subagent_context(self, tmp_path):
+        """agent_context="team-lead"等の非leader/非subagentコンテキスト"""
+        import shutil
+        import yaml
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+
+        custom_config = {
+            "agent_spawn_guard": {
+                "exempt_routes": [{"from": "leader", "to": "pmo"}],
+            },
+        }
+        config_file = config_dir / "config.yaml"
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(custom_config, f, allow_unicode=True)
+
+        shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+        script = hooks_dir / "agent_spawn_guard.py"
+
+        # agent_context="team-lead"→pmo: "leader"ではないのでexempt非適用
+        data = _make_agent_input(
+            subagent_type="pmo",
+            team_name="my-team",
+            prompt="issue_1234",
+            agent_context="team-lead",
+        )
+        proc = subprocess.run(
+            [sys.executable, str(script)],
+            input=json.dumps(data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert proc.returncode == 0
+        out = json.loads(proc.stdout) if proc.stdout.strip() else None
+        # exempt非適用だがissue_idあり → override注入で許可
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "allow"

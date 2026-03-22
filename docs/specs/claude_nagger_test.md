@@ -145,6 +145,58 @@ tests/fixtures/claude_code/
 | #5778 | test_base_hook.py | output_response()非PreToolUse分岐 |
 | #5779 | test_hook_schema_validation.py, test_subagent_override.py | 名前空間マッチング |
 | #5862 | test_subagent_override.py | is_session_processed_context_aware無条件バイパス、マーカー状態別検証 |
+| #8512 | test_agent_spawn_guard.py | config.yamlパターンオーバーライド（issue_id_pattern/prompt_only_pattern）、_safe_compileフォールバック、config読込失敗時動作 |
+| #8133 | test_agent_spawn_guard.py | override注入（updatedInput構造、元prompt保持、Redmine指示注入） |
+| #8137 | test_agent_spawn_guard.py | config.yamlメッセージテンプレート（block/warn/pattern各メッセージ書換え反映） |
+| #8139 | test_agent_spawn_guard.py | subagent override設定にget_issue_detail_tool文言含有、config.yamlメッセージ上書き反映 |
+| #8562 | test_sendmessage_guard_hook.py | exempt_routes（leader→pmo content検証スキップ、非exempt経路block、空exempt通常検証） |
+| #8570,#8571 | test_agent_spawn_guard.py | agent_spawn_guard exempt_routes（leader→pmo免除、非exempt経路warn/deny、カスタムconfig、非leaderコンテキスト、複数経路マッチ） |
+| #8572 | test_sendmessage_guard_hook.py | apply_directions方向制御（direction検出、デフォルトleaderのみ、片方向スキップ、両方向、空リスト、未設定時デフォルト、unknown direction、subagent方向+exempt組合せ） |
+| #8572 | test_sendmessage_guard_hook.py | pmo→leader exempt_routes追加（config.yaml検証） |
+| #8574 | test_sendmessage_guard_hook.py | クロスhook統合（agent_spawn_guard/sendmessage_guard exempt一貫性、独立管理後の設定不整合検証） |
+
+### ガードhookテスト一覧
+
+#### test_agent_spawn_guard.py（97テスト）
+
+| クラス | テスト数 | 検証対象 |
+|---|---|---|
+| TestBuiltinWhitelist | 4 | Explore/Plan/statusline-setup/claude-code-guide許可、大文字小文字区別 |
+| TestTeamNameHandling | 7 | team_name有無でallow/deny、空白のみdeny、全ロールteam_name有許可 |
+| TestSubagentContext | 1 | agent_context="subagent"で制約対象外 |
+| TestNonAgentTool | 1 | Agent以外のツールは対象外 |
+| TestIssueIdCheck | 5 | issue_id欠落warn、存在時no-warn、空prompt、deny優先 |
+| TestEdgeCases | 3 | 不正JSON、空入力、空subagent_type |
+| TestAdditionalScenarios | 7 | 各ロールteam_nameなしdeny、tab/空白team_name、subagent_contextバイパス |
+| TestPromptPatternRestriction | 10 | promptパターン合致/拒否、桁数制限、ビルトイン免除、全ロール検証 |
+| TestOverrideInjection | 5 | updatedInput構造、元prompt保持、Redmine指示注入、ビルトイン非注入、deny時非注入 |
+| TestConfigYamlMessages | 4 | block/warn/patternメッセージconfig読込 |
+| TestSubagentRedmineFlowConfig | 3 | 各ロールoverride設定にget_issue_detail_tool文言含有 |
+| TestConfigYamlMessageOverride | 4 | カスタムメッセージ反映（block/pattern/warn/override） |
+| TestConfigYamlContentValidation | 3 | prompt_pattern理由行、override_instruction内容 |
+| TestConfigPatternOverride | 6 | カスタムパターン受理/拒否、デフォルトフォールバック |
+| TestSafeCompileFallback | 5 | 不正パターンフォールバック（各種異常パターン） |
+| TestConfigLoadFailure | 4 | YAML構文エラー、セクション欠損、非dict、型エラー |
+| TestExemptSpawnRoutes | 10 | leader→pmo免除、非exempt経路、カスタムconfig、非leaderコンテキスト、複数経路、空exempt |
+
+#### test_sendmessage_guard_hook.py（105テスト）
+
+| クラス | テスト数 | 検証対象 |
+|---|---|---|
+| TestIsTargetTool | 6 | SendMessage判定、大文字小文字区別、空文字 |
+| TestIsExemptType | 5 | 構造化メッセージ型免除（shutdown/plan_approval） |
+| TestValidateContent | 8 | パターンマッチ、空content、長文 |
+| TestShouldProcess | 4 | ツール名+メッセージ型複合判定 |
+| TestProcess | 4 | approve/block判定、exempt_route適用 |
+| TestBlockMessageCustomization | 3 | カスタムblock_message反映、フォールバック |
+| TestValidateP2P | 14 | P2P通信制御（正規化、マトリクス、デフォルトポリシー） |
+| TestP2PE2E | 13 | P2P E2E（各ロール間allow/deny、broadcast） |
+| TestP2PMessageCustomization | 4 | P2Pカスタムメッセージ |
+| TestP2PConfigYamlIntegration | 6 | P2P config.yaml統合検証 |
+| TestConfigYamlSendmessageGuard | 6 | config.yamlパターン・メッセージ・exempt_types検証 |
+| TestExemptRoutes | 8 | exempt_routes（leader→pmo免除、非exempt block、空exempt、config読込） |
+| TestApplyDirections | 12 | direction検出、デフォルト、片方向/両方向/空、未設定時、unknown、subagent方向フィルタ通過 |
+| TestCrossHookExemptConsistency | 2 | クロスhook exempt一貫性、独立管理後の設定不整合検証 |
 
 ## テストアンチパターン
 
