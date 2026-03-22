@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [3.3.1] - 2026-03-22
+
+### 正規表現パターンのconfig.yaml定義化・堅牢化
+agent_spawn_guard/task_spawn_guardの正規表現パターン(issue_id_pattern/prompt_only_pattern)をconfig.yamlで定義可能にし、re.compile() try-except保護+デフォルトフォールバックを実装。
+- 正規表現パターンのconfig.yaml定義化（issue_id_pattern/prompt_only_pattern） (issue_8512)
+- re.compile() try-except保護+不正パターン時のデフォルトフォールバック (issue_8512)
+- エラーハンドリングテスト17件追加 — 不正正規表現・空/None・YAML構文エラー・セクション欠損・型エラー (issue_8512)
+
 ## [3.3.0] - 2026-03-19
 
 ### エスカレーション機構・ツール権限拡張
@@ -21,6 +29,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### バグ修正
 - role_resolution設定消失によるsubagentロール誤識別を修正+フェイルセーフ実装 (issue_8512)
+
+### リリース・運用規約
+- リリース手順規約(release_procedure.yaml)追加 (issue_8512)
+- command_conventions.yamlにcoder gh releaseルール追加 (issue_8512)
+- file_conventionsにリリース関連ファイル参照ルール追加 (issue_8512)
 
 ## [3.2.1] - 2026-03-16
 
