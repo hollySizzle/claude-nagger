@@ -13,8 +13,11 @@ Claude Code プラグインhook機構で ${CLAUDE_PLUGIN_ROOT}/hooks/task_spawn_
 """
 
 import json
+import os
 import re
 import sys
+
+import yaml
 
 # ブロック対象プレフィックス
 BLOCKED_PREFIX = "ticket-tasuki:"
@@ -47,13 +50,56 @@ Task spawn規約: team_name未指定のTask spawn制限
 
 ⚠ team_name不要のエージェント: Explore, Plan のみ"""
 
-# issue_{id}パターン（トレーサビリティチェック用）
-ISSUE_ID_PATTERN = re.compile(r"issue_\d+")
+# デフォルト正規表現パターン（config.yaml読み込み失敗時のフォールバック）
+_DEFAULT_ISSUE_ID_PATTERN = r"issue_\d+"
 
-# issue_{id}欠落時の警告メッセージ
-ISSUE_ID_WARN_MESSAGE = """\
+# デフォルト警告メッセージ
+_DEFAULT_ISSUE_ID_WARN_MESSAGE = """\
 ⚠ Task promptにissue_{id}が含まれていません。
 トレーサビリティのため、promptにissue_{id}（例: issue_1234）を含めてください。"""
+
+
+def _load_guard_config() -> dict:
+    """config.yamlからagent_spawn_guardセクションを読み込む。
+    読み込み失敗時は空dictを返す。
+    """
+    try:
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        config_path = os.path.join(script_dir, "..", ".claude-nagger", "config.yaml")
+        config_path = os.path.normpath(config_path)
+        if not os.path.isfile(config_path):
+            return {}
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+        if not isinstance(config, dict):
+            return {}
+        return config.get("agent_spawn_guard", {}) or {}
+    except Exception:
+        return {}
+
+
+# config.yamlから設定読み込み（フォールバック付き）
+_guard_config = _load_guard_config()
+
+
+def _safe_compile(pattern: str | None, default: str) -> re.Pattern:
+    """正規表現を安全にコンパイルする。不正パターン時はデフォルトにフォールバック。"""
+    raw = pattern or default
+    try:
+        return re.compile(raw)
+    except (re.error, TypeError):
+        return re.compile(default)
+
+
+# 正規表現パターン（config.yamlからフォールバック付きで読み込み）
+ISSUE_ID_PATTERN = _safe_compile(
+    _guard_config.get("issue_id_pattern"), _DEFAULT_ISSUE_ID_PATTERN
+)
+
+# 警告メッセージ（config.yamlからフォールバック付き）
+ISSUE_ID_WARN_MESSAGE = (
+    _guard_config.get("issue_id_warn_message") or _DEFAULT_ISSUE_ID_WARN_MESSAGE
+).rstrip()
 
 
 def _has_issue_id(prompt: str) -> bool:

@@ -872,3 +872,317 @@ class TestConfigYamlContentValidation:
         assert out is not None
         updated_prompt = out["hookSpecificOutput"]["updatedInput"]["prompt"]
         assert "promptに指定されたチケット番号" in updated_prompt
+
+
+class TestConfigPatternOverride:
+    """正規表現パターンのconfig.yaml化テスト（issue_8512）
+
+    issue_id_patternとprompt_only_patternをconfig.yamlで上書き可能であることを検証する。
+    """
+
+    @pytest.fixture
+    def custom_pattern_config_dir(self, tmp_path):
+        """カスタムパターンを持つconfig.yamlを含む一時ディレクトリを作成"""
+        import shutil
+        import yaml
+
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        config_dir = tmp_path / ".claude-nagger"
+        config_dir.mkdir()
+
+        # カスタムパターン: ticket-XXX形式に変更
+        custom_config = {
+            "agent_spawn_guard": {
+                "issue_id_pattern": r"ticket-\d+",
+                "prompt_only_pattern": r"^ticket-\d{1,6}$",
+            }
+        }
+        config_file = config_dir / "config.yaml"
+        with open(config_file, "w", encoding="utf-8") as f:
+            yaml.dump(custom_config, f, allow_unicode=True)
+
+        shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+        return hooks_dir / "agent_spawn_guard.py"
+
+    def _run_custom_guard(self, script_path, input_data):
+        """カスタムconfig環境でguardスクリプトを実行"""
+        proc = subprocess.run(
+            [sys.executable, str(script_path)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        stdout_json = None
+        if proc.stdout.strip():
+            try:
+                stdout_json = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                pass
+        return proc.returncode, stdout_json
+
+    def test_custom_issue_id_pattern_accepted(self, custom_pattern_config_dir):
+        """カスタムissue_id_patternに合致するpromptで警告なし"""
+        data = _make_agent_input(subagent_type="Explore", prompt="ticket-1234 do something")
+        rc, out = self._run_custom_guard(custom_pattern_config_dir, data)
+
+        assert rc == 0
+        assert out is None  # 警告なし
+
+    def test_custom_issue_id_pattern_old_format_warns(self, custom_pattern_config_dir):
+        """カスタムパターン環境で旧issue_{id}形式はask警告"""
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_1234 do something")
+        rc, out = self._run_custom_guard(custom_pattern_config_dir, data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "ask"
+
+    def test_custom_prompt_only_pattern_accepted(self, custom_pattern_config_dir):
+        """カスタムprompt_only_patternに合致するpromptでoverride注入"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="ticket-5678",
+        )
+        rc, out = self._run_custom_guard(custom_pattern_config_dir, data)
+
+        assert rc == 0
+        assert out is not None
+        hook_out = out["hookSpecificOutput"]
+        assert hook_out["permissionDecision"] == "allow"
+        assert "updatedInput" in hook_out
+
+    def test_custom_prompt_only_pattern_old_format_denied(self, custom_pattern_config_dir):
+        """カスタムパターン環境で旧issue_{id}形式のpromptはdeny"""
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1234",
+        )
+        rc, out = self._run_custom_guard(custom_pattern_config_dir, data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
+
+    def test_default_pattern_fallback(self):
+        """config.yamlにパターン未設定時はデフォルトパターンが使用される"""
+        # 既存のconfig.yamlにはパターンが設定されているが、
+        # デフォルト値と同じなので動作は同一
+        data = _make_agent_input(
+            subagent_type="coder",
+            team_name="my-team",
+            prompt="issue_1234",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        _assert_override_output(out, "issue_1234")
+
+    def test_config_patterns_in_config_yaml(self):
+        """config.yamlにissue_id_patternとprompt_only_patternが定義されている"""
+        import yaml
+
+        # agent_spawn_guard.pyが参照するconfig.yaml（プラグインディレクトリ）
+        config_path = os.path.join(
+            os.path.dirname(GUARD_SCRIPT), "..", ".claude-nagger", "config.yaml"
+        )
+        config_path = os.path.normpath(config_path)
+        with open(config_path, encoding="utf-8") as f:
+            config = yaml.safe_load(f)
+
+        guard = config.get("agent_spawn_guard", {})
+        assert "issue_id_pattern" in guard, "config.yamlにissue_id_patternが未定義"
+        assert "prompt_only_pattern" in guard, "config.yamlにprompt_only_patternが未定義"
+        assert guard["issue_id_pattern"] == r"issue_\d+"
+        assert guard["prompt_only_pattern"] == r"^issue_\d{1,6}$"
+
+
+class TestSafeCompileFallback:
+    """_safe_compile()の不正パターンフォールバックテスト（issue_8512）
+
+    config.yamlに不正な正規表現が設定された場合、デフォルトパターンにフォールバックすることを検証する。
+    """
+
+    @pytest.fixture
+    def _make_config_dir(self, tmp_path):
+        """指定configでguardスクリプト環境を作成するファクトリ"""
+        import shutil
+
+        def factory(config_data):
+            hooks_dir = tmp_path / "hooks"
+            hooks_dir.mkdir(exist_ok=True)
+            config_dir = tmp_path / ".claude-nagger"
+            config_dir.mkdir(exist_ok=True)
+
+            import yaml
+            config_file = config_dir / "config.yaml"
+            with open(config_file, "w", encoding="utf-8") as f:
+                yaml.dump(config_data, f, allow_unicode=True)
+
+            shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+            return hooks_dir / "agent_spawn_guard.py"
+
+        return factory
+
+    def _run_custom_guard(self, script_path, input_data):
+        """カスタムconfig環境でguardスクリプトを実行"""
+        proc = subprocess.run(
+            [sys.executable, str(script_path)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        stdout_json = None
+        if proc.stdout.strip():
+            try:
+                stdout_json = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                pass
+        return proc.returncode, stdout_json, proc.stderr
+
+    def test_invalid_issue_id_pattern_fallback(self, _make_config_dir):
+        """不正なissue_id_patternでデフォルトにフォールバック"""
+        script = _make_config_dir({
+            "agent_spawn_guard": {"issue_id_pattern": "[invalid(regex"}
+        })
+        # デフォルトパターン(issue_\d+)で検出されるべき
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_1234 do something")
+        rc, out, _ = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        assert out is None  # 警告なし（デフォルトパターンで検出成功）
+
+    def test_invalid_prompt_only_pattern_fallback(self, _make_config_dir):
+        """不正なprompt_only_patternでデフォルトにフォールバック"""
+        script = _make_config_dir({
+            "agent_spawn_guard": {"prompt_only_pattern": "[broken"}
+        })
+        # デフォルトパターン(^issue_\d{1,6}$)で合致するべき
+        data = _make_agent_input(
+            subagent_type="coder", team_name="my-team", prompt="issue_1234"
+        )
+        rc, out, _ = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        assert out is not None
+        assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+        assert "updatedInput" in out["hookSpecificOutput"]
+
+    def test_both_patterns_invalid_fallback(self, _make_config_dir):
+        """両パターンとも不正でもクラッシュせずデフォルトで動作"""
+        script = _make_config_dir({
+            "agent_spawn_guard": {
+                "issue_id_pattern": "(?P<broken",
+                "prompt_only_pattern": "[unmatched",
+            }
+        })
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_999 test")
+        rc, out, _ = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_empty_pattern_uses_default(self, _make_config_dir):
+        """空文字パターンはデフォルトにフォールバック"""
+        script = _make_config_dir({
+            "agent_spawn_guard": {"issue_id_pattern": ""}
+        })
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_1234 test")
+        rc, out, _ = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_none_pattern_uses_default(self, _make_config_dir):
+        """Noneパターンはデフォルトにフォールバック"""
+        script = _make_config_dir({
+            "agent_spawn_guard": {"issue_id_pattern": None}
+        })
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_5678 test")
+        rc, out, _ = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        assert out is None
+
+
+class TestConfigLoadFailure:
+    """config.yaml読み込み失敗時のフォールバックテスト（issue_8512）
+
+    YAML構文エラー、セクション欠損、型エラー等でもクラッシュせずデフォルト動作することを検証する。
+    """
+
+    @pytest.fixture
+    def _make_raw_config_dir(self, tmp_path):
+        """生のconfig.yaml内容でguardスクリプト環境を作成するファクトリ"""
+        import shutil
+
+        def factory(raw_content):
+            hooks_dir = tmp_path / "hooks"
+            hooks_dir.mkdir(exist_ok=True)
+            config_dir = tmp_path / ".claude-nagger"
+            config_dir.mkdir(exist_ok=True)
+
+            config_file = config_dir / "config.yaml"
+            config_file.write_text(raw_content, encoding="utf-8")
+
+            shutil.copy2(GUARD_SCRIPT, hooks_dir / "agent_spawn_guard.py")
+            return hooks_dir / "agent_spawn_guard.py"
+
+        return factory
+
+    def _run_custom_guard(self, script_path, input_data):
+        proc = subprocess.run(
+            [sys.executable, str(script_path)],
+            input=json.dumps(input_data),
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        stdout_json = None
+        if proc.stdout.strip():
+            try:
+                stdout_json = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                pass
+        return proc.returncode, stdout_json
+
+    def test_yaml_syntax_error_fallback(self, _make_raw_config_dir):
+        """YAML構文エラー時にデフォルトパターンで動作"""
+        script = _make_raw_config_dir("agent_spawn_guard:\n  issue_id_pattern: [broken yaml")
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_1234 test")
+        rc, out = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_missing_section_fallback(self, _make_raw_config_dir):
+        """agent_spawn_guardセクション欠損時にデフォルトパターンで動作"""
+        script = _make_raw_config_dir("other_section:\n  key: value\n")
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_1234 test")
+        rc, out = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_non_dict_config_fallback(self, _make_raw_config_dir):
+        """config.yamlがdict以外（リスト等）の場合にデフォルトで動作"""
+        script = _make_raw_config_dir("- item1\n- item2\n")
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_1234 test")
+        rc, out = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        assert out is None
+
+    def test_pattern_type_error_fallback(self, _make_raw_config_dir):
+        """パターンが文字列以外（数値等）の場合にデフォルトで動作"""
+        script = _make_raw_config_dir("agent_spawn_guard:\n  issue_id_pattern: 12345\n")
+        data = _make_agent_input(subagent_type="Explore", prompt="issue_1234 test")
+        rc, out = self._run_custom_guard(script, data)
+
+        assert rc == 0
+        # 数値はre.compileで文字列変換されるため、クラッシュしないことを確認
+        assert out is None or out["hookSpecificOutput"]["permissionDecision"] == "ask"

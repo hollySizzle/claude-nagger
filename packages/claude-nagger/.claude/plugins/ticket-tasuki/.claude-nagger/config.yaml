@@ -106,6 +106,12 @@ session_startup:
 
 # Agent spawn guard設定
 agent_spawn_guard:
+  # 正規表現パターン設定（config化: issue_8512）
+  # issue_{id}トレーサビリティチェック用パターン（部分一致）
+  issue_id_pattern: "issue_\\d+"
+  # team agent経由subagent起動時のpromptパターン制限（完全一致）
+  # ビルトインsubagent_typeは対象外
+  prompt_only_pattern: "^issue_\\d{1,6}$"
   # subagent起動時にpromptへ注入するoverride指示テンプレート
   override_instruction: "promptに指定されたチケット番号を使い、Redmine get_issue_detail_toolでチケットコメントから最新の指示を取得し、指示に従って作業を実行せよ"
   block_message_template: |

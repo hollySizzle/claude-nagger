@@ -23,12 +23,9 @@ BUILTIN_WHITELIST = {
     "statusline-setup", "claude-code-guide",
 }
 
-# issue_{id}パターン（トレーサビリティチェック用）
-ISSUE_ID_PATTERN = re.compile(r"issue_\d+")
-
-# promptパターン制限（team agent経由のsubagent起動時に適用）
-# ビルトインsubagent_typeは対象外
-PROMPT_ONLY_PATTERN = re.compile(r"^issue_\d{1,6}$")
+# デフォルト正規表現パターン（config.yaml読み込み失敗時のフォールバック）
+_DEFAULT_ISSUE_ID_PATTERN = r"issue_\d+"
+_DEFAULT_PROMPT_ONLY_PATTERN = r"^issue_\d{1,6}$"
 
 # デフォルトメッセージ（config.yaml読み込み失敗時のフォールバック）
 _DEFAULT_ISSUE_ID_WARN_MESSAGE = """\
@@ -77,6 +74,24 @@ def _load_guard_config() -> dict:
 
 # config.yamlから設定読み込み（フォールバック付き）
 _guard_config = _load_guard_config()
+
+
+def _safe_compile(pattern: str | None, default: str) -> re.Pattern:
+    """正規表現を安全にコンパイルする。不正パターン時はデフォルトにフォールバック。"""
+    raw = pattern or default
+    try:
+        return re.compile(raw)
+    except (re.error, TypeError):
+        return re.compile(default)
+
+
+# 正規表現パターン（config.yamlからフォールバック付きで読み込み）
+ISSUE_ID_PATTERN = _safe_compile(
+    _guard_config.get("issue_id_pattern"), _DEFAULT_ISSUE_ID_PATTERN
+)
+PROMPT_ONLY_PATTERN = _safe_compile(
+    _guard_config.get("prompt_only_pattern"), _DEFAULT_PROMPT_ONLY_PATTERN
+)
 
 ISSUE_ID_WARN_MESSAGE = (
     _guard_config.get("issue_id_warn_message") or _DEFAULT_ISSUE_ID_WARN_MESSAGE
