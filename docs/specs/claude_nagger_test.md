@@ -29,7 +29,7 @@ python3 -m pytest tests/test_hook_schema_validation.py::TestSessionStartupHookRe
 | test_session_startup_hook.py | session_startup_hook.py | ユニット | 16 | 設定読込,マーカー,処理判定,メッセージ構築,規約提案 |
 | test_implementation_design_hook.py | implementation_design_hook.py | ユニット | 12 | パス正規化,ツール検出,閾値,マーカー |
 | test_compact_detected_hook.py | compact_detected_hook.py | ユニット | 1 | compact検出 |
-| test_sendmessage_guard_hook.py | sendmessage_guard_hook.py | ユニット+統合 | 14 | パターンマッチ,exempt_routes,P2P通信,方向制御,クロスhook |
+| test_sendmessage_guard_hook.py | sendmessage_guard_hook.py | ユニット+統合 | 15 | パターンマッチ,exempt_routes,P2P通信,方向制御,クロスhook |
 | test_test_hook.py | test_hook.py | ユニット | 1 | テストフック |
 
 ### domainレイヤ - マッチャー/サービス
