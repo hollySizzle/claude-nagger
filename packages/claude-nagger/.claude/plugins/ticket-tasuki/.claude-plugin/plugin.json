@@ -1,7 +1,7 @@
 {
   "name": "ticket-tasuki",
   "description": "TiDD基盤のleader/coder分離プラグイン。leaderが判断・レビューし、coderが実装する。チケットによるコンテキストリレーで品質とバイアス排除を実現。",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "author": {
     "name": "hollySizzle"
   },
