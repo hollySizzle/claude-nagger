@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.3] - 2026-03-23
+
+- issue_8574: release.sh plugin.json git add -f修正（gitignore対応）
+- issue_8608: exempt_routes docstring修正（promptパターンスキップ反映）
+- issue_8574: command_conventions緩和（tester blacklist方式・coder git制限撤廃）
+- issue_8613: リリーススクリプト整備（バージョンバンプ強制・CHANGELOG生成）
+- issue_8618: _detect_directionをagent_idベース判定に修正
+- issue_8574: テスト仕様書M8注記追加+M14-M18新規シナリオ追加
+- issue_8615: p2p_rules有効化（default_policy: allow）
+- issue_8574: 実機手動テスト（リリース前チェックリスト）セクション追記
+- issue_8608: exempt_routes promptパターンスキップに合わせたテスト更新
+- issue_8570: _is_exempt_spawn_route名前空間prefix除去テスト追加
+- issue_8574: テスト仕様書更新+不足テストケース実装
+- issue_8570: tech-leadレビュー指摘4件修正
+- issue_8572: exempt_routesにpmo→leader経路を追加
+- issue_8572: sendmessage_guardにapply_directions方向制御を追加
+- issue_8570: TestExemptSpawnRoutesテストクラス追加
+
 ## [3.3.3] - 2026-03-22
 
 ### sendmessage_guard強化
