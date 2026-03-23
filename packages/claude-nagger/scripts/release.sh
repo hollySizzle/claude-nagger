@@ -6,7 +6,7 @@
 #
 # 機能:
 #   - バージョンバンプ強制チェック（config/hooks変更検出）
-#   - pyproject.toml / version.py / plugin.json の同期更新
+#   - pyproject.toml / version.py の同期更新
 #   - CHANGELOG.md 自動生成
 #   - GitHubリリース作成
 set -e
@@ -146,15 +146,6 @@ CHEOF
     echo "CHANGELOG.md updated"
 }
 
-# --- plugin.jsonバージョン同期 ---
-update_plugin_json() {
-    local plugin_json=".claude/plugins/ticket-tasuki/.claude-plugin/plugin.json"
-    if [ -f "$plugin_json" ]; then
-        echo "Updating plugin.json version..."
-        sed -i "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" "$plugin_json"
-    fi
-}
-
 echo "=== Release $TAG ==="
 
 if [ "$RELEASE_ONLY" = false ]; then
@@ -168,11 +159,10 @@ if [ "$RELEASE_ONLY" = false ]; then
     # バージョンバンプ強制チェック
     check_version_bump
 
-    # 1. バージョン更新（pyproject.toml + version.pyフォールバック + plugin.json）
+    # 1. バージョン更新（pyproject.toml + version.pyフォールバック）
     echo "Updating version to $VERSION..."
     sed -i "s/^version = \".*\"/version = \"$VERSION\"/" pyproject.toml
     sed -i "s/__version__ = \".*\"/__version__ = \"$VERSION\"/" src/shared/version.py
-    update_plugin_json
 
     # 2. CHANGELOG生成
     generate_changelog
@@ -180,9 +170,6 @@ if [ "$RELEASE_ONLY" = false ]; then
     # 3. コミット
     echo "Committing..."
     git add pyproject.toml src/shared/version.py CHANGELOG.md
-    if [ -f ".claude/plugins/ticket-tasuki/.claude-plugin/plugin.json" ]; then
-        git add -f ".claude/plugins/ticket-tasuki/.claude-plugin/plugin.json"
-    fi
     git commit -m "Bump version to $VERSION"
 
     # 4. Push
