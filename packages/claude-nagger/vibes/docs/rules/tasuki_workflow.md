@@ -8,13 +8,13 @@ flowchart TD
     B --> C[tech-lead: git diff でコード変更確認]
     C --> D{設計整合性・ドキュメント整合性・コード品質}
     D -->|OK| E[Redmineにレビュー承認コメント]
-    E --> F["leaderに SendMessage: issue_id 完了"]
+    E --> F["leaderに SendMessage: issue_id [完了:leader]"]
     D -->|改善可能な指摘あり| G[Redmineに修正指示コメント]
-    G --> H["coderに SendMessage: issue_id 指示"]
+    G --> H["coderに SendMessage: issue_id [指示待ち:coder]"]
     H --> I[coder: 修正実施]
     I --> A
     D -->|設計判断が必要| J[Redmineにエスカレーション理由コメント]
-    J --> K["leaderに SendMessage: issue_id 要判断"]
+    J --> K["leaderに SendMessage: issue_id [判断待ち:leader]"]
 
     style F fill:#4a4,color:#fff
     style H fill:#c90,color:#fff
@@ -40,7 +40,7 @@ flowchart TD
     F -->|なし| H[ワークフロー確定]
     G --> H
     H --> I[Redmineにワークフロー提案コメント]
-    I --> J["leaderに SendMessage: issue_id 完了"]
+    I --> J["leaderに SendMessage: issue_id [完了:leader]"]
 
     style G fill:#36a,color:#fff
     style J fill:#4a4,color:#fff
@@ -65,7 +65,7 @@ flowchart TD
 ```mermaid
 flowchart TD
     A[任意agent: 問題発見] --> B[create_bug_toolで即時起票]
-    B --> C["leaderに SendMessage: issue_id 通知"]
+    B --> C["leaderに SendMessage: issue_id [確認待ち:leader]"]
     C --> D[PMO: 定期棚卸し確認]
 
     style B fill:#c33,color:#fff

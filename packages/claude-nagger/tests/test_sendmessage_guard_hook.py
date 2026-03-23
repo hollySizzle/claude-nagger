@@ -122,17 +122,22 @@ class TestValidateContent:
         assert pattern in result["violation"]
 
     def test_various_valid_statuses(self, hook_with_config):
-        """正常: enum指定パターンで全enum値が許可される"""
+        """正常: enum指定パターンで全ステータス+宛先が許可される"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"
         })
         valid_contents = [
-            "issue_1 [完了]",
-            "issue_99999 [指示]",
-            "issue_7225 [相談]",
-            "issue_100 [確認]",
-            "issue_42 [要判断]",
-            "issue_7777 [ブロッカー]",
+            "issue_1 [完了:leader]",
+            "issue_99999 [指示待ち:coder]",
+            "issue_7225 [回答待ち:leader]",
+            "issue_100 [確認待ち:leader]",
+            "issue_42 [判断待ち:leader]",
+            "issue_7777 [着手待ち:coder]",
+            "issue_1234 [回答待ち:tech-lead]",
+            "issue_5678 [確認待ち:pmo]",
+            "issue_9999 [指示待ち:tester]",
+            "issue_1111 [完了:researcher]",
+            "issue_2222 [着手待ち:auditor]",
         ]
         for content in valid_contents:
             result = h.validate_content(content)
@@ -141,13 +146,16 @@ class TestValidateContent:
     def test_various_invalid_statuses(self, hook_with_config):
         """異常: enum指定パターンでenum外のステータスは拒否"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"
         })
         invalid_contents = [
-            "issue_1 [着手中]",
-            "issue_2 [ブロック中]",
-            "issue_3 [報告]",
-            "issue_4 [完了しました]",
+            "issue_1 [完了]",           # 宛先なし
+            "issue_2 [指示:coder]",     # 旧ステータス
+            "issue_3 [相談:leader]",    # 旧ステータス
+            "issue_4 [要判断:leader]",  # 旧ステータス
+            "issue_5 [ブロッカー:leader]",  # 旧ステータス
+            "issue_6 [完了:unknown]",   # 未知宛先
+            "issue_7 [着手中:coder]",   # 未定義ステータス
         ]
         for content in invalid_contents:
             result = h.validate_content(content)
@@ -156,7 +164,7 @@ class TestValidateContent:
     def test_missing_issue_id_with_pattern(self, hook_with_config):
         """異常: カスタムパターンでissue_idなし"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"
         })
         result = h.validate_content("タスク完了しました")
         assert result["valid"] is False
@@ -165,7 +173,7 @@ class TestValidateContent:
     def test_missing_brackets_with_pattern(self, hook_with_config):
         """異常: カスタムパターンでブラケットなし"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"
         })
         result = h.validate_content("issue_6041")
         assert result["valid"] is False
@@ -256,20 +264,58 @@ class TestProcess:
     """process の処理テスト"""
 
     def test_approve_valid_message(self, hook):
-        """正常メッセージ → approve（デフォルトは非空で通過）"""
+        """正常メッセージ → approve（デフォルトは非空で通過、messageフィールド使用）"""
         input_data = {
-            "tool_input": {"content": "issue_6041 [完了]"},
+            "tool_input": {"message": "issue_6041 [完了:leader]"},
         }
         result = hook.process(input_data)
+        assert result["decision"] == "approve"
+
+    def test_approve_valid_message_content_fallback(self, hook):
+        """正常メッセージ → approve（contentフィールドにフォールバック）"""
+        input_data = {
+            "tool_input": {"content": "issue_6041 [完了:leader]"},
+        }
+        result = hook.process(input_data)
+        assert result["decision"] == "approve"
+
+    def test_approve_structured_message(self, hook):
+        """構造化メッセージ（dict） → approve（プロトコルメッセージはスキップ）"""
+        input_data = {
+            "tool_input": {"message": {"type": "shutdown_request", "reason": "done"}},
+        }
+        result = hook.process(input_data)
+        assert result["decision"] == "approve"
+
+    def test_message_field_priority_over_content(self, hook):
+        """messageフィールドがcontentより優先される"""
+        input_data = {
+            "tool_input": {
+                "message": "issue_1234 [完了:leader]",
+                "content": "invalid content",
+            },
+        }
+        result = hook.process(input_data)
+        assert result["decision"] == "approve"
+
+    def test_multiline_message_uses_first_line(self, hook_with_config):
+        """複数行メッセージは先頭行のみ検証"""
+        h = hook_with_config({
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"
+        })
+        input_data = {
+            "tool_input": {"message": "issue_1234 [指示待ち:coder]\n詳細な指示内容"},
+        }
+        result = h.process(input_data)
         assert result["decision"] == "approve"
 
     def test_block_missing_issue_id(self, hook_with_config):
         """issue_id なし → block（カスタムパターン使用時）"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"
         })
         input_data = {
-            "tool_input": {"content": "タスク完了しました"},
+            "tool_input": {"message": "タスク完了しました"},
         }
         result = h.process(input_data)
         assert result["decision"] == "block"
@@ -279,10 +325,10 @@ class TestProcess:
     def test_block_invalid_format(self, hook_with_config):
         """フォーマット不正（ブラケットなし） → block（カスタムパターン使用時）"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"
         })
         input_data = {
-            "tool_input": {"content": "issue_6041 完了しました"},
+            "tool_input": {"message": "issue_6041 完了しました"},
         }
         result = h.process(input_data)
         assert result["decision"] == "block"
@@ -291,25 +337,25 @@ class TestProcess:
     def test_block_reason_contains_pattern(self, hook_with_config):
         """block reason に設定パターンと対処法が含まれる"""
         h = hook_with_config({
-            "pattern": r"^issue_\d+ \[(完了|指示|相談|確認|要判断|ブロッカー)\]$"
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"
         })
         input_data = {
-            "tool_input": {"content": "完了しました"},
+            "tool_input": {"message": "完了しました"},
         }
         result = h.process(input_data)
         assert "SendMessage規約違反" in result["reason"]
         assert "対処" in result["reason"]
 
-    def test_empty_content(self, hook):
-        """content が空 → block（デフォルトパターンでも空は拒否）"""
+    def test_empty_message(self, hook):
+        """message が空 → block（デフォルトパターンでも空は拒否）"""
         input_data = {
-            "tool_input": {"content": ""},
+            "tool_input": {"message": ""},
         }
         result = hook.process(input_data)
         assert result["decision"] == "block"
 
-    def test_no_content_field(self, hook):
-        """content フィールドなし → block"""
+    def test_no_message_field(self, hook):
+        """message フィールドなし → block"""
         input_data = {
             "tool_input": {},
         }
@@ -349,7 +395,7 @@ class TestBlockMessageCustomization:
         custom_msg = "カスタム違反通知: {violation}"
         h = hook_with_config({"block_message": custom_msg})
         input_data = {
-            "tool_input": {"content": ""},
+            "tool_input": {"message": ""},
         }
         result = h.process(input_data)
         assert result["decision"] == "block"
@@ -360,7 +406,7 @@ class TestBlockMessageCustomization:
     def test_default_block_message_fallback(self, hook):
         """block_message 未設定時にデフォルトテンプレートが使用される"""
         input_data = {
-            "tool_input": {"content": ""},
+            "tool_input": {"message": ""},
         }
         result = hook.process(input_data)
         assert result["decision"] == "block"
@@ -374,7 +420,7 @@ class TestBlockMessageCustomization:
             "pattern": r"^issue_\d+ \[.+\]$",
         })
         input_data = {
-            "tool_input": {"content": "no issue id here"},
+            "tool_input": {"message": "no issue id here"},
         }
         result = h.process(input_data)
         assert result["decision"] == "block"
@@ -896,7 +942,7 @@ class TestP2PConfigYamlIntegration:
         }
         p2p_rules.update(p2p_overrides)
         return {
-            "pattern": "^issue_\\d+ \\[.{1,5}\\]$",
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$",
             "enabled": True,
             "p2p_rules": p2p_rules,
         }
@@ -992,18 +1038,16 @@ class TestP2PConfigYamlIntegration:
 
     # --- R2: content validation リグレッション ---
 
-    def test_r2_content_5chars_passes(self):
-        """R2: 5文字以内のissue_NNNN [...]が通過（content validation リグレッション確認）"""
+    def test_r2_valid_status_destination_passes(self):
+        """R2: 有効なステータス+宛先が通過（content validation リグレッション確認）"""
         h = self._make_hook_with_config(self._full_p2p_config())
-        content_5 = "a" * 5
-        result = h.validate_content(f"issue_1234 [{content_5}]")
+        result = h.validate_content("issue_1234 [完了:leader]")
         assert result["valid"] is True
 
-    def test_r2_content_6chars_rejected(self):
-        """R2: 6文字以上のブラケット内容が拒否される（content validation リグレッション確認）"""
+    def test_r2_invalid_status_rejected(self):
+        """R2: 無効なステータスが拒否される（content validation リグレッション確認）"""
         h = self._make_hook_with_config(self._full_p2p_config())
-        content_6 = "a" * 6
-        result = h.validate_content(f"issue_1234 [{content_6}]")
+        result = h.validate_content("issue_1234 [無効:leader]")
         assert result["valid"] is False
 
 
@@ -1024,11 +1068,13 @@ class TestConfigYamlSendmessageGuard:
             data = yaml.safe_load(f)
         self.guard_config = data.get("sendmessage_guard", {})
 
-    def test_pattern_is_5char_limit(self):
-        """パターンが5文字制限であること"""
+    def test_pattern_is_status_destination_enum(self):
+        """パターンがステータス+宛先enumであること"""
         pattern = self.guard_config.get("pattern", "")
-        assert ".{1,5}" in pattern, f"パターンが5文字制限でない: {pattern}"
-        assert ".{1,80}" not in pattern, "旧80文字制限パターンが残っている"
+        assert "指示待ち" in pattern, f"パターンに指示待ちが含まれていない: {pattern}"
+        assert "完了" in pattern, f"パターンに完了が含まれていない: {pattern}"
+        assert "leader" in pattern, f"パターンにleaderが含まれていない: {pattern}"
+        assert ".{1,5}" not in pattern, "旧5文字制限パターンが残っている"
 
     def test_block_message_exists(self):
         """block_messageキーが存在する"""
@@ -1061,7 +1107,7 @@ class TestConfigYamlSendmessageGuard:
         """config.yamlのblock_messageがhookインスタンスに正しく読み込まれる"""
         custom_msg = "カスタム: {violation} パターン: {pattern}"
         h = hook_with_config_factory({"block_message": custom_msg})
-        input_data = {"tool_input": {"content": ""}}
+        input_data = {"tool_input": {"message": ""}}
         result = h.process(input_data)
         assert result["decision"] == "block"
         assert "カスタム:" in result["reason"]
@@ -1099,7 +1145,7 @@ class TestExemptRoutes:
             "tool_input": {
                 "type": "message",
                 "recipient": "pmo",
-                "content": "タスク構造化をお願いします",
+                "message": "タスク構造化をお願いします",
             }
         }
         result = h.process(input_data)
@@ -1121,7 +1167,7 @@ class TestExemptRoutes:
             "tool_input": {
                 "type": "message",
                 "recipient": "coder",
-                "content": "バグを修正してください",
+                "message": "バグを修正してください",
             }
         }
         result = h.process(input_data)
@@ -1143,7 +1189,7 @@ class TestExemptRoutes:
             "tool_input": {
                 "type": "message",
                 "recipient": "team-lead",
-                "content": "報告します",
+                "message": "報告します",
             }
         }
         result = h.process(input_data)
@@ -1165,7 +1211,7 @@ class TestExemptRoutes:
             "tool_input": {
                 "type": "message",
                 "recipient": "tech-lead",
-                "content": "レビューお願いします",
+                "message": "レビューお願いします",
             }
         }
         result = h.process(input_data)
@@ -1187,7 +1233,7 @@ class TestExemptRoutes:
             "tool_input": {
                 "type": "message",
                 "recipient": "pmo",
-                "content": "issue_1234 [指示]",
+                "message": "issue_1234 [指示待ち:coder]",
             }
         }
         result = h.process(input_data)
@@ -1196,7 +1242,7 @@ class TestExemptRoutes:
     def test_empty_exempt_routes_no_skip(self):
         """exempt_routes空の場合はcontent検証が通常通り実行される"""
         h = self._make_hook({"pattern": r"^issue_\d+ \[.{1,5}\]$", "exempt_routes": []})
-        input_data = {"tool_input": {"content": "自由テキスト"}}
+        input_data = {"tool_input": {"message": "自由テキスト"}}
         result = h.process(input_data)
         assert result["decision"] == "block"
 
@@ -1426,18 +1472,18 @@ class TestCrossHookExemptConsistency:
 
         # agent_spawn_guard: leader→pmoのみ（agent起動向け）
         agent_exempt = config.get("agent_spawn_guard", {}).get("exempt_routes", [])
-        # sendmessage_guard: leader→pmo + pmo→leader（メッセージ向け双方向）
+        # sendmessage_guard: leader→pmo + pmo→team-lead（メッセージ向け双方向）
         sm_exempt = config.get("sendmessage_guard", {}).get("exempt_routes", [])
 
-        # sendmessage_guardの方がexempt経路が多い（pmo→leader含む）
-        sm_has_pmo_leader = any(
-            r.get("from") == "pmo" and r.get("to") == "leader"
+        # sendmessage_guardの方がexempt経路が多い（pmo→team-lead含む）
+        sm_has_pmo_team_lead = any(
+            r.get("from") == "pmo" and r.get("to") == "team-lead"
             for r in sm_exempt
         )
-        agent_has_pmo_leader = any(
-            r.get("from") == "pmo" and r.get("to") == "leader"
+        agent_has_pmo_team_lead = any(
+            r.get("from") == "pmo" and r.get("to") == "team-lead"
             for r in agent_exempt
         )
-        # agent_spawn_guardにはpmo→leaderは不要（subagentからの起動は早期return）
-        assert sm_has_pmo_leader, "sendmessage_guard.exempt_routesにpmo→leaderが必要"
-        assert not agent_has_pmo_leader, "agent_spawn_guard.exempt_routesにpmo→leaderは不要"
+        # agent_spawn_guardにはpmo→team-leadは不要（subagentからの起動は早期return）
+        assert sm_has_pmo_team_lead, "sendmessage_guard.exempt_routesにpmo→team-leadが必要"
+        assert not agent_has_pmo_team_lead, "agent_spawn_guard.exempt_routesにpmo→team-leadは不要"

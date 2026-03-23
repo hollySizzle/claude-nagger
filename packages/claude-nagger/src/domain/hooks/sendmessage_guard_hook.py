@@ -345,8 +345,14 @@ class SendMessageGuardHook(BaseHook):
             self.log_debug("APPROVE: exempt route, skipping content validation")
             return {"decision": "approve", "reason": ""}
 
-        # 既存content検証
-        content = tool_input.get("content", "")
+        # メッセージ内容取得（SendMessageのペイロードは "message" フィールド）
+        raw_message = tool_input.get("message", "") or tool_input.get("content", "")
+        # 構造化メッセージ（dict）はプロトコルメッセージのため検証スキップ
+        if isinstance(raw_message, dict):
+            self.log_debug("APPROVE: structured message (dict), skipping content validation")
+            return {"decision": "approve", "reason": ""}
+        # 複数行の場合は先頭行のみ検証
+        content = raw_message.splitlines()[0] if raw_message else ""
 
         result = self.validate_content(content)
 
