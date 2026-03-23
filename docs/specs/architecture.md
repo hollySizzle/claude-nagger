@@ -51,6 +51,25 @@
 **監視項目**: レスポンス時間 1 秒以上, エラー率 5%以上でアラート
 **トラブルシューティング**: 表示崩れ → `display_#{field_name}`形式確認
 
+## プロダクト境界
+
+### claude-nagger と ticket-tasuki
+
+ticket-tasukiはclaude-naggarとは**独立したプロダクト**である。
+
+| 項目 | claude-nagger | ticket-tasuki |
+|------|--------------|---------------|
+| リポジトリ | hollySizzle/claude-nagger | hollySizzle/ticket-tasuki |
+| バージョン体系 | pyproject.toml / version.py | .claude-plugin/plugin.json |
+| リリーススクリプト | scripts/release.sh | scripts/release.sh（独自） |
+| リリースサイクル | 独立 | 独立 |
+| 配置場所 | /workspace/packages/claude-nagger/ | .claude/plugins/ticket-tasuki/（独立git） |
+
+**制約**:
+- claude-naggarリリース時にticket-tasukiのバージョンを変更しないこと
+- ticket-tasukiのバージョン更新はticket-tasuki側のrelease.shで行うこと
+- 両プロダクトのバージョン番号に相関関係はない
+
 ## 関連ドキュメント
 
 - @packages/claude-nagger/vibes/docs/rules/coding_standards.md
