@@ -181,7 +181,7 @@ if [ "$RELEASE_ONLY" = false ]; then
     echo "Committing..."
     git add pyproject.toml src/shared/version.py CHANGELOG.md
     if [ -f ".claude/plugins/ticket-tasuki/.claude-plugin/plugin.json" ]; then
-        git add ".claude/plugins/ticket-tasuki/.claude-plugin/plugin.json"
+        git add -f ".claude/plugins/ticket-tasuki/.claude-plugin/plugin.json"
     fi
     git commit -m "Bump version to $VERSION"
 
