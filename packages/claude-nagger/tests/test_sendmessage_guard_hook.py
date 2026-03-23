@@ -1124,7 +1124,7 @@ class TestExemptRoutes:
     def _base_config(self, exempt_routes=None):
         """exempt_routes付きの基本設定"""
         config = {
-            "pattern": r"^issue_\d+ \[.{1,5}\]$",
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$",
             "exempt_routes": exempt_routes or [{"from": "leader", "to": "pmo"}],
         }
         return config
@@ -1241,7 +1241,7 @@ class TestExemptRoutes:
 
     def test_empty_exempt_routes_no_skip(self):
         """exempt_routes空の場合はcontent検証が通常通り実行される"""
-        h = self._make_hook({"pattern": r"^issue_\d+ \[.{1,5}\]$", "exempt_routes": []})
+        h = self._make_hook({"pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$", "exempt_routes": []})
         input_data = {"tool_input": {"message": "自由テキスト"}}
         result = h.process(input_data)
         assert result["decision"] == "block"
@@ -1282,7 +1282,7 @@ class TestApplyDirections:
     def _base_config(self, apply_directions=None):
         """apply_directions付きの基本設定"""
         config = {
-            "pattern": r"^issue_\d+ \[.{1,5}\]$",
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$",
         }
         if apply_directions is not None:
             config["apply_directions"] = apply_directions
@@ -1392,7 +1392,7 @@ class TestApplyDirections:
 
     def test_apply_directions_not_set_uses_default(self):
         """apply_directions未設定時はデフォルト（leader_to_subagentのみ）"""
-        h = self._make_hook({"pattern": r"^issue_\d+ \[.{1,5}\]$"})
+        h = self._make_hook({"pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$"})
         assert h._guard_config["apply_directions"] == ["leader_to_subagent"]
 
         # leader方向: 処理対象
@@ -1413,9 +1413,9 @@ class TestApplyDirections:
     def test_subagent_direction_passes_filter(self):
         """subagent方向がapply_directionsフィルタを通過する検証"""
         h = self._make_hook({
-            "pattern": r"^issue_\d+ \[.{1,5}\]$",
+            "pattern": r"^issue_\d+ \[(指示待ち|回答待ち|確認待ち|判断待ち|着手待ち|完了):(leader|coder|tech-lead|pmo|tester|researcher|auditor)\]$",
             "apply_directions": ["leader_to_subagent", "subagent_to_leader"],
-            "exempt_routes": [{"from": "pmo", "to": "leader"}],
+            "exempt_routes": [{"from": "pmo", "to": "team-lead"}],
         })
         # subagent方向は処理対象
         input_subagent = {
