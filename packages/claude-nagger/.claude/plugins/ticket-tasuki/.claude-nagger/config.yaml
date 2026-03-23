@@ -125,6 +125,10 @@ agent_spawn_guard:
   issue_id_warn_message: |
     ⚠ Agent promptにissue_{id}が含まれていません。
     トレーサビリティのため、promptにissue_{id}（例: issue_1234）を含めてください。
+  # exempt_routes: 特定経路でissue_id・promptパターンチェックをスキップ
+  exempt_routes:
+    - from: leader
+      to: pmo
   prompt_pattern_block_message: |
     Agent tool規約: promptパターン制限
     ━━━━━━━━━━━━━━━━━

@@ -147,9 +147,9 @@ class TestTeamNameHandling:
         assert rc == 0
         _assert_override_output(out, "issue_7947")
 
-    @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "pmo"])
+    @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester"])
     def test_allow_all_ticket_tasuki_roles_with_team_name(self, role):
-        """team_name指定時に全ticket-tasukiロールがoverride注入付きで許可（promptパターン準拠）"""
+        """team_name指定時にticket-tasukiロールがoverride注入付きで許可（promptパターン準拠）"""
         data = _make_agent_input(
             subagent_type=role,
             team_name="my-team",
@@ -159,6 +159,19 @@ class TestTeamNameHandling:
 
         assert rc == 0
         _assert_override_output(out, "issue_7947")
+
+    def test_pmo_exempt_route_allows_without_override(self):
+        """pmoはexempt_routeによりpromptパターン・issue_idチェック両方スキップで許可"""
+        data = _make_agent_input(
+            subagent_type="pmo",
+            team_name="my-team",
+            prompt="issue_7947",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        # exempt経路はpromptパターンチェックをスキップし、出力なし（許可）
+        assert out is None
 
     def test_block_without_team_name(self):
         """team_name未指定はdeny"""
@@ -500,9 +513,9 @@ class TestPromptPatternRestriction:
         assert rc == 0
         assert out is None
 
-    @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "pmo", "researcher"])
-    def test_all_roles_require_prompt_pattern(self, role):
-        """全ticket-tasukiロールにpromptパターン制限が適用される"""
+    @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "researcher"])
+    def test_non_exempt_roles_require_prompt_pattern(self, role):
+        """非exempt経路のロールにpromptパターン制限が適用される"""
         data = _make_agent_input(
             subagent_type=role,
             team_name="my-team",
@@ -514,9 +527,22 @@ class TestPromptPatternRestriction:
         assert out is not None
         assert out["hookSpecificOutput"]["permissionDecision"] == "deny"
 
-    @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "pmo", "researcher"])
-    def test_all_roles_allow_valid_prompt(self, role):
-        """全ロールで正しいpromptパターンならoverride注入付き許可"""
+    def test_pmo_exempt_skips_prompt_pattern(self):
+        """pmo（exempt経路）はpromptパターン制限をスキップ"""
+        data = _make_agent_input(
+            subagent_type="pmo",
+            team_name="my-team",
+            prompt="issue_8132 do work",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        # exempt経路はpromptパターンチェックをスキップ
+        assert out is None
+
+    @pytest.mark.parametrize("role", ["coder", "tech-lead", "tester", "researcher"])
+    def test_non_exempt_roles_allow_valid_prompt(self, role):
+        """非exempt経路のロールで正しいpromptパターンならoverride注入付き許可"""
         data = _make_agent_input(
             subagent_type=role,
             team_name="my-team",
@@ -526,6 +552,18 @@ class TestPromptPatternRestriction:
 
         assert rc == 0
         _assert_override_output(out, "issue_8132")
+
+    def test_pmo_exempt_allows_valid_prompt(self):
+        """pmo（exempt経路）は正しいpromptでも出力なし（チェックスキップ）"""
+        data = _make_agent_input(
+            subagent_type="pmo",
+            team_name="my-team",
+            prompt="issue_8132",
+        )
+        rc, out = _run_guard(data)
+
+        assert rc == 0
+        assert out is None
 
 
 class TestOverrideInjection:
@@ -1197,7 +1235,7 @@ class TestExemptSpawnRoutes:
     """
 
     def test_leader_to_pmo_no_issue_id_no_warn(self):
-        """leader→pmo: issue_id無しでもask警告されない"""
+        """leader→pmo: issue_id無し・非パターンpromptでも許可（exempt経路）"""
         data = _make_agent_input(
             subagent_type="pmo",
             team_name="my-team",
@@ -1207,18 +1245,11 @@ class TestExemptSpawnRoutes:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        # pmoはprompt_only_patternに合致しないためdeny
-        # ただしissue_id警告ではなくpromptパターン制限のdeny
-        # → prompt="issue_1234"形式ではないのでdenyになるが、それはpromptパターン問題
-        # exempt_routesのテストとしては、issue_idなしでもteam_name+正しいpromptで確認
-        assert out is not None
+        # exempt_routesによりissue_id・promptパターン両方スキップ → 出力なし（許可）
+        assert out is None
 
     def test_leader_to_pmo_valid_prompt_no_issue_id(self):
-        """leader→pmo: issue_id形式のpromptでoverride注入（issue_id警告なし）"""
-        # pmoはprompt_only_patternに合致する形式が必要
-        # exempt_routesによりissue_id不要だが、prompt_only_patternは別チェック
-        # ビルトイン以外はprompt_only_pattern必須なので"issue_1234"形式でテスト
-        # ※exempt_routesの効果はissue_idチェックのスキップ
+        """leader→pmo: issue_id形式のpromptでも出力なし（exempt経路でチェックスキップ）"""
         data = _make_agent_input(
             subagent_type="pmo",
             team_name="my-team",
@@ -1228,8 +1259,8 @@ class TestExemptSpawnRoutes:
         rc, out = _run_guard(data)
 
         assert rc == 0
-        # override注入されて許可（issue_id警告なし）
-        _assert_override_output(out, "issue_1234")
+        # exempt_routesにより全チェックスキップ → 出力なし（許可）
+        assert out is None
 
     def test_leader_to_pmo_builtin_no_warn(self):
         """leader→pmo（ビルトイン相当テスト用）: exempt経路でissue_id警告なし
@@ -1320,9 +1351,8 @@ class TestExemptSpawnRoutes:
         )
         assert proc.returncode == 0
         out = json.loads(proc.stdout) if proc.stdout.strip() else None
-        # exempt経路なのでissue_id警告なし、override注入で許可
-        assert out is not None
-        assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+        # exempt経路はissue_id・promptパターン両方スキップ → 出力なし（許可）
+        assert out is None
 
     def test_exempt_route_not_applied_to_non_leader(self, tmp_path):
         """subagent以外の非leader contextではexempt_routesが適用されない"""
@@ -1447,8 +1477,8 @@ class TestExemptSpawnRoutes:
         )
         assert proc.returncode == 0
         out = json.loads(proc.stdout) if proc.stdout.strip() else None
-        assert out is not None
-        assert out["hookSpecificOutput"]["permissionDecision"] == "allow"
+        # exempt経路はissue_id・promptパターン両方スキップ → 出力なし（許可）
+        assert out is None
 
     def test_non_leader_non_subagent_context(self, tmp_path):
         """agent_context="team-lead"等の非leader/非subagentコンテキスト"""
@@ -1504,7 +1534,8 @@ class TestExemptSpawnRoutes:
 
         assert rc == 0
         # exempt_routesにより"ticket-tasuki:pmo" → "pmo"に正規化されexempt有効
-        _assert_override_output(out, "issue_1234")
+        # exempt経路はissue_id・promptパターン両方スキップ → 出力なし（許可）
+        assert out is None
 
     def test_namespaced_non_exempt(self):
         """名前空間付き非exempt経路("ticket-tasuki:coder")はexempt非該当"""
