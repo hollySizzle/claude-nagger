@@ -137,7 +137,7 @@ def _is_exempt_spawn_route(agent_context: str, subagent_type: str, guard_config:
     """exempt_routesに該当するcaller→subagent_type経路かを判定
 
     config.yaml の agent_spawn_guard.exempt_routes に定義された経路の場合、
-    issue_idチェックをスキップする。
+    issue_id・promptパターンチェックをスキップする。
 
     Args:
         agent_context: 呼び出し元のコンテキスト（例: "leader"）
