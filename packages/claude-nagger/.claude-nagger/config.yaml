@@ -90,6 +90,17 @@ session_startup:
               [ ] ファイル編集: mcp__serena__replace_content
               [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
               [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
+              ステータス別行動:
+              受信時:
+              [ ] [指示待ち:tester] → get_issue_detail_toolで最新コメントから作業指示を取得→テスト実行
+              [ ] [回答待ち:tester] → get_issue_detail_toolで質問確認→回答をRedmineに記録→送信元に完了報告
+              [ ] [確認待ち:tester] → get_issue_detail_toolで確認対象確認→確認結果をRedmineに記録→送信元に完了報告
+              [ ] [着手待ち:tester] → 前提タスク完了通知。get_issue_detail_toolで作業内容確認→作業開始
+              送信時:
+              [ ] 作業完了 → issue_id [完了:送信先]
+              [ ] 質問 → issue_id [回答待ち:送信先]
+              [ ] 確認依頼 → issue_id [確認待ち:送信先]
+              [ ] 判断依頼 → issue_id [判断待ち:送信先]
       coder:
         messages:
           first_time:
@@ -109,6 +120,17 @@ session_startup:
               [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
               [ ] シンボル操作: mcp__serena__insert_after_symbol, mcp__serena__insert_before_symbol
               [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
+              ステータス別行動:
+              受信時:
+              [ ] [指示待ち:coder] → get_issue_detail_toolで最新コメントから作業指示を取得→実装実行
+              [ ] [回答待ち:coder] → get_issue_detail_toolで質問確認→回答をRedmineに記録→送信元に完了報告
+              [ ] [確認待ち:coder] → get_issue_detail_toolで確認対象確認→確認結果をRedmineに記録→送信元に完了報告
+              [ ] [着手待ち:coder] → 前提タスク完了通知。get_issue_detail_toolで作業内容確認→作業開始
+              送信時:
+              [ ] 作業完了 → issue_id [完了:送信先]
+              [ ] 質問 → issue_id [回答待ち:送信先]
+              [ ] 確認依頼 → issue_id [確認待ち:送信先]
+              [ ] 判断依頼 → issue_id [判断待ち:送信先]
       auditor:
         messages:
           first_time:
@@ -123,6 +145,17 @@ session_startup:
               [ ] ファイル操作にはserena MCPツールを優先使用すること
               [ ] コード読み取り: mcp__serena__find_symbol, mcp__serena__get_symbols_overview, mcp__serena__read_file
               [ ] 作業開始時に mcp__serena__activate_project で rails をアクティベートすること
+              ステータス別行動:
+              受信時:
+              [ ] [指示待ち:auditor] → get_issue_detail_toolで最新コメントから監査指示を取得→監査実行
+              [ ] [回答待ち:auditor] → get_issue_detail_toolで質問確認→回答をRedmineに記録→送信元に完了報告
+              [ ] [確認待ち:auditor] → get_issue_detail_toolで確認対象確認→確認結果をRedmineに記録→送信元に完了報告
+              [ ] [着手待ち:auditor] → 前提タスク完了通知。get_issue_detail_toolで作業内容確認→作業開始
+              送信時:
+              [ ] 作業完了 → issue_id [完了:送信先]
+              [ ] 質問 → issue_id [回答待ち:送信先]
+              [ ] 確認依頼 → issue_id [確認待ち:送信先]
+              [ ] 判断依頼 → issue_id [判断待ち:送信先]
       tech-lead:
         messages:
           first_time:
@@ -133,6 +166,19 @@ session_startup:
               [ ] 指摘は[事実]/[仮説]に分類すること
               [ ] 報告=チケットコメント（[tech-lead]プレフィックス付き）
               [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
+              ステータス別行動:
+              受信時:
+              [ ] [指示待ち:tech-lead] → get_issue_detail_toolで最新コメントから作業指示を取得→レビュー/調査実行
+              [ ] [回答待ち:tech-lead] → get_issue_detail_toolで質問確認→回答をRedmineに記録→送信元に完了報告
+              [ ] [確認待ち:tech-lead] → get_issue_detail_toolで確認対象確認→確認結果をRedmineに記録→送信元に完了報告
+              [ ] [判断待ち:tech-lead] → get_issue_detail_toolで判断事項確認→判断結果をRedmineに記録→送信元に完了報告
+              [ ] [着手待ち:tech-lead] → 前提タスク完了通知。get_issue_detail_toolで作業内容確認→作業開始
+              送信時:
+              [ ] 作業完了 → issue_id [完了:送信先]
+              [ ] 修正指示 → issue_id [指示待ち:coder]
+              [ ] 質問 → issue_id [回答待ち:送信先]
+              [ ] 確認依頼 → issue_id [確認待ち:送信先]
+              [ ] 判断依頼（エスカレーション） → issue_id [判断待ち:leader]
       pmo:
         messages:
           first_time:
@@ -141,6 +187,17 @@ session_startup:
               [ ] タスク構造化・優先度判断を行うこと
               [ ] 報告=チケットコメント（add_issue_comment_tool使用）
               [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
+              ステータス別行動:
+              受信時:
+              [ ] [指示待ち:pmo] → get_issue_detail_toolで最新コメントから作業指示を取得→タスク構造化実行
+              [ ] [回答待ち:pmo] → get_issue_detail_toolで質問確認→回答をRedmineに記録→送信元に完了報告
+              [ ] [確認待ち:pmo] → get_issue_detail_toolで確認対象確認→確認結果をRedmineに記録→送信元に完了報告
+              [ ] [着手待ち:pmo] → 前提タスク完了通知。get_issue_detail_toolで作業内容確認→作業開始
+              送信時:
+              [ ] 作業完了 → issue_id [完了:送信先]
+              [ ] 質問 → issue_id [回答待ち:送信先]
+              [ ] 確認依頼 → issue_id [確認待ち:送信先]
+              [ ] 判断依頼 → issue_id [判断待ち:送信先]
       researcher:
         messages:
           first_time:
@@ -148,6 +205,17 @@ session_startup:
             main_text: |
               [ ] 調査結果をチケットコメントに報告すること（add_issue_comment_tool使用）
               [ ] 作業開始時にチケット詳細を確認すること（get_issue_detail_tool使用）
+              ステータス別行動:
+              受信時:
+              [ ] [指示待ち:researcher] → get_issue_detail_toolで最新コメントから調査指示を取得→調査実行
+              [ ] [回答待ち:researcher] → get_issue_detail_toolで質問確認→回答をRedmineに記録→送信元に完了報告
+              [ ] [確認待ち:researcher] → get_issue_detail_toolで確認対象確認→確認結果をRedmineに記録→送信元に完了報告
+              [ ] [着手待ち:researcher] → 前提タスク完了通知。get_issue_detail_toolで作業内容確認→作業開始
+              送信時:
+              [ ] 作業完了 → issue_id [完了:送信先]
+              [ ] 質問 → issue_id [回答待ち:送信先]
+              [ ] 確認依頼 → issue_id [確認待ち:送信先]
+              [ ] 判断依頼 → issue_id [判断待ち:送信先]
 
 # Agent spawn guard設定
 # 注: task_spawn_guardもこのセクションのissue_id_pattern・issue_id_warn_messageを共有参照する（設計意図: issue_8512）
