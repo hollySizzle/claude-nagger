@@ -198,6 +198,38 @@ tests/fixtures/claude_code/
 | TestApplyDirections | 12 | direction検出、デフォルト、片方向/両方向/空、未設定時、unknown、subagent方向フィルタ通過 |
 | TestCrossHookExemptConsistency | 2 | クロスhook exempt一貫性、独立管理後の設定不整合検証 |
 
+## 実機手動テスト（リリース前チェックリスト）
+
+pytest対象外。リリース前にleaderが実環境で手動確認する項目。
+
+### agent_spawn_guard
+
+| # | テスト | 操作 | 期待結果 |
+|---|--------|------|----------|
+| M1 | exempt_routes許可 | leader→PMO 自由文prompt（team_name付き） | 許可（promptパターンチェックスキップ） |
+| M2 | exempt_routes名前空間 | leader→`ticket-tasuki:pmo` 自由文prompt | 許可（名前空間正規化後にexempt判定） |
+| M3 | 通常経路許可 | leader→coder/tester/tech-lead/researcher `issue_{id}`形式 | 許可（override injection付き） |
+| M4 | 非exempt経路ブロック | leader→coder 自由文prompt | deny（promptパターン不一致） |
+| M5 | ビルトイン許可 | Explore/Plan 自由文（team_name無し） | 許可 |
+| M6 | override injection | coder起動後の初回応答確認 | updatedInput.promptに元prompt+override_instruction。coderがget_issue_detail_toolを実行 |
+
+### sendmessage_guard
+
+| # | テスト | 操作 | 期待結果 |
+|---|--------|------|----------|
+| M7 | exempt_routes | leader→PMO SendMessage（content検証対象外メッセージ） | 許可（content検証スキップ） |
+| M8 | apply_directions: leader_to_subagentのみ | config: `["leader_to_subagent"]` | leader→subagentのみ検証、subagent→leaderはスキップ |
+| M9 | apply_directions: 両方向 | config: `["leader_to_subagent", "subagent_to_leader"]` | 両方向とも検証対象 |
+| M10 | apply_directions: 未設定 | configにapply_directions無し | デフォルト動作（フィルタなし=全方向検証） |
+| M11 | P2P通信allow | coder↔tech-leadのSendMessage | 許可 |
+| M12 | P2P通信deny | coder→PMOのSendMessage | deny |
+
+### クロスhook
+
+| # | テスト | 操作 | 期待結果 |
+|---|--------|------|----------|
+| M13 | exempt一貫性 | agent_spawn_guardとsendmessage_guardのexempt_routes設定比較 | 両hookのexempt経路が意図通り（独立管理のため完全一致は不要） |
+
 ## テストアンチパターン
 
 ### AP-1: should_process()直接呼び出しのみのテスト
