@@ -182,15 +182,17 @@ rules:
     message: |
       GitHubリリース操作を実行します
 
-  # --- role別制約 (#7169) ---
+  # --- role別制約 (#8574) ---
 
-  # 制約#17: coder git commit/push禁止
-  - name: "coderGitCommit禁止"
+  # tester: blacklist方式（破壊的コマンドのみdeny）
+  - name: "tester破壊的コマンド禁止"
     patterns:
-      - "git commit*"
-      - "git push*"
+      - "rm -rf*"
+      - "git push --force*"
+      - "git push -f*"
+      - "git reset --hard*"
+      - "git clean -f*"
     severity: "deny"
-    scope: "coder"
+    scope: "tester"
     message: |
-      coderはgit commit/pushが禁止されています。
-      レビュー承認後、tech-leadがコミットします
+      testerは破壊的コマンドが禁止されています
