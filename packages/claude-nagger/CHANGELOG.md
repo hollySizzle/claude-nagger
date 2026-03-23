@@ -4,6 +4,21 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] - 2026-03-23
+
+### Breaking Changes
+- sendmessage_guardステータス再設計: `~待ち:to`形式+宛先enum必須（#8590）
+
+### Bug Fixes
+- sendmessage_guard: process()のフィールド参照修正（content→message）
+- config.yaml: exempt_routes.to leader→team-lead修正
+
+### Features
+- agent定義書（config.yaml subagent_types）にステータス別行動マッピング追記（#8642）
+
+### Tests
+- テスト旧パターン残留を新ステータス形式に統一
+
 ## [0.3.3] - 2026-03-23
 
 - issue_8574: release.sh plugin.json git add -f修正（gitignore対応）
