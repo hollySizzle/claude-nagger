@@ -228,6 +228,10 @@ sendmessage_guard:
       to: pmo
     - from: pmo
       to: leader
+  # P2P通信制御（全role間通信許可）
+  p2p_rules:
+    enabled: true
+    default_policy: allow
 
 # デバッグ設定
 debug:
