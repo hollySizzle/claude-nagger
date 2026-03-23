@@ -15,6 +15,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 
 from domain.hooks.base_hook import BaseHook, ExitCode
 from domain.services.caller_role_service import get_caller_roles
+from domain.services.leader_detection import is_leader_tool_use
 from infrastructure.config.config_manager import ConfigManager
 
 # デフォルト設定
@@ -268,22 +269,19 @@ class SendMessageGuardHook(BaseHook):
     def _detect_direction(self, input_data: Dict[str, Any]) -> str:
         """通信方向を検出する
 
-        agent_contextからcallerを判定し方向を返す。
-        - agent_context未設定/空 → leader（leader_to_subagent）
-        - agent_context="subagent" → subagent（subagent_to_leader）
+        agent_idの有無でcallerを判定し方向を返す。
+        - agent_id不在 → leader（leader_to_subagent）
+        - agent_id存在 → subagent（subagent_to_leader）
 
         Args:
             input_data: 入力データ
 
         Returns:
-            "leader_to_subagent" または "subagent_to_leader"。判定不能時は空文字列
+            "leader_to_subagent" または "subagent_to_leader"
         """
-        agent_context = input_data.get("agent_context", "")
-        if not agent_context:
+        if is_leader_tool_use(input_data):
             return "leader_to_subagent"
-        if agent_context == "subagent":
-            return "subagent_to_leader"
-        return ""
+        return "subagent_to_leader"
 
     def should_process(self, input_data: Dict[str, Any]) -> bool:
         """処理対象かどうかを判定

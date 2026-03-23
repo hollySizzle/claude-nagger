@@ -1243,20 +1243,15 @@ class TestApplyDirections:
         return config
 
     def test_detect_direction_leader(self):
-        """agent_context未設定はleader_to_subagent"""
+        """agent_id不在はleader_to_subagent"""
         h = self._make_hook(self._base_config())
         assert h._detect_direction({}) == "leader_to_subagent"
-        assert h._detect_direction({"agent_context": ""}) == "leader_to_subagent"
+        assert h._detect_direction({"agent_id": ""}) == "leader_to_subagent"
 
     def test_detect_direction_subagent(self):
-        """agent_context="subagent"はsubagent_to_leader"""
+        """agent_id存在はsubagent_to_leader"""
         h = self._make_hook(self._base_config())
-        assert h._detect_direction({"agent_context": "subagent"}) == "subagent_to_leader"
-
-    def test_detect_direction_unknown(self):
-        """未知のagent_contextは空文字列"""
-        h = self._make_hook(self._base_config())
-        assert h._detect_direction({"agent_context": "unknown"}) == ""
+        assert h._detect_direction({"agent_id": "subagent-001"}) == "subagent_to_leader"
 
     def test_default_leader_direction_only(self):
         """デフォルトはleader→subagent方向のみ発火"""
@@ -1280,7 +1275,7 @@ class TestApplyDirections:
         input_subagent = {
             "tool_name": "SendMessage",
             "tool_input": {"content": "invalid"},
-            "agent_context": "subagent",
+            "agent_id": "subagent-001",
         }
         assert h.should_process(input_subagent) is False
 
@@ -1300,7 +1295,7 @@ class TestApplyDirections:
         input_subagent = {
             "tool_name": "SendMessage",
             "tool_input": {"content": "invalid"},
-            "agent_context": "subagent",
+            "agent_id": "subagent-001",
         }
         assert h.should_process(input_subagent) is True
 
@@ -1316,7 +1311,7 @@ class TestApplyDirections:
         input_subagent = {
             "tool_name": "SendMessage",
             "tool_input": {"content": "test"},
-            "agent_context": "subagent",
+            "agent_id": "subagent-001",
         }
         assert h.should_process(input_leader) is True
         assert h.should_process(input_subagent) is True
@@ -1331,7 +1326,7 @@ class TestApplyDirections:
         input_subagent = {
             "tool_name": "SendMessage",
             "tool_input": {"content": "test"},
-            "agent_context": "subagent",
+            "agent_id": "subagent-001",
         }
         assert h.should_process(input_leader) is True
         assert h.should_process(input_subagent) is True
@@ -1365,22 +1360,9 @@ class TestApplyDirections:
         input_subagent = {
             "tool_name": "SendMessage",
             "tool_input": {"content": "test"},
-            "agent_context": "subagent",
+            "agent_id": "subagent-001",
         }
         assert h.should_process(input_subagent) is False
-
-    def test_direction_unknown_not_filtered(self):
-        """direction判定不能（agent_context="unknown"）時はフィルタされない"""
-        h = self._make_hook(self._base_config(
-            apply_directions=["leader_to_subagent"]
-        ))
-        input_unknown = {
-            "tool_name": "SendMessage",
-            "tool_input": {"content": "test"},
-            "agent_context": "unknown",
-        }
-        # _detect_directionが空文字列を返す → directionが空 → フィルタされずTrue
-        assert h.should_process(input_unknown) is True
 
     def test_subagent_direction_passes_filter(self):
         """subagent方向がapply_directionsフィルタを通過する検証"""
@@ -1393,7 +1375,7 @@ class TestApplyDirections:
         input_subagent = {
             "tool_name": "SendMessage",
             "tool_input": {"content": "自由テキスト"},
-            "agent_context": "subagent",
+            "agent_id": "subagent-001",
         }
         assert h.should_process(input_subagent) is True
 
